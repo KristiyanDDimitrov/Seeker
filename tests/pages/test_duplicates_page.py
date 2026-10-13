@@ -1592,3 +1592,77 @@ def test_a_group_rebuilt_while_its_delete_runs_keeps_delete_disabled(
 
     qtbot.waitUntil(lambda: "Deleted: 0, Failed: 1" in page.notice.text())
     assert actions().findChildren(QPushButton)[0].isEnabled()
+
+
+def _numbered_duplicate_group(index: int):
+    from seeker.audio.quality import LocalFileQuality
+    from seeker.library.duplicate_service import DuplicateFile, DuplicateGroup
+
+    return DuplicateGroup(
+        files=[
+            DuplicateFile(
+                local_file=LocalFile(
+                    id=1_000 + index * 2 + copy,
+                    location_id=1, relative_path=f"track{index}.{fmt}",
+                    filename=f"track{index}.{fmt}", format=fmt,
+                    size_bytes=1, mtime=0.0,
+                    scanned_at="2026-01-01T00:00:00+00:00",
+                ),
+                quality=LocalFileQuality(
+                    tier=copy, bitrate_kbps=None if copy == 0 else 320,
+                    bit_depth=None, sample_rate=44_100,
+                ),
+            )
+            for copy, fmt in enumerate(("flac", "mp3"))
+        ],
+        similarity=0.95,
+    )
+
+
+def test_only_groups_near_the_view_hold_cell_widgets(qtbot):
+    # Qt repositions every cell widget on each resize step: 1,800
+    # groups held a fullscreen transition's main thread ~2 s
+    # (HISTORY §234). A group far out of view holds none, and gets
+    # them back, its keep choice and confirm tick too, once in view.
+    groups = [_numbered_duplicate_group(index) for index in range(200)]
+    window = MainWindow(FakeApplication(duplicate_groups=groups))
+    qtbot.addWidget(window)
+    window.resize(960, 640)
+    window.show()
+    _switch_to_duplicates_tab(window)
+    page = window._duplicates_page
+    page._render_duplicate_groups(groups)
+    table = page.duplicates_table
+    keep = _duplicates_column(window, "Keep")
+    actions = _duplicates_column(window, "Actions")
+    last_row = table.rowCount() - 1
+
+    def rows_with_widgets() -> list[int]:
+        return [
+            row for row in range(table.rowCount())
+            if table.cellWidget(row, keep) is not None
+        ]
+
+    def confirm(row: int) -> QCheckBox:
+        return table.cellWidget(row, actions).findChildren(QCheckBox)[0]
+
+    assert 0 < len(rows_with_widgets()) < 100
+    assert table.cellWidget(last_row, keep) is None
+    first_group_heights = [table.rowHeight(0), table.rowHeight(1)]
+    assert [
+        table.rowHeight(last_row - 1), table.rowHeight(last_row),
+    ] == first_group_heights
+
+    table.cellWidget(1, keep).setChecked(True)
+    confirm(0).setChecked(True)
+
+    table.scrollToBottom()
+    qtbot.waitUntil(lambda: table.cellWidget(last_row, keep) is not None)
+    assert table.cellWidget(1, keep) is None
+    assert len(rows_with_widgets()) < 100
+
+    table.scrollToTop()
+    qtbot.waitUntil(lambda: table.cellWidget(1, keep) is not None)
+    assert table.cellWidget(1, keep).isChecked()
+    assert not table.cellWidget(0, keep).isChecked()
+    assert confirm(0).isChecked()

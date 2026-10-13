@@ -1,10 +1,13 @@
 """The Duplicates page (HISTORY §119)."""
 
+from bisect import bisect_right
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import IntEnum
 from pathlib import Path
 from typing import Any
 
+from PySide6.QtCore import QEvent, QObject
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -70,6 +73,15 @@ def _group_key(group: DuplicateGroup) -> frozenset[int]:
 # mistake proves nothing) (HISTORY §68).
 # Keep leads: a group's rows read as a choice of which copy to keep.
 # Similarity and Actions belong to the group, so they span its rows.
+@dataclass(frozen=True)
+class _ShownGroup:
+    """The cell widgets one group holds while it is near the view."""
+
+    key: frozenset[int]
+    rows: range
+    button_group: QButtonGroup
+
+
 class _DuplicatesColumn(IntEnum):
     KEEP = 0
     PATH = 1
@@ -260,16 +272,19 @@ class DuplicatesPage(QWidget):
         layout.addWidget(theme.make_card(self.duplicates_table))
         self._configure_duplicates_columns()
 
-        # QButtonGroup instances (one per duplicate group, so only one
-        # radio per group can be selected) have no Qt parent-child
-        # ownership tie to the table cells their radios live in — kept
-        # alive here for the same reason ui/workers.py's _callbacks
-        # keeps a Worker reference until its own completion
-        # (HISTORY §22): a Qt object with nothing else referencing it is
-        # a live GC/use-after-free hazard, not just a style preference.
-        # Reset on every render.
-        self._duplicate_button_groups: list[QButtonGroup] = []
+        # The groups holding cell widgets, by index into
+        # `_current_duplicate_groups`: only those near the view
+        # (`_show_groups_in_view`). A QButtonGroup (one per group, so
+        # only one radio per group can be selected) has no Qt
+        # parent-child tie to the cells its radios live in, so it is
+        # kept here for the same reason ui/workers.py keeps a Worker
+        # until its own completion (HISTORY §22), and deleted with the
+        # group's widgets.
+        self._shown_groups: dict[int, _ShownGroup] = {}
         self._current_duplicate_groups: list[DuplicateGroup] = []
+        # Each group's first table row, ascending, for finding the
+        # groups a span of rows covers.
+        self._group_first_rows: list[int] = []
         # Same rebuild-destroys-state bug the Review page's checkbox
         # fix addresses, for the Duplicates "keep" radio selection: a
         # group has no stable id of its own (it's recomputed fresh by
@@ -306,6 +321,11 @@ class DuplicatesPage(QWidget):
         # _on_page_changed) — same "don't lose it on every revisit"
         # precedent as the location combo's own selection.
         self._duplicates_folder_paths: list[str] = []
+        # Scrolling or resizing changes which groups are near the view.
+        self.duplicates_table.verticalScrollBar().valueChanged.connect(
+            lambda _value: self._show_groups_in_view(),
+        )
+        self.duplicates_table.viewport().installEventFilter(self)
 
         page = build_page(
             "Duplicates", help_text.DUPLICATES_TAB_SUBTITLE, content,
@@ -650,8 +670,9 @@ class DuplicatesPage(QWidget):
         )
 
     def _render_duplicate_groups(self, groups: list[DuplicateGroup]) -> None:
-        self._duplicate_button_groups = []
-        self._delete_enablers = {}
+        for index in list(self._shown_groups):
+            self._hide_group_widgets(index)
+        self._group_first_rows = []
         self._delete_confirmed = set()
         # Kept so a single-group resolution can drop just that group and
         # re-render locally afterward — see _on_delete_duplicates_finished's
@@ -694,44 +715,11 @@ class DuplicatesPage(QWidget):
         total_rows = sum(len(group.files) for group in groups)
         self.duplicates_table.setRowCount(total_rows)
 
-        # Every real Actions widget built this render, so its true
-        # widest sizeHint() can size the ACTIONS column for real below
-        # (a per-group extra button — see _build_duplicate_group_actions
-        # — means this isn't always the same width for every group)
-        # (HISTORY §73).
-        action_widgets: list[QWidget] = []
-
+        first_rows: list[int] = []
         row = 0
         for group_index, group in enumerate(groups, start=1):
-            # group.files is already ranked best-quality-first (see
-            # DuplicateGroup's own docstring) -- files[0] is this
-            # group's own recommendation for which copy to keep,
-            # pre-selected below but never auto-applied: the radio can
-            # still be moved to any other file in the group before
-            # Delete is ever clicked.
-            button_group = QButtonGroup(self.duplicates_table)
-            self._duplicate_button_groups.append(button_group)
             group_first_row = row
-
-            # This group's stable key (its own member file ids) and
-            # whatever was selected for it before the last rebuild, if
-            # anything. Recorded back into the map on every real
-            # toggle, not just read once here — the user can change
-            # their mind more than once before Delete (HISTORY §86).
-            group_key = frozenset(
-                f.local_file.id for f in group.files
-                if f.local_file.id is not None
-            )
-            previously_selected_id = self._duplicates_keep_selection.get(
-                group_key
-            )
-            button_group.idToggled.connect(
-                lambda button_id, checked, group_key=group_key: (
-                    self._on_duplicates_keep_toggled(
-                        group_key, button_id, checked,
-                    )
-                )
-            )
+            first_rows.append(group_first_row)
 
             # Every other group sits on a band, so where one group
             # ends reads without a column of numbers.
@@ -744,10 +732,9 @@ class DuplicatesPage(QWidget):
                 item.setData(BAND_ROLE, banded)
                 return item
 
-            for file_index, duplicate_file in enumerate(group.files):
+            for duplicate_file in group.files:
                 local_file = duplicate_file.local_file
                 quality = duplicate_file.quality
-                assert local_file.id is not None
 
                 # Location + full relative path — "the same file in two
                 # folders" is a judgement the user needs the real path
@@ -773,49 +760,28 @@ class DuplicatesPage(QWidget):
                 self.duplicates_table.setItem(
                     row, _DuplicatesColumn.QUALITY, group_item(quality_text),
                 )
-
-                keep_radio = QRadioButton()
-                keep_radio.setToolTip(help_text.TOOLTIP_KEEP_FILE_RADIO)
-                keep_radio.setAccessibleName(
-                    f"Keep {local_file.relative_path}",
-                )
-                # Restore the user's own prior selection for this group
-                # when there is one; only fall back to the "best
-                # quality first" default when nothing was ever chosen
-                # for it (HISTORY §86).
-                keep_radio.setChecked(
-                    local_file.id == previously_selected_id
-                    if previously_selected_id is not None
-                    else file_index == 0
-                )
-                # The button's own id IS the local_file_id -- checkedId()
-                # below reads it back directly, no separate id-to-file
-                # mapping needed.
-                button_group.addButton(keep_radio, id=local_file.id)
                 # The item under the radio carries the band.
                 self.duplicates_table.setItem(
                     row, _DuplicatesColumn.KEEP, group_item(),
                 )
-                self.duplicates_table.setCellWidget(
-                    row, _DuplicatesColumn.KEEP, keep_radio,
-                )
 
                 row += 1
 
-            # setSpan() BEFORE setCellWidget() for the group's first
-            # row, so the real widget's geometry is computed against
-            # the final spanned rect, not a single-cell rect that a
-            # later setSpan() call then silently changes underneath it.
-            # And no widget of any kind (blank or otherwise) goes on
-            # the covered rows: a blank QWidget() there used to get
-            # resolved by Qt's own span geometry to the EXACT SAME rect
-            # as the real widget (visualRect() resolves every cell
-            # inside a span to the whole span's rect) and, being added
-            # to the viewport later, painted over it — confirmed live
-            # via childAt(center of the Actions cell) returning the
-            # blank widget, not the real one, before this fix. The span
-            # itself is what makes the covered rows read as blank; no
-            # cell widget is needed there at all (HISTORY §77).
+            # setSpan() BEFORE setCellWidget() (`_show_group_widgets`)
+            # for the group's first row, so the real widget's geometry
+            # is computed against the final spanned rect, not a
+            # single-cell rect that a later setSpan() call then silently
+            # changes underneath it. And no widget of any kind (blank
+            # or otherwise) goes on the covered rows: a blank QWidget()
+            # there used to get resolved by Qt's own span geometry to
+            # the EXACT SAME rect as the real widget (visualRect()
+            # resolves every cell inside a span to the whole span's
+            # rect) and, being added to the viewport later, painted over
+            # it — confirmed live via childAt(center of the Actions
+            # cell) returning the blank widget, not the real one, before
+            # this fix. The span itself is what makes the covered rows
+            # read as blank; no cell widget is needed there at all
+            # (HISTORY §77).
             for column in (
                     _DuplicatesColumn.SIMILARITY, _DuplicatesColumn.ACTIONS,
             ):
@@ -829,16 +795,122 @@ class DuplicatesPage(QWidget):
             self.duplicates_table.setItem(
                 group_first_row, _DuplicatesColumn.ACTIONS, group_item(),
             )
-            group_actions_widget = self._build_duplicate_group_actions(
-                group, button_group, previously_selected_id,
-            )
-            action_widgets.append(group_actions_widget)
-            self.duplicates_table.setCellWidget(
-                group_first_row, _DuplicatesColumn.ACTIONS,
-                group_actions_widget,
-            )
 
-        self._size_duplicates_columns(action_widgets)
+        self._group_first_rows = first_rows
+        self._show_groups_in_view()
+        # Every group's Actions are the same controls, so the shown
+        # ones size the ACTIONS column for all (HISTORY §73).
+        self._size_duplicates_columns([
+            self._actions_widget(shown) for shown in self._shown_groups.values()
+        ])
+        self._fit_group_heights()
+        # The sizing moved rows: settle which groups are near the view.
+        self._show_groups_in_view()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if (
+                watched is self.duplicates_table.viewport()
+                and event.type() == QEvent.Type.Resize
+        ):
+            self._show_groups_in_view()
+        return super().eventFilter(watched, event)
+
+    def _groups_near_view(self) -> range:
+        """The indexes of the groups in view, and of those within a
+        view's height above or below it."""
+        table = self.duplicates_table
+        if not self._group_first_rows:
+            return range(0)
+        height = table.viewport().height()
+        first = max(table.rowAt(0), 0)
+        last = table.rowAt(height - 1) if height > 0 else first
+        if last < 0:
+            last = table.rowCount() - 1
+        margin = last - first + 1
+        start = bisect_right(self._group_first_rows, first - margin) - 1
+        stop = bisect_right(self._group_first_rows, last + margin)
+        return range(max(start, 0), stop)
+
+    def _show_groups_in_view(self) -> None:
+        """Gives the groups near the view their Keep radios and Actions,
+        and takes every other group's away. Qt repositions every cell
+        widget on each resize step, so all 1,800 groups' widgets held a
+        fullscreen transition's main thread ~2 s (HISTORY §234). A
+        group's keep choice and confirm tick live on the page, so its
+        rebuilt widgets show them again."""
+        near = self._groups_near_view()
+        for index in [i for i in self._shown_groups if i not in near]:
+            self._hide_group_widgets(index)
+        for index in near:
+            if index not in self._shown_groups:
+                self._show_group_widgets(index)
+
+    def _show_group_widgets(self, index: int) -> None:
+        group = self._current_duplicate_groups[index]
+        first_row = self._group_first_rows[index]
+        group_key = _group_key(group)
+        # group.files is ranked best-quality-first (see DuplicateGroup's
+        # own docstring), so files[0] is the group's recommendation,
+        # preselected but never auto-applied; a person's own choice,
+        # recorded on every toggle, wins over it (HISTORY §86).
+        keep_id = self._keep_id(group)
+        button_group = QButtonGroup(self.duplicates_table)
+        button_group.idToggled.connect(
+            lambda button_id, checked: self._on_duplicates_keep_toggled(
+                group_key, button_id, checked,
+            )
+        )
+        for offset, duplicate_file in enumerate(group.files):
+            local_file = duplicate_file.local_file
+            assert local_file.id is not None
+            keep_radio = QRadioButton()
+            keep_radio.setToolTip(help_text.TOOLTIP_KEEP_FILE_RADIO)
+            keep_radio.setAccessibleName(f"Keep {local_file.relative_path}")
+            keep_radio.setChecked(local_file.id == keep_id)
+            # The button's own id IS the local_file_id -- checkedId()
+            # reads it back directly, no separate id-to-file mapping
+            # needed.
+            button_group.addButton(keep_radio, id=local_file.id)
+            self.duplicates_table.setCellWidget(
+                first_row + offset, _DuplicatesColumn.KEEP, keep_radio,
+            )
+        self.duplicates_table.setCellWidget(
+            first_row, _DuplicatesColumn.ACTIONS,
+            self._build_duplicate_group_actions(group, button_group, keep_id),
+        )
+        self._shown_groups[index] = _ShownGroup(
+            group_key, range(first_row, first_row + len(group.files)),
+            button_group,
+        )
+
+    def _hide_group_widgets(self, index: int) -> None:
+        shown = self._shown_groups.pop(index)
+        for row in shown.rows:
+            self.duplicates_table.removeCellWidget(row, _DuplicatesColumn.KEEP)
+        self.duplicates_table.removeCellWidget(
+            shown.rows.start, _DuplicatesColumn.ACTIONS,
+        )
+        shown.button_group.deleteLater()
+        self._delete_enablers.pop(shown.key, None)
+
+    def _actions_widget(self, shown: _ShownGroup) -> QWidget:
+        widget = self.duplicates_table.cellWidget(
+            shown.rows.start, _DuplicatesColumn.ACTIONS,
+        )
+        assert widget is not None
+        return widget
+
+    def _fit_group_heights(self) -> None:
+        """Gives every group's first row the height a shown group's
+        took from its Actions: a group out of view has none, so its
+        rows would otherwise change height as it scrolls into view."""
+        if not self._shown_groups:
+            return
+        shown = next(iter(self._shown_groups.values()))
+        head_height = self.duplicates_table.rowHeight(shown.rows.start)
+        for first_row in self._group_first_rows:
+            if self.duplicates_table.rowHeight(first_row) < head_height:
+                self.duplicates_table.setRowHeight(first_row, head_height)
 
     def _configure_duplicates_columns(self) -> None:
         """A real, live-measured floor for the Actions column, closing
@@ -870,7 +942,7 @@ class DuplicatesPage(QWidget):
             self,
             group: DuplicateGroup,
             button_group: QButtonGroup,
-            previously_selected_id: int | None,
+            keep_id: int | None,
     ) -> QWidget:
         # "The same file living in several folders is sometimes
         # deliberate." An additional button in the group's EXISTING
@@ -880,10 +952,8 @@ class DuplicatesPage(QWidget):
         keep_all_radio = QRadioButton("Keep all")
         keep_all_radio.setToolTip(help_text.TOOLTIP_KEEP_ALL_DUPLICATES_RADIO)
         # Same preserved-selection treatment as the per-file keep radios
-        # above (HISTORY §86).
-        keep_all_radio.setChecked(
-            previously_selected_id == KEEP_ALL_DUPLICATES_ID
-        )
+        # (HISTORY §86).
+        keep_all_radio.setChecked(keep_id == KEEP_ALL_DUPLICATES_ID)
         button_group.addButton(keep_all_radio, id=KEEP_ALL_DUPLICATES_ID)
 
         confirm_checkbox = QCheckBox("Confirm delete")
