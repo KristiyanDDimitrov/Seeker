@@ -558,13 +558,17 @@ Genuinely open only, checked against every CI run on record (187, to
   and Sharing's scan wait; open for work with no stop.** A quit
   during a scan, match, tagging or merge still lasts until it ends
   (the pool's destructor, above), logged at WARNING by
-  `cleanup_before_quit`; so does a slskd bring-up. Settings and the
-  wizard run their own `QThreadPool`s, outside that wait, whose
-  destructors hold the exit too (measured); a quit cancels their
-  login wait through `stop_for_quit()`. Rows S17i and S17j close the
-  rest. [§125](docs/history/121-150.md#125),
+  `cleanup_before_quit`. A slskd bring-up is waited for by design,
+  never killed mid-recreate (up to Compose's 120 s timeout; logged
+  at both ends): the quit confirmation says so
+  (`Application.is_starting_slskd()`). Settings and the wizard run
+  their own `QThreadPool`s, outside that wait, whose destructors hold
+  the exit too (measured); a quit cancels their login wait through
+  `stop_for_quit()`. Row S17j closes the rest.
+  [§125](docs/history/121-150.md#125),
   [§226](docs/history/211-240.md#226), [§229](docs/history/211-240.md#229),
-  [§230](docs/history/211-240.md#230), [§231](docs/history/211-240.md#231)
+  [§230](docs/history/211-240.md#230), [§231](docs/history/211-240.md#231),
+  [§232](docs/history/211-240.md#232)
 - **The real DB still holds three nested locations** (`Music`⊂`X9
   Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`; ~3,450 files double-indexed).
   With the X9 Pro mounted, Kris runs Settings → Library → Fix…,

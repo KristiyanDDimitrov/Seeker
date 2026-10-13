@@ -11,47 +11,42 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17i part two (second slice)'s close-out (HISTORY §231).
-  Tree clean.
+- **HEAD:** S17i part three's close-out (HISTORY §232). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2326 passed, 29 skipped`, 0 failed (was
-  2314; twelve new tests; the 29 skips are the stress test plus 28
+- **Local (Cocoa):** pytest `2333 passed, 29 skipped`, 0 failed (was
+  2326; seven new tests; the 29 skips are the stress test plus 28
   `@requires_x9_pro`, as on CI). `mypy --strict src/` clean, 145
   files; `ruff check src tests tools` 0.
-- **CI:** run `38418311934` green (`6d847a2`); it covers `c8a0045`, `0a709ba`, `179a9fa` and the close-out.
+- **CI:** pending for `0bd6ad0`…close-out (see the handoff commit).
 
 ## 2. Where we are
 
-**S17i part two's second slice is done** (§231): Spotify's rate-limit
-wait, the playlist refresh, the login wait (Settings and the wizard)
-and Sharing's scan wait all end on quit. Stopped on budget (~170 K,
-over the 150 K ceiling) at a clean commit. **Next: S17i's last item,
-§17i.5 the slskd bring-up** (evidence in §231 → "Found"; see §4
-below), which closes S17i. Then S17j, S17k, S17f; S17e waits on Kris.
-Then S17g's new candidate and Kris's re-run.
+**S17i is done** (§229–§232). Its last item, the slskd bring-up, is
+waited for on quit rather than killed mid-recreate; it logs its start
+and duration, and the quit confirmation says "slskd is still
+starting". **Next: S17j** (quit stops library work; the sweep test;
+close item 125), then S17k, S17f; S17e waits on Kris. Then S17g's new
+candidate and Kris's re-run.
 
-## 3. Session report (S17i, part two, second slice)
+## 3. Session report (S17i, part three)
 
-Evidence in HISTORY §231.
-- `c8a0045`: `SpotifyClient` requests, `refresh_playlists` and
-  `sync_playlist_tracks` take `stop` (`SpotifyStoppedError`;
-  `PlaylistRefreshResult.stopped`); Dashboard and tagging panel pass
-  `quitting`. Seven tests failed first (`TypeError` on `stop`, or
-  the fake's `stopped` False).
-- `0a709ba`: `SpotifyAuthorizationWait.cancel()`;
-  `SettingsPage.stop_for_quit()` from `_release_for_quit`;
-  `OnboardingWizard.stop_for_quit()` from `aboutToQuit` and its
-  `closeEvent`. Four tests failed first.
-- `179a9fa`: `add_location_to_share(..., stop=)`; Sharing passes
-  `quitting`. Two tests failed first.
-- Measured: a page's own `QThreadPool()` holds the exit (8 s task,
-  quit at 0.5 s, exit at 8.25 s). Observed: `aboutToQuit` misses a
-  closed `WA_DeleteOnClose` window's bound slot.
-- Skills: `tdd`. Divergence: seams from BRIEF §17i, not confirmed
-  with Kris (as in §230).
+Evidence in HISTORY §232.
+- `0bd6ad0`: `bring_up_slskd` logs `starting docker compose up` and
+  `ended after N.N s` (in a `finally`, so a timeout too). Two tests
+  failed first on the missing line.
+- `b14a34f` (refactor): `confirm_quit_if_downloads_active` →
+  `confirm_quit_if_work_active`.
+- `d6b8414`: `docker_setup.is_bring_up_running()` (a thread-safe
+  count inside `bring_up_slskd`, which all five bring-up paths reach);
+  `Application.is_starting_slskd()`; the quit confirmation names a
+  bring-up, alone or beside downloads. Five tests failed first.
+- Not measured: a real bring-up is out of bounds; the only figure is
+  still ≤ 25 s (§231). The new log lines measure the next one.
+- Skills: `tdd`. Divergence: seams from BRIEF §17i.5, not confirmed
+  with Kris (as in §230, §231).
 
 ## 4. Key context for whoever runs S17i–S17k, S17e–S17g or S18
 
@@ -61,24 +56,16 @@ Evidence in HISTORY §231.
   own: keep the rule per row and reapply it at start and end.
 - **Each S17x row's BRIEF section separates what is established from
   what is a hypothesis.** Measure before fixing, as §224–§226 did.
-- **§17i.5 starts from §231 → "Found":** the one blocking call is
-  `docker compose up -d` (120 s timeout); the only duration on record
-  is ≤ 25 s with an image pull (the test account's wizard). Don't
-  kill Compose mid-recreate (both logs show the half-made state a
-  kill risks). BRIEF's fallback: the quit confirmation says a
-  bring-up is running. It counts only downloads now
-  (`window_lifecycle.confirm_quit_if_downloads_active`), and of the
-  five bring-up paths only the Dashboard's and Downloads' outage
-  action carry a `busy_actions` key (`START_SLSKD_KEY`); Settings'
-  Start slskd and Sharing's recreate need one, the wizard has no
-  `MainWindow`. Logging the bring-up's start and end gives the next
-  measurement for free.
+- **A quit waits for a slskd bring-up by design** (§232): never
+  kill Compose mid-recreate. `Application.is_starting_slskd()` is
+  the one way to ask; a new bring-up path must go through
+  `bring_up_slskd` or the quit confirmation misses it.
 - **Settings and the wizard still run their own `QThreadPool`s**,
   whose destructors hold the exit (measured, §231). The login wait
   now cancels on quit; their other tasks (the bring-up, health
   checks) do not, and `cleanup_before_quit`'s bounded wait and its
   log never see them. Moving Settings onto `MainWindow.thread_pool`
-  (CLAUDE.md's rule) is a candidate for §17i.5.
+  (CLAUDE.md's rule) is still open (§232 → "Not done").
 - **Long work that should stop on quit takes `stop:
   threading.Event | None`** and a page passes `self._context.quitting`.
   The scan, match, tagging and merge take none yet (§226 → "Not
@@ -122,7 +109,7 @@ problem with logging on. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. S17i: §17i.1–4 done; §17i.5 read, not started.
+None uncommitted. S17i done; S17j not started.
 
 ## 8. Waiting on Kris
 
@@ -138,6 +125,10 @@ the sweep, the window paths, the Fix…, the stress test, and the vetoes
 share checkbox). Then S18's outward commands.
 
 ## 9. Open questions
+
+- The wizard has no quit confirmation: closing it mid-bring-up waits
+  for Compose (≤ 120 s) with no word, though its page shows the
+  bring-up running (§232). Ask before closing, or leave it?
 
 - **A pre-existing test segfault** (§231): "Garbage-collecting"
   inside `ui/wordmark.py`'s `_Brows.paintEvent` during a
