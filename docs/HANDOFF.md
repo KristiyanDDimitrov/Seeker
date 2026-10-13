@@ -20,7 +20,8 @@ nine fields below follow the contract in
   2326; seven new tests; the 29 skips are the stress test plus 28
   `@requires_x9_pro`, as on CI). `mypy --strict src/` clean, 145
   files; `ruff check src tests tools` 0.
-- **CI:** pending for `0bd6ad0`…close-out (see the handoff commit).
+- **CI:** run `38422200060` green (`1d20b42`); it covers `0bd6ad0`,
+  `b14a34f`, `d6b8414` and the close-out.
 
 ## 2. Where we are
 
