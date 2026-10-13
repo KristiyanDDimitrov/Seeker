@@ -164,6 +164,13 @@ class ReviewService:
                 f"{track_id}."
             )
 
+        self._request_candidate(candidate)
+
+    def _request_candidate(self, candidate: SoulseekReviewCandidate) -> None:
+        # One confirmed candidate: requested from its peer, recorded as
+        # a settled download, and taken off the review list.
+        track_id = candidate.track_id
+
         if candidate.size is None:
             # A legacy row persisted before `size` existed on this
             # table — can't call request_download without it.
