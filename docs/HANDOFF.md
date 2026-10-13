@@ -20,7 +20,8 @@ nine fields below follow the contract in
   2333 passed, 29 skipped; 16 new tests, and the X9 Pro was mounted, so
   its 28 tests ran and passed; CI skips 29 as before). `mypy --strict src/` clean, 145
   files; `ruff check src tests tools` 0.
-- **CI:** pending on the close-out; the next commit records it.
+- **CI:** run `38435837192` green (`2a9896c`); it covers every S17j
+  commit (`0fc8375` … `f690202`) and the close-out.
 
 ## 2. Where we are
 
