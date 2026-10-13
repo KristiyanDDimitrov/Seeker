@@ -21,7 +21,7 @@ nine fields below follow the contract in
   2314; twelve new tests; the 29 skips are the stress test plus 28
   `@requires_x9_pro`, as on CI). `mypy --strict src/` clean, 145
   files; `ruff check src tests tools` 0.
-- **CI:** pending on this push (the handoff commit after it records the run).
+- **CI:** run `38418311934` green (`6d847a2`); it covers `c8a0045`, `0a709ba`, `179a9fa` and the close-out.
 
 ## 2. Where we are
 
