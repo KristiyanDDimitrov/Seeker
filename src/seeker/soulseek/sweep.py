@@ -23,7 +23,7 @@ from seeker.due import is_due
 from seeker.error_text import describe_error
 from seeker.models.download_result import TrackFailure, TrackSearchOutcome
 from seeker.models.sweep_result import SweepResult
-from seeker.soulseek.client import SlskdUnreachableError
+from seeker.soulseek.client import SearchStoppedError, SlskdUnreachableError
 from seeker.soulseek.download_service import DownloadService
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,12 @@ class SweepService:
                 break
 
             try:
-                outcome = downloads.search_and_request(track, thresholds)
+                outcome = downloads.search_and_request(
+                    track, thresholds, stop=stop,
+                )
+            except SearchStoppedError:
+                result.stopped = True
+                break
             except httpx.TransportError as error:
                 logger.warning(
                     "Sweep stopped after %d searches: slskd is not "

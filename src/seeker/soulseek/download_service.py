@@ -62,6 +62,7 @@ from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import MANUAL_TRACK_ID_PREFIX, Track
 from seeker.soulseek.client import (
+    SearchStoppedError,
     SoulseekClient,
     SoulseekDownloadError,
     is_recognized_rejection,
@@ -337,10 +338,6 @@ class DownloadService:
         for track in unmatched_tracks:
             if stop is not None and stop.is_set():
                 result.stopped = True
-                logger.info(
-                    "Download of '%s' stopped: Seeker is quitting.",
-                    playlist_name,
-                )
                 break
 
             label = f"{track.artist} - {track.title}"
@@ -352,7 +349,12 @@ class DownloadService:
             # candidates), or failed (with a printed reason) — never
             # dropped without being counted anywhere.
             try:
-                outcome = self.search_and_request(track, thresholds)
+                outcome = self.search_and_request(
+                    track, thresholds, stop=stop,
+                )
+            except SearchStoppedError:
+                result.stopped = True
+                break
             except Exception as error:
                 result.failures.append(TrackFailure(
                     label, describe_error(error, details_hint=""),
@@ -373,6 +375,12 @@ class DownloadService:
             elif outcome == TrackSearchOutcome.NEEDS_REVIEW:
                 result.needs_review.append(label)
 
+        if result.stopped:
+            logger.info(
+                "Download of '%s' stopped: Seeker is quitting.",
+                playlist_name,
+            )
+
         return result
 
     def current_thresholds(self) -> tuple[float, float]:
@@ -387,11 +395,14 @@ class DownloadService:
             self,
             track: Track,
             thresholds: tuple[float, float],
+            stop: threading.Event | None = None,
     ) -> TrackSearchOutcome:
         """Searches slskd for one unmatched track and requests or
         records the best candidate. Raises whatever the search or the
         request raises; a caller running a batch decides what one
-        track's failure means for the rest."""
+        track's failure means for the rest. A set `stop` ends the
+        search's wait with SearchStoppedError, before anything is
+        requested or recorded."""
         auto_match_threshold, needs_review_threshold = thresholds
 
         with self.database.transaction() as connection:
@@ -432,7 +443,7 @@ class DownloadService:
         files = self._without_rejected(
             track.id,
             self.soulseek.search(
-                _build_search_query(track.artist, track.title)
+                _build_search_query(track.artist, track.title), stop=stop,
             ),
         )
         selection = select_downloads(

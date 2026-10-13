@@ -1,9 +1,12 @@
 import json
+import threading
+import time
 
 import httpx
 import pytest
 
 from seeker.soulseek.client import (
+    SearchStoppedError,
     SlskdUnauthorizedError,
     SoulseekClient,
     SoulseekDownloadError,
@@ -211,6 +214,38 @@ LOCKED_FILES_RESPONSE = {
         },
     ],
 }
+
+
+def test_a_set_stop_ends_a_search_mid_wait_and_fetches_nothing(monkeypatch):
+    # A search waits up to 45 s for slskd's isComplete; a quit must not
+    # wait it out (the 5 s quit bound, HISTORY §226).
+    stop = threading.Event()
+    fetched: list[dict | None] = []
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        return FakeResponse({"id": "search-3"})
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        fetched.append(params)
+        stop.set()
+        return FakeResponse(
+            {"id": "search-3", "isComplete": False, "responses": []}
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+    started = time.monotonic()
+
+    with pytest.raises(SearchStoppedError):
+        client.search(
+            "Dom Dolla Rhyme Dust", timeout=45.0, poll_interval=30.0,
+            stop=stop,
+        )
+
+    assert time.monotonic() - started < 2.0
+    # One status poll, no responses fetch.
+    assert fetched == [None]
 
 
 def test_search_includes_real_lockedfiles_array_shape(monkeypatch):

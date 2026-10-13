@@ -46,6 +46,7 @@ from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.client import (
+    SearchStoppedError,
     SlskdUnreachableError,
     SoulseekClient,
     SoulseekDownloadError,
@@ -163,6 +164,7 @@ class FakeSoulseekClient:
         # search failure for one track mid-batch).
         self.search_results = search_results or {}
         self.search_calls: list[str] = []
+        self.search_stops: list[threading.Event | None] = []
         # Keyed by transfer_id -> (bytes_transferred, size). Missing
         # entries default to (None, None) — most existing tests don't
         # care about progress at all, only the state transition.
@@ -170,8 +172,11 @@ class FakeSoulseekClient:
         self.get_download_status_calls: list[tuple[str, str]] = []
         self.cancel_download_calls: list[tuple[str, str]] = []
 
-    def search(self, query: str) -> list[SoulseekFile]:
+    def search(
+            self, query: str, stop: threading.Event | None = None,
+    ) -> list[SoulseekFile]:
         self.search_calls.append(query)
+        self.search_stops.append(stop)
 
         result = self.search_results.get(query)
 
@@ -459,9 +464,12 @@ def test_download_playlist_stops_between_tracks_and_keeps_its_requests(
     stop = threading.Event()
     search = service.soulseek.search
 
-    def search_then_stop(query: str) -> list[SoulseekFile]:
+    def search_then_stop(
+            query: str, stop: threading.Event | None = None,
+    ) -> list[SoulseekFile]:
+        assert stop is not None
         stop.set()
-        return search(query)
+        return search(query, stop)
 
     service.soulseek.search = search_then_stop
 
@@ -478,6 +486,39 @@ def test_download_playlist_stops_between_tracks_and_keeps_its_requests(
         ).fetchall()
 
     assert [row["track_id"] for row in rows] == ["t1"]
+
+
+def test_download_playlist_stopped_mid_search_requests_nothing(tmp_path):
+    # The search itself takes the stop (up to 45 s of waiting on slskd);
+    # a stopped search is neither a failure nor "no candidate".
+    service = make_service(tmp_path, states={})
+    _seed_playlist_with_unmatched_tracks(service, tmp_path, ["t1", "t2"])
+    stop = threading.Event()
+
+    def search_stopped(
+            query: str, stop: threading.Event | None = None,
+    ) -> list[SoulseekFile]:
+        service.soulseek.search_stops.append(stop)
+        assert stop is not None
+        stop.set()
+        raise SearchStoppedError
+
+    service.soulseek.search = search_stopped
+
+    result = service.download_playlist("Test", stop=stop)
+
+    assert service.soulseek.search_stops == [stop]
+    assert result.stopped is True
+    assert result.failures == []
+    assert result.requested == 0
+    assert result.skipped == 0
+
+    with service.database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT track_id FROM download_requests"
+        ).fetchall()
+
+    assert rows == []
 
 
 def test_download_playlist_failure_carries_its_track_and_readable_reason(

@@ -31,7 +31,7 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
-from seeker.soulseek.client import SlskdUnreachableError
+from seeker.soulseek.client import SearchStoppedError, SlskdUnreachableError
 from seeker.soulseek.download_service import DownloadService
 from seeker.soulseek.sweep import SweepService, sweep_due
 
@@ -47,7 +47,9 @@ class FakeSlskd:
         self.searches: list[str] = []
         self.requested: list[str] = []
 
-    def search(self, query: str) -> list[SoulseekFile]:
+    def search(
+            self, query: str, stop: threading.Event | None = None,
+    ) -> list[SoulseekFile]:
         self.searches.append(query)
         result = self.results.get(query, [])
 
@@ -258,9 +260,11 @@ def test_pausing_mid_sweep_stops_before_the_next_search(tmp_path):
     sweep.add_playlist("Loaded", ["t1", "t2"])
     search = sweep.slskd.search
 
-    def search_then_pause(text: str) -> list[SoulseekFile]:
+    def search_then_pause(
+            text: str, stop: threading.Event | None = None,
+    ) -> list[SoulseekFile]:
         sweep.config = SeekerConfig(downloads_paused=True)
-        return search(text)
+        return search(text, stop)
 
     sweep.slskd.search = search_then_pause  # type: ignore[method-assign]
 
@@ -280,9 +284,12 @@ def test_a_stop_request_ends_the_sweep_before_the_next_search(tmp_path):
     stop = threading.Event()
     search = sweep.slskd.search
 
-    def search_then_stop(text: str) -> list[SoulseekFile]:
+    def search_then_stop(
+            text: str, stop: threading.Event | None = None,
+    ) -> list[SoulseekFile]:
+        assert stop is not None
         stop.set()
-        return search(text)
+        return search(text, stop)
 
     sweep.slskd.search = search_then_stop  # type: ignore[method-assign]
 
@@ -291,6 +298,34 @@ def test_a_stop_request_ends_the_sweep_before_the_next_search(tmp_path):
     assert result.stopped is True
     assert result.paused is False
     assert sweep.slskd.searches == [query("t1")]
+    assert sweep.stamps == []
+
+
+def test_a_stop_during_a_search_ends_the_sweep_unrecorded(tmp_path):
+    # A quit mid-search: the search's own wait takes the stop, so the
+    # sweep ends within the 5 s quit bound, not after up to 45 s.
+    sweep = Sweep(tmp_path, FakeSlskd({}), SeekerConfig())
+    sweep.add_playlist("Loaded", ["t1", "t2"])
+    stop = threading.Event()
+    passed: list[threading.Event | None] = []
+
+    def search_stopped(
+            text: str, stop: threading.Event | None = None,
+    ) -> list[SoulseekFile]:
+        passed.append(stop)
+        assert stop is not None
+        stop.set()
+        raise SearchStoppedError
+
+    sweep.slskd.search = search_stopped  # type: ignore[method-assign]
+
+    result = sweep.service().run_sweep(stop)
+
+    assert passed == [stop]
+    assert result.stopped is True
+    assert result.failures == []
+    assert result.still_missing == []
+    assert sweep.slskd.requested == []
     assert sweep.stamps == []
 
 

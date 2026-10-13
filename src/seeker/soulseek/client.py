@@ -1,3 +1,4 @@
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, cast
@@ -16,6 +17,14 @@ class SoulseekDownloadError(SeekerError):
         # what" framing `message` adds — what a user-facing reason
         # quotes.
         self.reason = reason
+
+
+class SearchStoppedError(SeekerError):
+    """A set `stop` ended a search before slskd finished it: the caller
+    is stopping (Seeker quitting), so nothing it found is requested."""
+
+    def __init__(self) -> None:
+        super().__init__("The search stopped because Seeker is quitting.")
 
 
 class SlskdUnreachableError(SeekerError):
@@ -160,7 +169,14 @@ class SoulseekClient:
             # was cutting searches off before most peer responses arrived.
             timeout: float = 45.0,
             poll_interval: float = 2.0,
+            stop: threading.Event | None = None,
     ) -> list[SoulseekFile]:
+        """Starts a search and polls it until slskd reports it complete
+        or `timeout` passes, then fetches its responses once.
+
+        A set `stop` ends the wait between polls and raises
+        SearchStoppedError, fetching nothing.
+        """
         create_response = httpx.post(
             f"{self.base_url}/api/v0/searches",
             json={"SearchText": query},
@@ -191,7 +207,10 @@ class SoulseekClient:
             if time.monotonic() >= deadline:
                 break
 
-            time.sleep(poll_interval)
+            if stop is None:
+                time.sleep(poll_interval)
+            elif stop.wait(poll_interval):
+                raise SearchStoppedError
 
         # isComplete alone doesn't carry the per-peer file responses —
         # those are only included when explicitly requested, otherwise
