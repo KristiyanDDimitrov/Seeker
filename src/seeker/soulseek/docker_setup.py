@@ -5,6 +5,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -405,14 +406,25 @@ def bring_up_slskd(
         "SLSKD_SHARE_PATH": library_location_path,
     }
 
-    result = subprocess.run(
-        ["docker", "compose", "-f", compose_file, "up", "-d"],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,  # raises its own error below, carrying stderr
-    )
+    # Logged at both ends because a quit waits for this call rather
+    # than kill Compose mid-recreate (HISTORY §232): its duration is
+    # how long a quit can be held.
+    logger.info("slskd bring-up: starting docker compose up")
+    started_at = time.monotonic()
+    try:
+        result = subprocess.run(
+            ["docker", "compose", "-f", compose_file, "up", "-d"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,  # raises its own error below, carrying stderr
+        )
+    finally:
+        logger.info(
+            "slskd bring-up: docker compose up ended after %.1f s",
+            time.monotonic() - started_at,
+        )
 
     if result.returncode != 0:
         raise SlskdBringUpError(

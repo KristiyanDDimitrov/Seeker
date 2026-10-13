@@ -1,5 +1,7 @@
+import logging
 import os
 import subprocess
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -744,3 +746,75 @@ def test_the_suite_refuses_to_run_the_real_docker(tmp_path, _docker_attempts):
     ]
     # Recorded and refused; cleared so this test alone passes.
     _docker_attempts.clear()
+
+
+def _bring_up_with_fakes() -> None:
+    bring_up_slskd(
+        compose_file="docker-compose.yml",
+        soulseek_username="realuser",
+        soulseek_password="realpass",
+        api_key="real-api-key",
+        slskd_data_dir="/data/slskd-data",
+        web_username="webuser",
+        web_password="webpass",
+        library_location_path="/music",
+    )
+
+
+class _FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_bring_up_slskd_logs_its_start_and_how_long_compose_took(
+        monkeypatch, caplog,
+):
+    # No duration of a real bring-up is on record (HISTORY §231): these
+    # two lines are how the next one is measured.
+    clock = _FakeClock()
+
+    def fake_run(*args, **kwargs):
+        assert "slskd bring-up: starting docker compose up" in caplog.text
+        clock.now += 23.4
+
+        class FakeResult:
+            returncode = 0
+            stderr = ""
+
+        return FakeResult()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(time, "monotonic", clock)
+
+    with caplog.at_level(logging.INFO, logger="seeker.soulseek.docker_setup"):
+        _bring_up_with_fakes()
+
+    assert "slskd bring-up: docker compose up ended after 23.4 s" in (
+        caplog.text
+    )
+
+
+def test_bring_up_slskd_logs_how_long_compose_took_when_it_times_out(
+        monkeypatch, caplog,
+):
+    clock = _FakeClock()
+
+    def fake_run(command, **kwargs):
+        clock.now += 120.0
+        raise subprocess.TimeoutExpired(command, 120)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(time, "monotonic", clock)
+
+    with (
+            caplog.at_level(logging.INFO, logger="seeker.soulseek.docker_setup"),
+            pytest.raises(subprocess.TimeoutExpired),
+    ):
+        _bring_up_with_fakes()
+
+    assert "slskd bring-up: docker compose up ended after 120.0 s" in (
+        caplog.text
+    )
