@@ -39,6 +39,12 @@ investigation.
   the tray reopens through `MainWindow.reopen()`. A test patching the
   Dock icon patches `window_lifecycle._set_dock_icon_visible`.
   [HISTORY §163](../../../docs/history/151-180.md#163)
+- **On Cocoa a `hide()` shows only while the event loop keeps
+  turning** (observed: on screen through a 3 s blocking wait after
+  `hide()`, and after `hide()` plus one `processEvents()`; gone
+  within 0.5 s with the loop running). Hiding the window before
+  `cleanup_before_quit`'s `waitForDone` therefore changes nothing on
+  screen. [HISTORY §233](../../../docs/history/211-240.md#233)
 - `WA_DeleteOnClose` on a top-level window must be cleared the moment a
   real tray icon exists, or the first close after that deletes the
   window's C++ object and "reopen from tray" breaks permanently.

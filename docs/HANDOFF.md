@@ -11,43 +11,46 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17i part three's close-out (HISTORY §232). Tree clean.
+- **HEAD:** S17j's close-out (HISTORY §233). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2333 passed, 29 skipped`, 0 failed (was
-  2326; seven new tests; the 29 skips are the stress test plus 28
-  `@requires_x9_pro`, as on CI). `mypy --strict src/` clean, 145
+- **Local (Cocoa):** pytest `2377 passed, 1 skipped`, 0 failed (was
+  2333 passed, 29 skipped; 16 new tests, and the X9 Pro was mounted, so
+  its 28 tests ran and passed; CI skips 29 as before). `mypy --strict src/` clean, 145
   files; `ruff check src tests tools` 0.
-- **CI:** run `38422200060` green (`1d20b42`); it covers `0bd6ad0`,
-  `b14a34f`, `d6b8414` and the close-out.
+- **CI:** pending on the close-out; the next commit records it.
 
 ## 2. Where we are
 
-**S17i is done** (§229–§232). Its last item, the slskd bring-up, is
-waited for on quit rather than killed mid-recreate; it logs its start
-and duration, and the quit confirmation says "slskd is still
-starting". **Next: S17j** (quit stops library work; the sweep test;
-close item 125), then S17k, S17f; S17e waits on Kris. Then S17g's new
-candidate and Kris's re-run.
+**S17j is done** (§233). Quit now stops the scan, tagging, Fix missing
+cover art, renames, Resolve all groups and Replace all before their
+next item; merge, remove and match measured ≤ 0.2 s at the real DB's
+scale; `tests/test_quit_stop_sweep.py` fails the build when a stop is
+dropped or a new no-stop pool call is unlisted. Item 125 is narrowed,
+not closed (Settings' and the wizard's own pools; a hung slskd).
+**Next: S17k** (Duplicates' resize stall), then S17f; S17e waits on
+Kris. Then S17g's new candidate and Kris's re-run.
 
-## 3. Session report (S17i, part three)
+## 3. Session report (S17j)
 
-Evidence in HISTORY §232.
-- `0bd6ad0`: `bring_up_slskd` logs `starting docker compose up` and
-  `ended after N.N s` (in a `finally`, so a timeout too). Two tests
-  failed first on the missing line.
-- `b14a34f` (refactor): `confirm_quit_if_downloads_active` →
-  `confirm_quit_if_work_active`.
-- `d6b8414`: `docker_setup.is_bring_up_running()` (a thread-safe
-  count inside `bring_up_slskd`, which all five bring-up paths reach);
-  `Application.is_starting_slskd()`; the quit confirmation names a
-  bring-up, alone or beside downloads. Five tests failed first.
-- Not measured: a real bring-up is out of bounds; the only figure is
-  still ≤ 25 s (§231). The new log lines measure the next one.
-- Skills: `tdd`. Divergence: seams from BRIEF §17i.5, not confirmed
-  with Kris (as in §230, §231).
+Evidence in HISTORY §233.
+- `0fc8375` scan (a stopped scan removes nothing), `aa97cb9` tagging
+  and Fix missing cover art, `451113f` renames: §17j.1, the split
+  point. Each failed first (`TypeError` at the service, `assert
+  service.stopped` in `tests/shell/test_quit.py`).
+- `73fb26b` Resolve all groups, `2b0d3ab` Replace all: per-item loops
+  the sweep found that can outlast 5 s; same pattern, test first.
+- §17j.2: merge 0.18 s, preview 0.09 s, remove 0.02 s, match 0.11 s
+  on a scratch copy (§172's recipe), preview 0.23 s over USB once the
+  X9 Pro was mounted; no stop added.
+- `f690202` the sweep; mutation-checked both ways.
+- §17j.4: worst wait after a stop ~2.7 s; on Cocoa a `hide()` before a
+  blocking wait never shows (observed with a scratch window and
+  `CGWindowListCopyWindowInfo`), so the window is not hidden.
+- Skills: `tdd`, `performance-profiler`. Divergence: seams from BRIEF
+  §17j, not confirmed with Kris (as in §230–§232).
 
 ## 4. Key context for whoever runs S17i–S17k, S17e–S17g or S18
 
@@ -68,9 +71,12 @@ Evidence in HISTORY §232.
   log never see them. Moving Settings onto `MainWindow.thread_pool`
   (CLAUDE.md's rule) is still open (§232 → "Not done").
 - **Long work that should stop on quit takes `stop:
-  threading.Event | None`** and a page passes `self._context.quitting`.
-  The scan, match, tagging and merge take none yet (§226 → "Not
-  done").
+  threading.Event | None`** and a page passes `self._context.quitting`;
+  a new pool call without one goes in `TAKES_NO_STOP`
+  (`tests/test_quit_stop_sweep.py`) with a measured reason, or the
+  build fails. Scratch timing with the real code: a scratch `HOME`
+  holding a DB copy (platformdirs reads `HOME`; assert the resolved
+  dir first), §233.
 - **The test account's files are unreadable from here**
   (`/Users/test`); Kris copies them to `/Users/Shared/`.
 - **Timing at scale without touching real data:** copy the DB with
@@ -110,7 +116,7 @@ problem with logging on. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. S17i done; S17j not started.
+None uncommitted. S17j done; S17k not started.
 
 ## 8. Waiting on Kris
 
@@ -126,6 +132,10 @@ the sweep, the window paths, the Fix…, the stress test, and the vetoes
 share checkbox). Then S18's outward commands.
 
 ## 9. Open questions
+
+- Move Settings' and the wizard's tasks onto `MainWindow.thread_pool`
+  (§231–§233: their destructors hold the exit outside the bounded
+  wait)? The last piece of item 125 besides a hung slskd.
 
 - The wizard has no quit confirmation: closing it mid-bring-up waits
   for Compose (≤ 120 s) with no word, though its page shows the

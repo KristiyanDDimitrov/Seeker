@@ -377,11 +377,15 @@ Code documents loading it when a session reads files in `ui/`
   `globalInstance()`.** Its destructor waits for in-flight runnables
   (observed in isolation, then in a quit-hang `sample`): the process
   lives as long as the slowest task. So long work takes a `stop`
-  event checked between files (`PageContext.quitting`, set on quit,
-  for fingerprinting and both duplicate searches; the sweep its own),
-  and `cleanup_before_quit` waits `QUIT_WAIT_MS` (5 s), then logs any
-  task still running; no hard exit after it.
-  [§125](docs/history/121-150.md#125), [§226](docs/history/211-240.md#226)
+  event checked between items, never inside one (`PageContext.
+  quitting`, set on quit; the sweep its own), and
+  `cleanup_before_quit` waits `QUIT_WAIT_MS` (5 s), then logs any
+  task still running; no hard exit after it. A stopped item ends in
+  ≤ 2.7 s (a fingerprint; BPM/key 2.3 s). `tests/test_quit_stop_sweep.py`
+  fails the build when ui/ drops a `stop` or a pool task reaches a
+  service with none that `TAKES_NO_STOP` does not list with its
+  measured reason. [§125](docs/history/121-150.md#125),
+  [§226](docs/history/211-240.md#226), [§233](docs/history/211-240.md#233)
 - `get_config` on `TrackMatcher`/`DownloadService`/`MetadataService`
   is a callable, not a snapshot: a Settings change applies at once
   ([§28](docs/history/025-031.md#28)). Match thresholds resolve
@@ -552,23 +556,22 @@ Genuinely open only, checked against every CI run on record (187, to
   every row each tick; S41's stress run tests it.
   [§70](docs/history/047-071.md#70), [§165](docs/history/151-180.md#165),
   [§166](docs/history/151-180.md#166)
-- **Item 125, a quit hang: fixed for fingerprinting, duplicate
-  search, a playlist download, the sweep, a manual search, a
-  Retry (mid-search too), Spotify's rate-limit, sync and login waits
-  and Sharing's scan wait; open for work with no stop.** A quit
-  during a scan, match, tagging or merge still lasts until it ends
-  (the pool's destructor, above), logged at WARNING by
-  `cleanup_before_quit`. A slskd bring-up is waited for by design,
-  never killed mid-recreate (up to Compose's 120 s timeout; logged
-  at both ends): the quit confirmation says so
-  (`Application.is_starting_slskd()`). Settings and the wizard run
-  their own `QThreadPool`s, outside that wait, whose destructors hold
-  the exit too (measured); a quit cancels their login wait through
-  `stop_for_quit()`. Row S17j closes the rest.
-  [§125](docs/history/121-150.md#125),
-  [§226](docs/history/211-240.md#226), [§229](docs/history/211-240.md#229),
-  [§230](docs/history/211-240.md#230), [§231](docs/history/211-240.md#231),
-  [§232](docs/history/211-240.md#232)
+- **Item 125, a quit hang: every task on `MainWindow.thread_pool`
+  now stops within the bound or is listed as short** (the sweep
+  above); what is left is outside that pool or past a timeout. A
+  slskd bring-up is waited for by design, never killed mid-recreate
+  (up to Compose's 120 s; the quit confirmation says so,
+  `Application.is_starting_slskd()`). Settings and the wizard run
+  their own `QThreadPool`s, outside the bounded wait, whose
+  destructors hold the exit (measured); a quit cancels only their
+  login wait (`stop_for_quit()`), and moving them onto the shell's
+  pool is open. A hung (not down) slskd holds a quit up to a REST
+  call's 10 s timeout (UNVERIFIED that it ever hangs). The window
+  stays on screen during the wait: on Cocoa a `hide()`, even with one
+  `processEvents()`, shows only once the loop keeps turning
+  (observed). [§125](docs/history/121-150.md#125),
+  [§226](docs/history/211-240.md#226), [§231](docs/history/211-240.md#231),
+  [§232](docs/history/211-240.md#232), [§233](docs/history/211-240.md#233)
 - **The real DB still holds three nested locations** (`Music`⊂`X9
   Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`; ~3,450 files double-indexed).
   With the X9 Pro mounted, Kris runs Settings → Library → Fix…,
