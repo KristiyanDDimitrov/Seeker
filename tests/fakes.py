@@ -724,6 +724,7 @@ class FakeMetadataService:
             analyze_audio: bool = False,
             expected_bpm_range: tuple | None = None,
             force: bool = False,
+            stop=None,
     ) -> dict:
         self.tag_tracks_calls.append(
             (track_ids, analyze_audio, expected_bpm_range, force)
@@ -738,13 +739,16 @@ class FakeMetadataService:
             analyze_audio: bool = False,
             expected_bpm_range: tuple | None = None,
             force: bool = False,
+            stop=None,
     ) -> dict:
         self.tag_playlist_calls.append(
             (playlist_name, analyze_audio, expected_bpm_range, force)
         )
         return self._tag_result
 
-    def fix_missing_art_for_playlist(self, playlist_name: str) -> dict:
+    def fix_missing_art_for_playlist(
+            self, playlist_name: str, stop=None,
+    ) -> dict:
         self.fix_missing_art_for_playlist_calls.append(playlist_name)
         return self._fix_art_result
 

@@ -2,6 +2,7 @@ import contextlib
 import math
 import shutil
 import struct
+import threading
 import wave
 from pathlib import Path
 
@@ -264,6 +265,42 @@ def test_tag_tracks_mid_batch_exception_does_not_abort_remaining_tracks(
     )
     assert failed_detail["reason"] == "failed"
     assert "simulated failure" in failed_detail["message"]
+
+
+def test_tag_tracks_stops_before_its_next_track(tmp_path, monkeypatch):
+    # A stop (Seeker quitting) ends the run between tracks, never inside
+    # one: the track being tagged finishes its save.
+    service = make_service(tmp_path)
+    stop = threading.Event()
+    attempted = []
+
+    def tag_then_stop(self, track_id, *args, **kwargs):
+        attempted.append(track_id)
+        stop.set()
+        return iter(())
+
+    monkeypatch.setattr(MetadataService, "_tag_one_track", tag_then_stop)
+
+    counts = service.tag_tracks(["a", "b", "c"], stop=stop)
+
+    assert attempted == ["a"]
+    assert counts.stopped is True
+
+
+def test_tag_playlist_passes_its_stop_to_the_run(tmp_path, monkeypatch):
+    root = tmp_path / "music"
+    root.mkdir()
+    make_synthetic_wav(root / "song.wav")
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(service, location, "t1", "song.wav")
+    _seed_playlist_with_track(service, "t1")
+    stop = threading.Event()
+    stop.set()
+
+    counts = service.tag_playlist("Test Playlist", stop=stop)
+
+    assert (counts.tagged, counts.stopped) == (0, True)
 
 
 def test_tag_tracks_skips_when_mutagen_cannot_identify_file(tmp_path):
@@ -1121,6 +1158,28 @@ def test_fix_missing_art_embeds_when_none_exists(tmp_path, monkeypatch):
 
     reopened = MutagenFile(dest)
     assert reopened.tags["APIC:Cover"].data == FAKE_JPEG_BYTES
+
+
+def test_fix_missing_art_stops_before_its_next_track(tmp_path, monkeypatch):
+    root = tmp_path / "music"
+    root.mkdir()
+    make_synthetic_wav(root / "song.wav")
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "song.wav",
+        album_art_url="https://i.scdn.co/image/fake",
+    )
+    _seed_playlist_with_track(service, "t1")
+    monkeypatch.setattr(httpx, "stream", _as_stream(_fake_jpeg_response))
+    stop = threading.Event()
+    stop.set()
+
+    counts = service.fix_missing_art_for_playlist("Test Playlist", stop=stop)
+
+    assert counts.stopped is True
+    assert counts.fixed_wav_rarely_supported == 0
+    assert "APIC:Cover" not in (MutagenFile(root / "song.wav").tags or {})
 
 
 def test_fix_missing_art_records_the_art_it_embedded(tmp_path, monkeypatch):

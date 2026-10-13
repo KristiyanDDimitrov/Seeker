@@ -1,4 +1,5 @@
 import logging
+import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -403,6 +404,7 @@ class MetadataService:
             analyze_audio: bool = False,
             expected_bpm_range: tuple[float, float] | None = None,
             force: bool = False,
+            stop: threading.Event | None = None,
     ) -> TagResult:
         # Only auto-matched tracks — a needs_review match hasn't been
         # confirmed by a human yet, and writing Spotify's canonical
@@ -426,6 +428,7 @@ class MetadataService:
             analyze_audio=analyze_audio,
             expected_bpm_range=expected_bpm_range,
             force=force,
+            stop=stop,
         )
 
     def tag_tracks(
@@ -434,10 +437,22 @@ class MetadataService:
             analyze_audio: bool = False,
             expected_bpm_range: tuple[float, float] | None = None,
             force: bool = False,
+            stop: threading.Event | None = None,
     ) -> TagResult:
+        """Tag each track's matched file. A set `stop` ends the run
+        before its next track, never inside one: a tag write saves
+        whole, and what was written stays."""
         result = TagResult()
 
-        for track_id in track_ids:
+        for index, track_id in enumerate(track_ids):
+            if stop is not None and stop.is_set():
+                result.stopped = True
+                logger.info(
+                    "Tagging stopped after %d of %d tracks.",
+                    index, len(track_ids),
+                )
+                break
+
             # One bad file must not abort the batch. Notes are recorded
             # as they are produced, so a skip already decided still
             # counts when a later step fails.
@@ -679,12 +694,14 @@ class MetadataService:
     def fix_missing_art_for_playlist(
             self,
             playlist_name: str,
+            stop: threading.Event | None = None,
     ) -> FixArtResult:
         """A narrower, safer repair action than a forced full re-tag:
         re-embeds art ONLY, never touches text tags, for auto-matched
         tracks whose embedded art is missing or doesn't match the
         current album_art_url — a track tagged before its art could be
-        written has correct text tags that need no rewrite.
+        written has correct text tags that need no rewrite. A set `stop`
+        ends the run before its next track, as in `tag_tracks`.
         """
         with self.database.transaction() as connection:
             playlist = self.playlists.get_by_name(playlist_name, connection)
@@ -701,7 +718,15 @@ class MetadataService:
 
         result = FixArtResult()
 
-        for track in tracks:
+        for index, track in enumerate(tracks):
+            if stop is not None and stop.is_set():
+                result.stopped = True
+                logger.info(
+                    "Fixing cover art stopped after %d of %d tracks.",
+                    index, len(tracks),
+                )
+                break
+
             try:
                 self._fix_one_track_art(track.id, result)
             except Exception as error:

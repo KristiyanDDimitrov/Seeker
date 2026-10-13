@@ -4,6 +4,7 @@ download is still running.
 import logging
 import threading
 
+import pytest
 from PySide6.QtCore import QEvent, QRunnable
 from PySide6.QtWidgets import (
     QMessageBox,
@@ -14,6 +15,7 @@ from fakes import (
     FakeDownloadService,
     FakeDuplicateService,
     FakeLibraryService,
+    FakeMetadataService,
     force_tray_available,
 )
 from seeker.models.active_download import ActiveDownload
@@ -27,6 +29,7 @@ from seeker.models.library_result import (
     ScanResult,
 )
 from seeker.models.playlist import Playlist
+from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.models.track import Track
 from seeker.ui import window_lifecycle
 from seeker.ui.main_window import (
@@ -436,6 +439,70 @@ def test_quit_stops_a_running_library_scan(qtbot, monkeypatch):
     assert service.stopped
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running("scan"), timeout=2000,
+    )
+
+
+class _UntilStoppedMetadataService(FakeMetadataService):
+    """Tagging and Fix missing cover art that last until stopped,
+    bounded at 5 s so a missing stop fails the test instead of hanging
+    the suite."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.started = threading.Event()
+        self.stopped = False
+
+    def _run_until_stopped(self, stop) -> bool:
+        self.started.set()
+        self.stopped = (stop or threading.Event()).wait(5)
+        return self.stopped
+
+    def tag_playlist(
+            self, playlist_name, analyze_audio=False,
+            expected_bpm_range=None, force=False, stop=None,
+    ) -> TagResult:
+        return TagResult(stopped=self._run_until_stopped(stop))
+
+    def fix_missing_art_for_playlist(
+            self, playlist_name, stop=None,
+    ) -> FixArtResult:
+        return FixArtResult(stopped=self._run_until_stopped(stop))
+
+
+@pytest.mark.parametrize(
+    ("button_name", "action"),
+    [
+        ("tag_playlist_button", "tag_playlist"),
+        ("fix_missing_art_button", "fix_missing_art"),
+    ],
+)
+def test_quit_stops_a_running_playlist_tagging_task(
+        qtbot, monkeypatch, button_name, action,
+):
+    # Tagging with Analyze audio reads every file for BPM and key, a
+    # few seconds a file; Fix missing cover art fetches each cover.
+    force_tray_available(monkeypatch, True)
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=1)],
+    )
+    service = _UntilStoppedMetadataService()
+    application.metadata_service = service
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.playlist_list.count() == 1,
+        timeout=2000,
+    )
+    window._dashboard_page.playlist_list.setCurrentRow(0)
+
+    getattr(window._library_page._tagging_panel, button_name).click()
+    assert service.started.wait(2)
+    window.cleanup_before_quit()
+
+    assert window.thread_pool.waitForDone(2000)
+    assert service.stopped
+    qtbot.waitUntil(
+        lambda: not window.busy_actions.is_running(action), timeout=2000,
     )
 
 

@@ -330,6 +330,7 @@ class TaggingPanel(QWidget):
                 analyze_audio=analyze_audio,
                 expected_bpm_range=bpm_range,
                 force=force,
+                stop=self._context.quitting,
             ),
             on_finished=finished,
             on_error=failed,
@@ -363,6 +364,7 @@ class TaggingPanel(QWidget):
                 analyze_audio=analyze_audio,
                 expected_bpm_range=bpm_range,
                 force=True,
+                stop=self._context.quitting,
             ),
             on_finished=lambda result: self._render_tag_result(result, target),
             on_error=target.show_error,
@@ -395,6 +397,7 @@ class TaggingPanel(QWidget):
                 analyze_audio=analyze_audio,
                 expected_bpm_range=bpm_range,
                 force=force,
+                stop=self._context.quitting,
             ),
             status_label=self._host.status_label,
             on_finished=render_result,
@@ -434,6 +437,7 @@ class TaggingPanel(QWidget):
                 analyze_audio=analyze_audio,
                 expected_bpm_range=bpm_range,
                 force=force,
+                stop=self._context.quitting,
             ),
             on_finished=lambda result: self._render_tag_result(
                 result, feedback,
@@ -459,7 +463,9 @@ class TaggingPanel(QWidget):
         self._context.run_busy_worker(
             "fix_missing_art", self.fix_missing_art_button,
             lambda: self._context.application.metadata_service
-            .fix_missing_art_for_playlist(playlist_name),
+            .fix_missing_art_for_playlist(
+                playlist_name, stop=self._context.quitting,
+            ),
             on_finished=lambda result: self._render_fix_art_result(
                 result, feedback,
             ),

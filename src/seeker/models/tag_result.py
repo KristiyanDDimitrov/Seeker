@@ -21,7 +21,9 @@ class TagResult:
     failure.
 
     Each detail is `{"track_id", "reason", "message"}`, for every track
-    that was skipped, failed, or tagged with an art caveat.
+    that was skipped, failed, or tagged with an art caveat. `stopped`:
+    the run ended before its last track (Seeker quitting); the tracks
+    after the stop are in no count.
     """
     tagged: int = 0
     # Text tags written, but no cover art: without this a CDN failure or
@@ -35,6 +37,7 @@ class TagResult:
     skipped_already_analyzed: int = 0
     failed: int = 0
     details: list[dict[str, str]] = field(default_factory=list)
+    stopped: bool = False
 
     def record(
             self,
@@ -75,7 +78,8 @@ class TagResult:
 class FixArtResult:
     """One `fix_missing_art_for_playlist` run. Every track lands in
     exactly one count; `fixed_wav_rarely_supported` is not part of
-    `fixed`. Details have the same shape as `TagResult.details`."""
+    `fixed`, unless `stopped`, as in `TagResult`. Details have the same
+    shape as `TagResult.details`."""
     fixed: int = 0
     # Art embedded into a WAV, which almost no DJ software reads.
     fixed_wav_rarely_supported: int = 0
@@ -87,3 +91,4 @@ class FixArtResult:
     skipped_no_match: int = 0
     failed: int = 0
     details: list[dict[str, str]] = field(default_factory=list)
+    stopped: bool = False
