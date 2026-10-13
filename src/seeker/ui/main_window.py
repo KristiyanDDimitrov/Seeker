@@ -1247,7 +1247,7 @@ class MainWindow(QMainWindow):
             watched is QApplication.instance()
             and event.type() == QEvent.Type.Quit
         ):
-            return not self._lifecycle.confirm_quit_if_downloads_active()
+            return not self._lifecycle.confirm_quit_if_work_active()
         return super().eventFilter(watched, event)
 
     def cleanup_before_quit(self) -> None:

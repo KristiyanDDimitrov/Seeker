@@ -175,7 +175,7 @@ class WindowLifecycleController:
         self._host.window.raise_()
         self._host.window.activateWindow()
 
-    def confirm_quit_if_downloads_active(self) -> bool:
+    def confirm_quit_if_work_active(self) -> bool:
         # UI -> service, as always: the count comes from
         # DashboardService.get_active_downloads() (a cheap local DB
         # read — see downloads_page.py's own comment on this same
