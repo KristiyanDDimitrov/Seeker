@@ -226,6 +226,9 @@ class FakeDuplicateService:
         self._delete_result = delete_result or {
             "deleted": 0, "failed": 0, "details": [],
         }
+        # When set, delete_local_files() holds the worker until the test
+        # sets it, after recording the call.
+        self.delete_gate: threading.Event | None = None
         self._cleanup_totals = cleanup_totals
         self._scope_file_count = scope_file_count
         # Roadmap item 68 (Phase 7.2) — resolve_folder_scopes' fake
@@ -333,6 +336,8 @@ class FakeDuplicateService:
         self.delete_local_files_calls.append(
             (local_file_ids, keep_local_file_id, location_id)
         )
+        if self.delete_gate is not None:
+            self.delete_gate.wait(timeout=5)
         return self._delete_result
 
     def record_cleanup(

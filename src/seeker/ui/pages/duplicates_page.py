@@ -36,6 +36,7 @@ from seeker.ui.elided_text import BAND_ROLE
 from seeker.ui.notice import FeedbackTarget, InlineNotice
 from seeker.ui.pages.context import PageContext, build_page
 from seeker.ui.plain_text import PlainLabel
+from seeker.ui.row_actions import RunningRows
 from seeker.ui.workers import run_worker
 
 # A sentinel QButtonGroup id for the "Keep all" option, sharing the same
@@ -49,6 +50,14 @@ from seeker.ui.workers import run_worker
 # (checkedId() returned -2 in a real, direct repro), breaking any
 # comparison against a real -1 constant (HISTORY §56).
 KEEP_ALL_DUPLICATES_ID = 0
+
+
+def _group_key(group: DuplicateGroup) -> frozenset[int]:
+    """A group's member file ids: it has no id of its own, and a
+    rebuild keeps which files belong to a still-open group."""
+    return frozenset(
+        f.local_file.id for f in group.files if f.local_file.id is not None
+    )
 
 
 # Named constants for the duplicates table's real column layout,
@@ -273,6 +282,13 @@ class DuplicatesPage(QWidget):
         # local_file.id or the KEEP_ALL_DUPLICATES_ID sentinel. Pruned
         # to only still-present groups on every render (HISTORY §86).
         self._duplicates_keep_selection: dict[frozenset[int], int] = {}
+        # The groups whose delete is running, by the same member-id
+        # key, and the rendered Delete buttons' enable rules by group:
+        # a rebuild or a changed keep choice must not offer a running
+        # delete again, so a delete's end reapplies the rule rather
+        # than re-enabling a button outright.
+        self._running_deletes: RunningRows[frozenset[int]] = RunningRows()
+        self._delete_enablers: dict[frozenset[int], Callable[[], None]] = {}
         self._duplicates_locations_by_name: dict[str, LibraryLocation] = {}
         # Resolved by local_file.location_id at render time so the
         # LOCATION column (and the delete flow's own path resolution
@@ -612,6 +628,7 @@ class DuplicatesPage(QWidget):
 
     def _render_duplicate_groups(self, groups: list[DuplicateGroup]) -> None:
         self._duplicate_button_groups = []
+        self._delete_enablers = {}
         # Kept so a single-group resolution can drop just that group and
         # re-render locally afterward — see _on_delete_duplicates_finished's
         # own docstring for why re-fetching via find_duplicate_groups()
@@ -854,19 +871,22 @@ class DuplicatesPage(QWidget):
         delete_button.setToolTip(help_text.TOOLTIP_DELETE_DUPLICATES_BUTTON)
         delete_button.clicked.connect(
             lambda: self._on_delete_duplicates_clicked(
-                group, button_group, confirm_checkbox, delete_button,
+                group, button_group, confirm_checkbox,
             )
         )
+        group_key = _group_key(group)
 
         def _update_delete_enabled() -> None:
             # "Keep all" selected means there is nothing to delete.
             delete_button.setEnabled(
                 button_group.checkedId() != KEEP_ALL_DUPLICATES_ID
+                and group_key not in self._running_deletes
             )
 
         button_group.buttonToggled.connect(
             lambda _button, _checked: _update_delete_enabled()
         )
+        self._delete_enablers[group_key] = _update_delete_enabled
         _update_delete_enabled()
 
         row_label = f"duplicates of {group.files[0].local_file.relative_path}"
@@ -892,7 +912,6 @@ class DuplicatesPage(QWidget):
             group: DuplicateGroup,
             button_group: QButtonGroup,
             confirm_checkbox: QCheckBox,
-            button: QPushButton,
     ) -> None:
         if not confirm_checkbox.isChecked():
             # The standing rule against touching a file without
@@ -970,18 +989,34 @@ class DuplicatesPage(QWidget):
         if confirmed != QMessageBox.StandardButton.Yes:
             return
 
-        run_worker(
-            self._context.thread_pool,
+        # No button: the confirmation's nested event loop, or another
+        # group's delete ending meanwhile, can rebuild the row, so the
+        # enable rule of whichever row is rendered is reapplied.
+        group_key = _group_key(group)
+
+        def on_finished(result: dict[str, Any]) -> None:
+            self._reapply_delete_enabled(group_key)
+            self._on_delete_duplicates_finished(result, group)
+
+        def on_error(message: str) -> None:
+            self._reapply_delete_enabled(group_key)
+            self.feedback.show_error(message)
+
+        self._running_deletes.run(
+            self._context.thread_pool, group_key, (),
             lambda: self._context.application.duplicate_service.delete_local_files(
                 delete_ids, keep_id, location_id,
             ),
-            button=button,
             status_label=self.duplicates_status_label,
-            on_finished=lambda result: self._on_delete_duplicates_finished(
-                result, group,
-            ),
-            on_error=self.feedback.show_error,
+            on_finished=on_finished,
+            on_error=on_error,
         )
+        self._reapply_delete_enabled(group_key)
+
+    def _reapply_delete_enabled(self, group_key: frozenset[int]) -> None:
+        enabler = self._delete_enablers.get(group_key)
+        if enabler is not None:
+            enabler()
 
     def _on_delete_duplicates_finished(
             self,

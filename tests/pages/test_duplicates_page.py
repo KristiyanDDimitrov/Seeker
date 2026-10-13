@@ -14,6 +14,8 @@ re-export only existed for this file's own prior residence in
 test_ui_smoke.py.
 """
 
+import threading
+
 import pytest
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -1357,7 +1359,6 @@ def test_keep_all_disables_delete_and_deletes_nothing(qtbot, monkeypatch):
         window._duplicates_page._current_duplicate_groups[0],
         window._duplicates_page._duplicate_button_groups[0],
         checkbox,
-        delete_button,
     )
     wait_for_workers(window)
 
@@ -1543,3 +1544,53 @@ def test_the_band_paints_the_palettes_alternate_ground(qtbot):
     assert ground(2) == (
         palette.color(QPalette.ColorRole.AlternateBase).name().upper()
     )
+
+
+def test_a_group_rebuilt_while_its_delete_runs_keeps_delete_disabled(
+        qtbot, monkeypatch,
+):
+    # Another group's finished delete, or a new find, rebuilds the
+    # groups while a delete may still run. Neither the rebuilt row nor
+    # a changed keep choice may offer Delete again: a second click
+    # deletes the same group's files twice (HISTORY §227).
+    confirm_yes(monkeypatch)
+    group = make_duplicate_group()
+    application = FakeApplication(duplicate_groups=[group])
+    # A partial failure keeps the group, so its row outlives the delete.
+    application.duplicate_service._delete_result = {
+        "deleted": 0, "failed": 1, "details": [],
+    }
+    gate = threading.Event()
+    application.duplicate_service.delete_gate = gate
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._duplicates_page
+    page._render_duplicate_groups([group])
+
+    def actions():
+        return page.duplicates_table.cellWidget(
+            0, _duplicates_column(window, "Actions"),
+        )
+
+    actions().findChildren(QCheckBox)[0].setChecked(True)
+    actions().findChildren(QPushButton)[0].click()
+
+    try:
+        qtbot.waitUntil(
+            lambda: bool(application.duplicate_service.delete_local_files_calls),
+        )
+        page._render_duplicate_groups([group])
+        delete_button = actions().findChildren(QPushButton)[0]
+        assert not delete_button.isEnabled()
+
+        other_keep = next(
+            radio for radio in page.duplicates_table.findChildren(QRadioButton)
+            if radio.text() != "Keep all" and not radio.isChecked()
+        )
+        other_keep.click()
+        assert not delete_button.isEnabled()
+    finally:
+        gate.set()
+
+    qtbot.waitUntil(lambda: "Deleted: 0, Failed: 1" in page.notice.text())
+    assert actions().findChildren(QPushButton)[0].isEnabled()
