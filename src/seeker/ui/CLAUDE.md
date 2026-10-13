@@ -101,6 +101,16 @@ investigation.
   [HISTORY §195](../../../docs/history/181-210.md#195),
   [HISTORY §204](../../../docs/history/181-210.md#204),
   [HISTORY §205](../../../docs/history/181-210.md#205)
+- **A table that can hold thousands of rows builds its cell widgets
+  only near the view.** Qt repositions every index widget on each
+  resize step: 1,800 Duplicates groups' 5,400 held a fullscreen
+  transition ~2 s. Duplicates builds a group's radios and Actions
+  while it is in view or within a view's height
+  (`_show_groups_in_view`, re-run on scroll and viewport resize); what
+  they show lives on the page (`_keep_id`, `_delete_confirmed`), and
+  each group's first row takes its height explicitly, which a row
+  without its widget would lose.
+  [HISTORY §234](../../../docs/history/211-240.md#234)
 - **A button whose enabled state a render decides is never
   `run_worker`'s `button=`.** Its finish handler re-enables the button
   before `on_finished`, over any render that already ran; disable it
