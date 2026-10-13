@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
+
 from seeker.database.connection import Database
 from seeker.database.repositories.download_request_repository import (
     DownloadRequestRepository,
@@ -32,6 +34,7 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.database.repositories.track_repository import TrackRepository
+from seeker.error_text import describe_error
 from seeker.errors import SeekerError
 from seeker.files.deletion import delete_file, same_file
 from seeker.library.scanner import index_single_file
@@ -40,12 +43,18 @@ from seeker.models.download_request import (
     DownloadRole,
     DownloadStatus,
 )
+from seeker.models.download_result import TrackFailure
 from seeker.models.library_location import LibraryLocation
+from seeker.models.review_result import ConfirmAllResult
 from seeker.models.soulseek_review_candidate import SoulseekReviewCandidate
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.models.upgrade_review import UpgradeReviewDetails
-from seeker.soulseek.client import SoulseekClient, derive_extension
+from seeker.soulseek.client import (
+    SlskdUnreachableError,
+    SoulseekClient,
+    derive_extension,
+)
 from seeker.soulseek.placement import DownloadPlacement, SettleTarget
 
 logger = logging.getLogger(__name__)
@@ -165,6 +174,71 @@ class ReviewService:
             )
 
         self._request_candidate(candidate)
+
+    def confirm_review_candidates(
+            self,
+            candidates: list[tuple[Track, SoulseekReviewCandidate]],
+            stop: threading.Event | None = None,
+    ) -> ConfirmAllResult:
+        """Review's "Confirm all" for SoulSeek candidates: requests each
+        candidate as it was shown. A track whose candidate changed since
+        (a sweep replaced it, or it was decided meanwhile) is a failure
+        and keeps what it has now, so nothing is requested that nobody
+        saw. One failure never stops the rest; a set `stop` ends the
+        batch before its next row, and slskd not answering ends it at
+        that row as an outage, never as a failure a row.
+        """
+        # Not configured fails the batch once, not once a row.
+        soulseek = self._soulseek()
+        result = ConfirmAllResult()
+
+        for index, (track, shown) in enumerate(candidates):
+            if stop is not None and stop.is_set():
+                result.stopped = True
+                logger.info(
+                    "Confirm all stopped after %d of %d SoulSeek candidates.",
+                    index, len(candidates),
+                )
+                break
+
+            label = f"{track.artist} - {track.title}"
+
+            with self.database.transaction() as connection:
+                current = self.soulseek_review_candidates.get_by_track_id(
+                    track.id, connection,
+                )
+
+            if current is None or (
+                    (current.username, current.filename)
+                    != (shown.username, shown.filename)
+            ):
+                result.failures.append(TrackFailure(
+                    label,
+                    "Its candidate changed after the list was shown, so it "
+                    "was left for review.",
+                ))
+                continue
+
+            try:
+                self._request_candidate(current)
+            except httpx.TransportError as error:
+                result.outage = str(SlskdUnreachableError(soulseek.base_url))
+                logger.warning(
+                    "Confirm all ended after %d of %d SoulSeek candidates: "
+                    "slskd did not answer (%s).",
+                    index, len(candidates), error,
+                )
+                break
+            except Exception as error:
+                result.failures.append(TrackFailure(
+                    label, describe_error(error, details_hint=""),
+                ))
+                logger.warning("Confirm failed: %s: %s", label, error)
+                continue
+
+            result.confirmed += 1
+
+        return result
 
     def _request_candidate(self, candidate: SoulseekReviewCandidate) -> None:
         # One confirmed candidate: requested from its peer, recorded as

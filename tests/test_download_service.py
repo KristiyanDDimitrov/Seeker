@@ -141,6 +141,8 @@ def test_build_search_query_strips_comma_from_multi_artist_track():
 
 
 class FakeSoulseekClient:
+    base_url = "http://slskd.test"
+
     def __init__(
             self,
             states: dict[str, str],
@@ -1373,6 +1375,116 @@ def test_confirm_review_candidate_raises_for_legacy_row_without_size(
         review_service_for(service).confirm_review_candidate("t1")
 
     assert service.soulseek.request_download_calls == []
+
+
+def _seed_three_review_candidates(service: DownloadService) -> None:
+    for track_id in ("t1", "t2", "t3"):
+        seed_review_candidate(
+            service, track_id=track_id, filename=f"{track_id}.mp3",
+        )
+
+
+def _remaining_review_candidates(service: DownloadService) -> list[str]:
+    with service.database.transaction() as connection:
+        rows = connection.execute(
+            "SELECT track_id FROM soulseek_review_candidates "
+            "ORDER BY track_id"
+        ).fetchall()
+
+    return [row["track_id"] for row in rows]
+
+
+def test_confirm_review_candidates_requests_each_and_goes_on_past_a_failure(
+        tmp_path,
+):
+    service = make_service(
+        tmp_path, states={},
+        retry_results={
+            "t2.mp3": SoulseekDownloadError(
+                "Peer is offline.", reason="User appears to be offline",
+            ),
+        },
+    )
+    _seed_three_review_candidates(service)
+    review = review_service_for(service)
+    shown = review.get_review_candidates()
+
+    result = review.confirm_review_candidates(shown)
+
+    assert [call[1] for call in service.soulseek.request_download_calls] == [
+        "t1.mp3", "t2.mp3", "t3.mp3",
+    ]
+    assert result.confirmed == 2
+    assert result.failures == [
+        TrackFailure("Prdk - ONE MORE NIGHT", "Peer is offline."),
+    ]
+    assert result.outage is None
+    assert not result.stopped
+    # The failed one stays for review; the others became downloads.
+    assert _remaining_review_candidates(service) == ["t2"]
+
+
+def test_confirm_review_candidates_leaves_a_candidate_that_changed_since_shown(
+        tmp_path,
+):
+    # A sweep can replace a track's candidate while the list is on
+    # screen: what nobody saw is never requested.
+    service = make_service(tmp_path, states={})
+    _seed_three_review_candidates(service)
+    review = review_service_for(service)
+    shown = review.get_review_candidates()
+    seed_review_candidate(service, track_id="t2", filename="other.mp3")
+
+    result = review.confirm_review_candidates(shown)
+
+    assert [call[1] for call in service.soulseek.request_download_calls] == [
+        "t1.mp3", "t3.mp3",
+    ]
+    assert result.confirmed == 2
+    assert [failure.reason for failure in result.failures] == [
+        "Its candidate changed after the list was shown, so it was left "
+        "for review.",
+    ]
+    assert _remaining_review_candidates(service) == ["t2"]
+
+
+def test_confirm_review_candidates_ends_at_an_slskd_outage(tmp_path):
+    # slskd down is an outage, never one failure a row: the batch ends
+    # there and the rest stay for review.
+    service = make_service(
+        tmp_path, states={},
+        retry_results={"t2.mp3": httpx.ConnectError("Connection refused")},
+    )
+    _seed_three_review_candidates(service)
+    review = review_service_for(service)
+
+    result = review.confirm_review_candidates(review.get_review_candidates())
+
+    assert [call[1] for call in service.soulseek.request_download_calls] == [
+        "t1.mp3", "t2.mp3",
+    ]
+    assert result.confirmed == 1
+    assert result.failures == []
+    assert result.outage == str(
+        SlskdUnreachableError(service.soulseek.base_url),
+    )
+    assert _remaining_review_candidates(service) == ["t2", "t3"]
+
+
+def test_confirm_review_candidates_stops_before_its_next_row(tmp_path):
+    service = make_service(tmp_path, states={})
+    _seed_three_review_candidates(service)
+    review = review_service_for(service)
+    shown = review.get_review_candidates()
+    stop = threading.Event()
+    stop.set()
+
+    result = review.confirm_review_candidates(shown, stop=stop)
+
+    assert service.soulseek.request_download_calls == []
+    assert result.stopped
+    assert result.confirmed == 0
+    assert _remaining_review_candidates(service) == ["t1", "t2", "t3"]
 
 
 def test_succeeded_state_marks_completed(tmp_path, monkeypatch):
