@@ -553,15 +553,18 @@ Genuinely open only, checked against every CI run on record (187, to
   [§70](docs/history/047-071.md#70), [§165](docs/history/151-180.md#165),
   [§166](docs/history/151-180.md#166)
 - **Item 125, a quit hang: fixed for fingerprinting, duplicate
-  search, a playlist download, the sweep, a manual search and a
-  Retry (mid-search too); open for work with no stop.** A quit during a scan, match, tagging or
-  merge still lasts until it ends (the pool's destructor, above),
-  logged at WARNING by `cleanup_before_quit`; so does one during a
-  Spotify or Sharing wait. Settings and the wizard run their own
-  `QThreadPool`s, outside that wait. Rows S17i and S17j close the
+  search, a playlist download, the sweep, a manual search, a
+  Retry (mid-search too), Spotify's rate-limit, sync and login waits
+  and Sharing's scan wait; open for work with no stop.** A quit
+  during a scan, match, tagging or merge still lasts until it ends
+  (the pool's destructor, above), logged at WARNING by
+  `cleanup_before_quit`; so does a slskd bring-up. Settings and the
+  wizard run their own `QThreadPool`s, outside that wait, whose
+  destructors hold the exit too (measured); a quit cancels their
+  login wait through `stop_for_quit()`. Rows S17i and S17j close the
   rest. [§125](docs/history/121-150.md#125),
   [§226](docs/history/211-240.md#226), [§229](docs/history/211-240.md#229),
-  [§230](docs/history/211-240.md#230)
+  [§230](docs/history/211-240.md#230), [§231](docs/history/211-240.md#231)
 - **The real DB still holds three nested locations** (`Music`⊂`X9
   Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`; ~3,450 files double-indexed).
   With the X9 Pro mounted, Kris runs Settings → Library → Fix…,

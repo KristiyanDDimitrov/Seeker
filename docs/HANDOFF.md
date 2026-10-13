@@ -11,41 +11,47 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17i part two (first slice)'s close-out (HISTORY §230).
+- **HEAD:** S17i part two (second slice)'s close-out (HISTORY §231).
   Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2314 passed, 29 skipped`, 0 failed (was
-  2310; four new tests; the 29 skips are the stress test plus 28
+- **Local (Cocoa):** pytest `2326 passed, 29 skipped`, 0 failed (was
+  2314; twelve new tests; the 29 skips are the stress test plus 28
   `@requires_x9_pro`, as on CI). `mypy --strict src/` clean, 145
   files; `ruff check src tests tools` 0.
-- **CI:** run `38410777550` green (`772e76a`).
+- **CI:** pending on this push (the handoff commit after it records the run).
 
 ## 2. Where we are
 
-**S17i part two's first slice is done** (§230): the Search page's
-manual search and Downloads' Retry end their 45 s wait on quit.
-Stopped on budget (~125 K of 150 K) at a clean commit. **Next: S17i
-part two continued:** §17i.3 Spotify (start with the pools finding
-in §4), §17i.4 Sharing, §17i.5 the bring-up, measured first. Then
-S17j, S17k, S17f; S17e waits on Kris. Then S17g's new candidate and
-Kris's re-run.
+**S17i part two's second slice is done** (§231): Spotify's rate-limit
+wait, the playlist refresh, the login wait (Settings and the wizard)
+and Sharing's scan wait all end on quit. Stopped on budget (~170 K,
+over the 150 K ceiling) at a clean commit. **Next: S17i's last item,
+§17i.5 the slskd bring-up** (evidence in §231 → "Found"; see §4
+below), which closes S17i. Then S17j, S17k, S17f; S17e waits on Kris.
+Then S17g's new candidate and Kris's re-run.
 
-## 3. Session report (S17i, part two, first slice)
+## 3. Session report (S17i, part two, second slice)
 
-Evidence in HISTORY §230.
-- `332f488`: `search_manual(..., stop=)`, `retry_download(...,
-  stop=)`; the pages pass `PageContext.quitting`. Two service tests
-  failed on the parent with `TypeError` on `stop`; two page tests
-  (`test_search_page.py`, `test_downloads_page.py`:
-  `test_quit_stops_a_running_search`/`_retry`) with `assert False` on
-  `service.stopped`.
-- Skills: `tdd`. Divergence: the seams were taken from BRIEF §17i
-  rather than confirmed with Kris (the skill asks for that).
-- CI: run `38410777550` green (`772e76a`); it covers `332f488` and
-  the close-out.
+Evidence in HISTORY §231.
+- `c8a0045`: `SpotifyClient` requests, `refresh_playlists` and
+  `sync_playlist_tracks` take `stop` (`SpotifyStoppedError`;
+  `PlaylistRefreshResult.stopped`); Dashboard and tagging panel pass
+  `quitting`. Seven tests failed first (`TypeError` on `stop`, or
+  the fake's `stopped` False).
+- `0a709ba`: `SpotifyAuthorizationWait.cancel()`;
+  `SettingsPage.stop_for_quit()` from `_release_for_quit`;
+  `OnboardingWizard.stop_for_quit()` from `aboutToQuit` and its
+  `closeEvent`. Four tests failed first.
+- `179a9fa`: `add_location_to_share(..., stop=)`; Sharing passes
+  `quitting`. Two tests failed first.
+- Measured: a page's own `QThreadPool()` holds the exit (8 s task,
+  quit at 0.5 s, exit at 8.25 s). Observed: `aboutToQuit` misses a
+  closed `WA_DeleteOnClose` window's bound slot.
+- Skills: `tdd`. Divergence: seams from BRIEF §17i, not confirmed
+  with Kris (as in §230).
 
 ## 4. Key context for whoever runs S17i–S17k, S17e–S17g or S18
 
@@ -55,18 +61,24 @@ Evidence in HISTORY §230.
   own: keep the rule per row and reapply it at start and end.
 - **Each S17x row's BRIEF section separates what is established from
   what is a hypothesis.** Measure before fixing, as §224–§226 did.
-- **§17i.3 starts with a finding (§230):** `SettingsPage` and
-  `OnboardingWizard` each own a `QThreadPool()`
-  (`settings_window.py:157`, `wizard.py:100`), outside
-  `cleanup_before_quit`'s bounded wait. Spotify's login wait already
-  ends on `connect_spotify(cancel=)`; nothing sets it on quit. Measure
-  whether those pools' destructors hold the exit (UNVERIFIED), then
-  choose: a public quit hook on the page/wizard that cancels the
-  wait, and/or `MainWindow.thread_pool` for Settings (CLAUDE.md:
-  every `run_worker` gets it). The rate-limit `time.sleep` in
-  `spotify/client.py::_get` follows §17i.2's shape (a `stop` through
-  `_get`/`_get_all_pages`, a stopped error beside the client;
-  `refresh_playlists` keeps each finished playlist).
+- **§17i.5 starts from §231 → "Found":** the one blocking call is
+  `docker compose up -d` (120 s timeout); the only duration on record
+  is ≤ 25 s with an image pull (the test account's wizard). Don't
+  kill Compose mid-recreate (both logs show the half-made state a
+  kill risks). BRIEF's fallback: the quit confirmation says a
+  bring-up is running. It counts only downloads now
+  (`window_lifecycle.confirm_quit_if_downloads_active`), and of the
+  five bring-up paths only the Dashboard's and Downloads' outage
+  action carry a `busy_actions` key (`START_SLSKD_KEY`); Settings'
+  Start slskd and Sharing's recreate need one, the wizard has no
+  `MainWindow`. Logging the bring-up's start and end gives the next
+  measurement for free.
+- **Settings and the wizard still run their own `QThreadPool`s**,
+  whose destructors hold the exit (measured, §231). The login wait
+  now cancels on quit; their other tasks (the bring-up, health
+  checks) do not, and `cleanup_before_quit`'s bounded wait and its
+  log never see them. Moving Settings onto `MainWindow.thread_pool`
+  (CLAUDE.md's rule) is a candidate for §17i.5.
 - **Long work that should stop on quit takes `stop:
   threading.Event | None`** and a page passes `self._context.quitting`.
   The scan, match, tagging and merge take none yet (§226 → "Not
@@ -110,8 +122,7 @@ problem with logging on. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. S17i: §17i.1–2 and the manual search/Retry slice
-done; §17i.3–5 not started.
+None uncommitted. S17i: §17i.1–4 done; §17i.5 read, not started.
 
 ## 8. Waiting on Kris
 
@@ -127,6 +138,13 @@ the sweep, the window paths, the Fix…, the stress test, and the vetoes
 share checkbox). Then S18's outward commands.
 
 ## 9. Open questions
+
+- **A pre-existing test segfault** (§231): "Garbage-collecting"
+  inside `ui/wordmark.py`'s `_Brows.paintEvent` during a
+  `test_wizard.py` test, about 1 run in 25 of `test_main_ui.py
+  test_wizard.py test_settings_window.py` at `c8a0045`. Not seen in a
+  full run or CI yet. A small row of its own before S17g (could the
+  same GC-in-paint crash reach the real app)?
 
 - Review's "Replace all" and Duplicates' "Resolve all groups" pass
   `button=` with a render-decided enabled state (the §145 rule), and
