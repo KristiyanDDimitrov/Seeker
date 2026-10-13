@@ -131,6 +131,9 @@ class RenameResult:
     collisions: int = 0
     failed: int = 0
     details: list[dict[str, str]] = field(default_factory=list)
+    # The run ended before its last plan (Seeker quitting); the plans
+    # after the stop are in no count.
+    stopped: bool = False
 
 
 # The load-bearing check behind both "is this already correct" and "is
@@ -1088,7 +1091,11 @@ class MetadataService:
             destination_note=destination_note,
         )
 
-    def apply_renames(self, plans: list[RenamePlan]) -> RenameResult:
+    def apply_renames(
+            self,
+            plans: list[RenamePlan],
+            stop: threading.Event | None = None,
+    ) -> RenameResult:
         """'rename' AND 'collision' plans both do real work; every other
         action is just counted (the plan already described it correctly,
         nothing to act on). 'collision' is informational at PLAN time
@@ -1111,6 +1118,9 @@ class MetadataService:
         disagrees with what the user actually confirmed — safer than
         merely blocking the timers, since it also closes the "left the
         dialog open for ten minutes" window. See HISTORY §76.
+
+        A set `stop` ends the run before its next plan, never inside
+        one: a rename is the disk move and its row update together.
         """
         result = RenameResult()
 
@@ -1120,7 +1130,15 @@ class MetadataService:
             for plan in self.plan_renames(track_ids=track_ids)
         }
 
-        for plan in plans:
+        for index, plan in enumerate(plans):
+            if stop is not None and stop.is_set():
+                result.stopped = True
+                logger.info(
+                    "Renaming stopped after %d of %d tracks.",
+                    index, len(plans),
+                )
+                break
+
             fresh_plan = fresh_plans_by_track_id.get(plan.track_id)
 
             if (

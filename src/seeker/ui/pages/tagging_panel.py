@@ -562,7 +562,7 @@ class TaggingPanel(QWidget):
         run_worker(
             self._context.thread_pool,
             lambda: self._context.application.metadata_service.apply_renames(
-                plans
+                plans, stop=self._context.quitting,
             ),
             status_label=self._host.status_label,
             on_finished=self._on_rename_files_finished,

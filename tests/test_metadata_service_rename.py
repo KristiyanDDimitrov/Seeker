@@ -1,9 +1,11 @@
+import threading
 from pathlib import Path
 
 import pytest
 
 from db_seed import add_playlist_track
 from seeker.errors import PlaylistNotFoundError
+from seeker.library.metadata_service import MetadataService
 from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
@@ -779,3 +781,35 @@ def test_plan_renames_no_destination_note_via_explicit_track_ids(tmp_path):
     plans = service.plan_renames(track_ids=["t1"])
 
     assert plans[0].destination_note is None
+
+
+def test_apply_renames_stops_before_its_next_file(tmp_path, monkeypatch):
+    # A stop (Seeker quitting) ends the run between files, never inside
+    # one: a rename moves the file and updates its row as one step.
+    root = tmp_path / "music"
+    _write_real_file(root / "first.mp3")
+    _write_real_file(root / "second.mp3")
+    service = make_service(tmp_path)
+    location = seed_location(service, root)
+    seed_matched_track(
+        service, location, "t1", "first.mp3", artist="A", title="One",
+    )
+    seed_matched_track(
+        service, location, "t2", "second.mp3", artist="B", title="Two",
+    )
+    plans = service.plan_renames(track_ids=["t1", "t2"])
+    stop = threading.Event()
+    real_apply = MetadataService._apply_one_rename
+
+    def apply_then_stop(self, plan, result):
+        real_apply(self, plan, result)
+        stop.set()
+
+    monkeypatch.setattr(MetadataService, "_apply_one_rename", apply_then_stop)
+
+    result = service.apply_renames(plans, stop=stop)
+
+    assert (result.renamed, result.stopped) == (1, True)
+    assert sorted(path.name for path in root.iterdir()) == [
+        "A - One.mp3", "second.mp3",
+    ]

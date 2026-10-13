@@ -756,7 +756,7 @@ class FakeMetadataService:
         self.plan_renames_calls.append(playlist_name)
         return self._rename_plans
 
-    def apply_renames(self, plans: list):
+    def apply_renames(self, plans: list, stop=None):
         self.apply_renames_calls.append(plans)
         return self._rename_result
 

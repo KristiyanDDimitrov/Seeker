@@ -3,10 +3,12 @@ download is still running.
 """
 import logging
 import threading
+from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QEvent, QRunnable
 from PySide6.QtWidgets import (
+    QDialog,
     QMessageBox,
 )
 
@@ -18,6 +20,7 @@ from fakes import (
     FakeMetadataService,
     force_tray_available,
 )
+from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.models.download_result import PlaylistDownloadResult
@@ -32,6 +35,7 @@ from seeker.models.playlist import Playlist
 from seeker.models.tag_result import FixArtResult, TagResult
 from seeker.models.track import Track
 from seeker.ui import window_lifecycle
+from seeker.ui.dialogs import RenamePreviewDialog
 from seeker.ui.main_window import (
     MainWindow,
 )
@@ -447,8 +451,8 @@ class _UntilStoppedMetadataService(FakeMetadataService):
     bounded at 5 s so a missing stop fails the test instead of hanging
     the suite."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, rename_plans: list | None = None) -> None:
+        super().__init__(rename_plans=rename_plans)
         self.started = threading.Event()
         self.stopped = False
 
@@ -467,6 +471,9 @@ class _UntilStoppedMetadataService(FakeMetadataService):
             self, playlist_name, stop=None,
     ) -> FixArtResult:
         return FixArtResult(stopped=self._run_until_stopped(stop))
+
+    def apply_renames(self, plans, stop=None) -> RenameResult:
+        return RenameResult(stopped=self._run_until_stopped(stop))
 
 
 @pytest.mark.parametrize(
@@ -503,6 +510,45 @@ def test_quit_stops_a_running_playlist_tagging_task(
     assert service.stopped
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running(action), timeout=2000,
+    )
+
+
+def test_quit_stops_a_running_rename(qtbot, monkeypatch):
+    force_tray_available(monkeypatch, True)
+    application = FakeApplication(
+        playlists=[Playlist(id="p1", name="Test", track_count=1)],
+    )
+    service = _UntilStoppedMetadataService(
+        rename_plans=[
+            RenamePlan(
+                track_id="t1", local_file_id=1,
+                current_path=Path("/music/old.mp3"),
+                proposed_path=Path("/music/new.mp3"), action="rename",
+            ),
+        ],
+    )
+    application.metadata_service = service
+    monkeypatch.setattr(
+        RenamePreviewDialog, "exec", lambda self: QDialog.DialogCode.Accepted,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    qtbot.waitUntil(
+        lambda: window._dashboard_page.playlist_list.count() == 1,
+        timeout=2000,
+    )
+    window._dashboard_page.playlist_list.setCurrentRow(0)
+
+    window._library_page._tagging_panel.rename_files_button.click()
+    # The preview opens from the plan's finish handler, on this thread.
+    qtbot.waitUntil(service.started.is_set, timeout=2000)
+    window.cleanup_before_quit()
+
+    assert window.thread_pool.waitForDone(2000)
+    assert service.stopped
+    qtbot.waitUntil(
+        lambda: not window.busy_actions.is_running("rename_files"),
+        timeout=2000,
     )
 
 
