@@ -44,6 +44,7 @@ import json
 import re
 import shutil
 import subprocess
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -399,12 +400,16 @@ class SharingService:
             self,
             location: LibraryLocation,
             confirm: bool,
+            stop: threading.Event | None = None,
     ) -> SharingApplyResult:
         """Add one library location as a new, read-only SoulSeek share.
         Gated end to end: requires explicit confirm=True, requires
         is_self_managed(), backs up both edited files before writing
         either, and never mounts anything but read-only (":ro" is not
         optional/configurable here).
+
+        A set `stop` ends the wait for slskd's scan of the new share
+        (`became_ready` is then False); the share stays added.
         """
         container = self._check_preconditions(location, confirm)
         plan = self.preview_add_location(location)
@@ -420,7 +425,7 @@ class SharingService:
             raise
 
         self._record_bring_up(container.share_host_path, container.data_dir)
-        became_ready = self._wait_until_share_ready()
+        became_ready = self._wait_until_share_ready(stop)
         status_after = self.get_status()
 
         return SharingApplyResult(
@@ -585,20 +590,25 @@ class SharingService:
         write_text_atomic(self._compose_path, originals.compose)
         write_text_atomic(slskd_yml_path, originals.slskd_yml)
 
-    def _wait_until_share_ready(self) -> bool:
+    def _wait_until_share_ready(
+            self, stop: threading.Event | None = None,
+    ) -> bool:
         deadline = time.monotonic() + SHARE_READY_TIMEOUT_SECONDS
+        stop = stop or threading.Event()
 
         while time.monotonic() < deadline:
             try:
                 status = self.get_status()
             except httpx.HTTPError:
-                time.sleep(SHARE_READY_POLL_INTERVAL_SECONDS)
+                if stop.wait(SHARE_READY_POLL_INTERVAL_SECONDS):
+                    return False
                 continue
 
             if status.ready and not status.scanning and not status.scan_pending:
                 return True
 
-            time.sleep(SHARE_READY_POLL_INTERVAL_SECONDS)
+            if stop.wait(SHARE_READY_POLL_INTERVAL_SECONDS):
+                return False
 
         return False
 

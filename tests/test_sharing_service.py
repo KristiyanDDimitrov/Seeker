@@ -2,6 +2,8 @@ import argparse
 import json
 import os
 import subprocess
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -840,6 +842,59 @@ def test_add_location_to_share_creates_shares_block_when_none_exists(
     assert "shares:\n  directories:\n    - /shared/New Drive\n" in (
         updated_slskd_yml
     )
+
+
+def test_add_location_to_share_stops_waiting_for_the_scan_on_stop(
+        tmp_path, monkeypatch,
+):
+    # slskd scans a new share for up to 120 s; a quit must not wait it
+    # out (the 5 s quit bound, HISTORY §226). The share stays added.
+    compose_path = tmp_path / "docker-compose.yml"
+    compose_path.write_text(
+        "services:\n"
+        "  slskd:\n"
+        "    volumes:\n"
+        '      - "./slskd-data:/app"\n'
+        "    restart: always\n"
+    )
+    data_dir = tmp_path / "slskd-data"
+    data_dir.mkdir()
+    slskd_yml_path = data_dir / "slskd.yml"
+    slskd_yml_path.write_text("shares:\n  directories:\n    - /shared/music\n")
+    service = make_service(tmp_path, compose_path=compose_path)
+    location = seed_location(service, "New Drive", "/Volumes/New/Drive")
+    stop = threading.Event()
+    status_polls = {"n": 0}
+
+    def fake_get(url, headers=None, timeout=None, params=None):
+        if url.endswith("/application"):
+            status_polls["n"] += 1
+            stop.set()
+            return FakeResponse({
+                "shares": {
+                    "ready": False, "scanning": True, "scanPending": False,
+                    "faulted": False, "directories": 1, "files": 3,
+                }
+            })
+        return FakeResponse({"local": []})
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(
+        subprocess, "run", _fake_run_for_add_location(compose_path, data_dir),
+    )
+    monkeypatch.setattr(
+        "seeker.soulseek.sharing_service.SHARE_READY_POLL_INTERVAL_SECONDS",
+        30.0,
+    )
+    started = time.monotonic()
+
+    result = service.add_location_to_share(location, confirm=True, stop=stop)
+
+    assert time.monotonic() - started < 2.0
+    assert result.became_ready is False
+    # The precondition check's, one wait poll, and the closing status.
+    assert status_polls["n"] == 3
+    assert "/shared/New Drive" in slskd_yml_path.read_text()
 
 
 def _fail_temp_file_writes(monkeypatch, is_target):

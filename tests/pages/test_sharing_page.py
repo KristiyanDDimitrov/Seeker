@@ -6,6 +6,8 @@ mirror of §9.3.1's own Sharing extraction (S6).
 structural sweep tests and Duplicates' own tests use them too.
 """
 
+import threading
+
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton
@@ -583,3 +585,49 @@ def test_a_theme_switch_repaints_the_locations_lamps(qtbot, qapp):
         assert lamp_image() == expected_image(theme.LIGHT)
     finally:
         theme.apply_theme(qapp)
+
+
+class _UntilStoppedShare(FakeSharingService):
+    """An add-to-share whose wait for the new share lasts until it is
+    stopped, bounded at 5 s so a missing stop fails the test instead of
+    hanging the suite."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.started = threading.Event()
+        self.stopped = False
+
+    def add_location_to_share(self, location, confirm, stop=None):
+        self.started.set()
+        self.stopped = (stop or threading.Event()).wait(5)
+        return super().add_location_to_share(location, confirm, stop)
+
+
+def test_quit_stops_the_wait_for_a_new_share(qtbot, monkeypatch):
+    # slskd scans a new share for up to 120 s, past the quit's 5 s
+    # bound.
+    from seeker.soulseek.sharing_service import LocationShareState
+
+    location = make_location(2, "Other", "/Volumes/Drive/Other")
+    sharing_service = _UntilStoppedShare(
+        self_managed=True,
+        reconciliation=[
+            LocationShareState(location=location, shared=False, share=None),
+        ],
+    )
+    application = FakeApplication(
+        soulseek_configured=True, sharing_service=sharing_service,
+    )
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    confirm_yes(monkeypatch)
+    window._show_page("sharing")
+    locations_table = window._sharing_page.sharing_locations_table
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=2000)
+
+    locations_table.cellWidget(0, 4).findChild(QPushButton).click()
+    assert sharing_service.started.wait(2)
+    window.cleanup_before_quit()
+
+    assert window.thread_pool.waitForDone(2000)
+    assert sharing_service.stopped

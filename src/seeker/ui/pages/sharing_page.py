@@ -547,7 +547,9 @@ class SharingPage(QWidget):
 
         run_worker(
             self._context.thread_pool,
-            lambda: service.add_location_to_share(location, confirm=True),
+            lambda: service.add_location_to_share(
+                location, confirm=True, stop=self._context.quitting,
+            ),
             status_label=self.sharing_status_label,
             on_finished=self._on_add_location_to_share_finished,
             on_error=self.feedback.show_error,

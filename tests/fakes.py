@@ -441,7 +441,10 @@ class FakeSharingService:
             slskd_share_directory_line=f"    - /shared/{location.name}",
         )
 
-    def add_location_to_share(self, location, confirm: bool):
+    def add_location_to_share(
+            self, location, confirm: bool,
+            stop: threading.Event | None = None,
+    ):
         self.add_location_to_share_calls.append((location, confirm))
 
         from seeker.soulseek.sharing_service import SharingApplyResult
