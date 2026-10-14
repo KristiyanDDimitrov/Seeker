@@ -162,3 +162,13 @@ fix rows S17a–S17f (BRIEF §17a–§17f):
 
 The wizard, sync, scan and the rest of this section's boxes stay
 unticked until S17g's candidate.
+
+**2026-10-14, Kris, the `6f49319` candidate: accepted for release.**
+Kris ran the checks he judged most important (not itemized) and
+reported no failure; the unticked boxes above are waived for v0.1.0,
+not passed, and stay open as post-release checks. The stress run
+(`SEEKER_RUN_STRESS_TEST=1`) ran the same day: its body passed, its
+teardown error was the test's docker guard, fixed in HISTORY §243.
+Silence kept every veto's wording, S17c's and S17f's included. S18
+releases from the tagged rebuild; the commits since `6f49319` change
+only tests and docs.

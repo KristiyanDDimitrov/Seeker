@@ -7,7 +7,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-14
 
 The first public release: a macOS desktop app (`Seeker.dmg`) and a
 command-line tool (`seeker`) over one shared core.
@@ -20,7 +20,8 @@ command-line tool (`seeker`) over one shared core.
 - **Matching against your library.** Library folders are scanned and
   each track is fuzzy-matched to your files: matched, needs review or
   missing. A match you confirm stays confirmed; a file you reject is
-  never suggested again.
+  never suggested again. Review confirms one track at a time, or a
+  whole section at once after asking.
 - **SoulSeek downloads through slskd**, a self-hosted daemon that
   Seeker sets up in Docker, and starts again from Settings →
   Connections if its container is removed. Candidates are ranked by format, bitrate
