@@ -25,6 +25,7 @@ from seeker.models.download_request import (
 )
 from seeker.models.download_result import PollResult
 from seeker.soulseek.client import (
+    SlskdBusyError,
     SlskdUnreachableError,
     SoulseekClient,
     SoulseekDownloadError,
@@ -296,6 +297,11 @@ class DownloadPoller:
                 self._retry_locked_request(request, counts)
             except httpx.TransportError as error:
                 raise SlskdUnreachableError(self._soulseek().base_url) from error
+            except SlskdBusyError:
+                # request_download already waited it out; the next row
+                # would wait the same way. The next poll tries again.
+                logger.info("slskd is busy; locked retries resume next poll")
+                break
             except Exception as error:
                 logger.warning(
                     "Failed to retry locked '%s': %s",
@@ -596,9 +602,9 @@ class DownloadPoller:
             # file-not-shared rejection always did.
             self._advance_locked_retry(request, retry_count)
             return None
-        except httpx.TransportError:
-            # slskd is down; the peer was never asked, so this is not
-            # an attempt against the retry budget.
+        except (httpx.TransportError, SlskdBusyError):
+            # slskd is down or busy; the peer was never asked, so this
+            # is not an attempt against the retry budget.
             raise
         except Exception:
             # Live-caught, not theoretical: an unrecognized error

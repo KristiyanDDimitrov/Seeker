@@ -5,8 +5,10 @@ import time
 import httpx
 import pytest
 
+from seeker.error_text import describe_error
 from seeker.soulseek.client import (
     SearchStoppedError,
+    SlskdBusyError,
     SlskdUnauthorizedError,
     SoulseekClient,
     SoulseekDownloadError,
@@ -402,6 +404,61 @@ def test_request_download_does_not_wrap_unrecognized_error(
 
     with pytest.raises(httpx.HTTPStatusError):
         client.request_download("peer1", "song.flac", 12345)
+
+
+# slskd 0.26.0's own 429 body (TransfersController.cs).
+BUSY_BODY = (
+    "Only one concurrent operation is permitted. Wait until the "
+    "previous request completes"
+)
+
+
+def test_a_busy_enqueue_is_sent_again_once_slskd_frees_up(monkeypatch):
+    responses = [
+        FakeErrorResponse(429, BUSY_BODY),
+        FakeResponse({"batch": {"transfers": [{"id": "transfer-abc"}]}}),
+    ]
+    posts = []
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        posts.append(json)
+        return responses.pop(0)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+    transfer_id = client.request_download(
+        "peer1", "song.flac", 12345, busy_waits=(0, 0),
+    )
+
+    assert transfer_id == "transfer-abc"
+    assert len(posts) == 2
+
+
+def test_an_enqueue_slskd_stays_busy_for_raises_a_readable_busy_error(
+        monkeypatch,
+):
+    posts = []
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        posts.append(json)
+        return FakeErrorResponse(429, BUSY_BODY)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    client = SoulseekClient("http://localhost:5030", "test-api-key")
+
+    with pytest.raises(SlskdBusyError) as caught:
+        client.request_download(
+            "peer1", "song.flac", 12345, busy_waits=(0, 0),
+        )
+
+    # The first try plus one per wait, then no more.
+    assert len(posts) == 3
+    assert describe_error(caught.value) == (
+        "slskd is busy with other downloads, so this one wasn't "
+        "requested. Try again in a moment."
+    )
 
 
 def test_two_clients_never_enqueue_at_once(monkeypatch):

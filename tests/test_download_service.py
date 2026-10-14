@@ -47,6 +47,7 @@ from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
 from seeker.soulseek.client import (
     SearchStoppedError,
+    SlskdBusyError,
     SlskdUnreachableError,
     SoulseekClient,
     SoulseekDownloadError,
@@ -4592,6 +4593,51 @@ def test_poll_downloads_unreachable_slskd_spends_no_locked_retry_budget(
     assert (row["status"], row["retry_count"], row["next_retry_at"]) == (
         "locked", 0, None,
     )
+
+
+def test_a_busy_slskd_spends_no_locked_retry_budget(tmp_path):
+    # slskd answers 429 without asking the peer, so the attempt is not
+    # one of the row's eight.
+    service = make_service(
+        tmp_path, {}, retry_results={"locked.flac": SlskdBusyError()},
+    )
+    seed_pending_request(
+        service, "old-1", status="locked", filename="locked.flac",
+    )
+
+    service.poll_downloads()
+
+    with service.database.transaction() as connection:
+        row = connection.execute(
+            "SELECT status, retry_count, next_retry_at "
+            "FROM download_requests"
+        ).fetchone()
+
+    assert (row["status"], row["retry_count"], row["next_retry_at"]) == (
+        "locked", 0, None,
+    )
+
+
+def test_a_busy_slskd_ends_the_polls_locked_retries(tmp_path):
+    # Each busy enqueue has already waited; the next locked row would
+    # wait the same way for the same slskd.
+    service = make_service(
+        tmp_path, {}, retry_results={"first.flac": SlskdBusyError()},
+    )
+    seed_pending_request(
+        service, "old-1", track_id="track1", status="locked",
+        filename="first.flac",
+    )
+    seed_pending_request(
+        service, "old-2", track_id="track2", status="locked",
+        filename="second.flac",
+    )
+
+    service.poll_downloads()
+
+    assert [call[1] for call in service.soulseek.request_download_calls] == [
+        "first.flac",
+    ]
 
 
 # --- Retry from the Downloads page ------------------------------------------

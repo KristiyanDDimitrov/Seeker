@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 from dataclasses import dataclass
@@ -8,6 +9,8 @@ import httpx
 
 from seeker.errors import SeekerError
 from seeker.models.soulseek_file import SoulseekFile
+
+logger = logging.getLogger(__name__)
 
 
 class SoulseekDownloadError(SeekerError):
@@ -37,6 +40,19 @@ class SlskdUnreachableError(SeekerError):
             "slskd is running."
         )
         self.base_url = base_url
+
+
+class SlskdBusyError(SeekerError):
+    """slskd answered 429 to every enqueue `request_download` sent: its
+    own limit on concurrent enqueues, not the peer's answer, so no
+    retry budget is spent on it. The message is the sentence the UI
+    and CLI show."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "slskd is busy with other downloads, so this one wasn't "
+            "requested. Try again in a moment."
+        )
 
 
 class SlskdUnauthorizedError(SeekerError):
@@ -78,6 +94,11 @@ RECOGNIZED_REJECTION_PATTERNS = ("not shared", "appears to be offline")
 # build their own client: one process sends one enqueue at a time,
 # which leaves slskd's second slot for another process (a cron sweep).
 _ENQUEUE_LOCK = threading.Lock()
+
+# The pauses before each enqueue sent again after a 429: the lock above
+# cannot see another process's enqueues. Short, so a caller stopping on
+# quit is held at most ~3.5 s more.
+ENQUEUE_BUSY_WAITS = (0.5, 1.0, 2.0)
 
 
 def is_recognized_rejection(text: str | None) -> bool:
@@ -241,7 +262,10 @@ class SoulseekClient:
             filename: str,
             size: int,
             destination: str | None = None,
+            busy_waits: tuple[float, ...] = ENQUEUE_BUSY_WAITS,
     ) -> str:
+        """Enqueues one file; its transfer id. A 429 is sent again
+        after each of `busy_waits`, then raises SlskdBusyError."""
         body: dict[str, Any] = {
             "username": username,
             "files": [{"filename": filename, "size": size}],
@@ -251,13 +275,7 @@ class SoulseekClient:
             body["options"] = {"destination": destination}
 
         try:
-            with _ENQUEUE_LOCK:
-                response = httpx.post(
-                    f"{self.base_url}/api/v0/transfers/downloads/batches",
-                    json=body,
-                    headers=self._headers(),
-                    timeout=15.0,
-                )
+            response = self._post_enqueue(body, busy_waits)
             response.raise_for_status()
         except httpx.HTTPStatusError as error:
             # A recognized rejection can arrive synchronously as a
@@ -301,6 +319,35 @@ class SoulseekClient:
             )
 
         return cast(str, transfers[0]["id"])
+
+    def _post_enqueue(
+            self,
+            body: dict[str, Any],
+            busy_waits: tuple[float, ...],
+    ) -> httpx.Response:
+        waits = list(busy_waits)
+
+        while True:
+            with _ENQUEUE_LOCK:
+                response = httpx.post(
+                    f"{self.base_url}/api/v0/transfers/downloads/batches",
+                    json=body,
+                    headers=self._headers(),
+                    timeout=15.0,
+                )
+
+            if response.status_code != httpx.codes.TOO_MANY_REQUESTS:
+                return response
+
+            if not waits:
+                raise SlskdBusyError
+
+            wait = waits.pop(0)
+            logger.info("slskd is busy; enqueueing again in %.1f s", wait)
+            # Outside the lock: this process's other enqueues would
+            # only be refused the same way, and need not queue behind
+            # the pause.
+            time.sleep(wait)
 
     def get_download_status(
             self,
