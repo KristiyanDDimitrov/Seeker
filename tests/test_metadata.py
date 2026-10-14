@@ -73,7 +73,7 @@ REAL_MP3 = (
       " (Extended Mix).mp3"
 )
 REAL_FLAC = (
-    X9_PRO_ROOT / "Music/Psytrance/Giorgia Angiuli - Lux (Original Mix).flac"
+    X9_PRO_ROOT / "Music/Hard Shit/Giorgia Angiuli - Lux (Original Mix).flac"
 )
 REAL_M4A = X9_PRO_ROOT / "Music/DnB/ChaseR - Prolegomenon.m4a"
 # Roadmap item R1.6 -- the exact real folder the brief's own diagnosis

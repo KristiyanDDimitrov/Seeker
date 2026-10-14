@@ -50,32 +50,27 @@ REAL_SOUNDFILE_FAILS_FFMPEG_RESCUES = (
     X9_PRO_ROOT / "Music/Sinthesis/HiveMind.mp3"
 )
 
-# Two real duplicate pairs identified live against the real library
-# during item 5's Phase 0 spike (see docs/HISTORY.md §38) — a
-# same-format pair (two real MP3 copies of the same track, found
-# across different Beatport-chart folders) and a cross-format pair
-# (a real FLAC vs. a real lossy MP3 re-encode of the same track).
-FISHER_COPY_1 = (
+# Two real duplicate pairs from the real library (HISTORY §38's pairs
+# have left the drive; these replaced them, HISTORY §244): a
+# same-format pair (one MP3 in two Beatport-chart folders, the audio
+# identical, the tags not) and a cross-format pair (a real FLAC vs. a
+# real lossy MP3 of the same track, measured at 0.97).
+THRILLER_COPY_1 = (
     X9_PRO_ROOT
-    / "Music/Pop House/Beatport Tech House Top 100 March 2024"
-    / "94. fisher (oz) - losing it (extended).mp3"
+    / "Music/Pop House/VA-Beatport Funky House Top 100 January 2024"
+    / "75. Matte Black - Thriller X (Original Mix).mp3"
 )
-FISHER_COPY_2 = (
+THRILLER_COPY_2 = (
     X9_PRO_ROOT
-    / "Music/Pop House/BEATPORT Top 100 Tech House September 2023"
-    / "FISHER (OZ) - Losing It (Extended).mp3"
+    / "Music/Pop House/BEATPORT Top 100 Funky House November 2023"
+    / "11. Matte Black - Thriller X (Original Mix).mp3"
 )
-NEW_GOLD_FLAC = (
-    X9_PRO_ROOT
-    / "Music/House"
-    / "Bootie Brown, Tame Impala, Gorillaz - New Gold (feat. Tame "
-      "Impala and Bootie Brown) (Dom Dolla Remix Extended).flac"
+OUT_OF_CONTEXT_FLAC = (
+    X9_PRO_ROOT / "Music/BDM/AVIRA - Out Of Context.flac"
 )
-NEW_GOLD_MP3 = (
-    X9_PRO_ROOT
-    / "Music/Pop House/Beatport Tech House Top 100 March 2024"
-    / "69. bootie brown, tame impala, gorillaz - new gold (feat. "
-      "tame impala and bootie brown) (dom dolla remix extended).mp3"
+# The trailing space before the extension is the real file's name.
+OUT_OF_CONTEXT_MP3 = (
+    X9_PRO_ROOT / "Music/CamelPhat/AVIRA - Out of Context .mp3"
 )
 
 
@@ -221,8 +216,8 @@ def test_the_chromaprint_context_is_freed_when_a_call_fails(
 def test_real_same_format_duplicates_score_high_similarity(tmp_path):
     copy_1 = tmp_path / "copy1.mp3"
     copy_2 = tmp_path / "copy2.mp3"
-    shutil.copy(FISHER_COPY_1, copy_1)
-    shutil.copy(FISHER_COPY_2, copy_2)
+    shutil.copy(THRILLER_COPY_1, copy_1)
+    shutil.copy(THRILLER_COPY_2, copy_2)
 
     fp1 = compute_fingerprint(copy_1)
     fp2 = compute_fingerprint(copy_2)
@@ -235,8 +230,8 @@ def test_real_same_format_duplicates_score_high_similarity(tmp_path):
 def test_real_cross_format_duplicates_score_high_similarity(tmp_path):
     flac_copy = tmp_path / "copy.flac"
     mp3_copy = tmp_path / "copy.mp3"
-    shutil.copy(NEW_GOLD_FLAC, flac_copy)
-    shutil.copy(NEW_GOLD_MP3, mp3_copy)
+    shutil.copy(OUT_OF_CONTEXT_FLAC, flac_copy)
+    shutil.copy(OUT_OF_CONTEXT_MP3, mp3_copy)
 
     flac_fp = compute_fingerprint(flac_copy)
     mp3_fp = compute_fingerprint(mp3_copy)
@@ -249,22 +244,22 @@ def test_real_cross_format_duplicates_score_high_similarity(tmp_path):
 def test_real_unrelated_tracks_score_well_below_duplicate_threshold(
         tmp_path,
 ):
-    fisher_copy = tmp_path / "fisher.mp3"
-    new_gold_copy = tmp_path / "new_gold.mp3"
-    shutil.copy(FISHER_COPY_1, fisher_copy)
-    shutil.copy(NEW_GOLD_MP3, new_gold_copy)
+    thriller_copy = tmp_path / "thriller.mp3"
+    out_of_context_copy = tmp_path / "out_of_context.mp3"
+    shutil.copy(THRILLER_COPY_1, thriller_copy)
+    shutil.copy(OUT_OF_CONTEXT_MP3, out_of_context_copy)
 
-    fisher_fp = compute_fingerprint(fisher_copy)
-    new_gold_fp = compute_fingerprint(new_gold_copy)
+    thriller_fp = compute_fingerprint(thriller_copy)
+    out_of_context_fp = compute_fingerprint(out_of_context_copy)
 
-    assert hamming_similarity(fisher_fp.data, new_gold_fp.data) < 0.90
+    assert hamming_similarity(thriller_fp.data, out_of_context_fp.data) < 0.90
 
 
 @requires_x9_pro
 @requires_chromaprint
 def test_compute_fingerprint_is_deterministic(tmp_path):
     dest = tmp_path / "test.mp3"
-    shutil.copy(FISHER_COPY_1, dest)
+    shutil.copy(THRILLER_COPY_1, dest)
 
     first = compute_fingerprint(dest)
     second = compute_fingerprint(dest)
