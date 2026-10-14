@@ -21,7 +21,7 @@ nine fields below follow the contract in
   (unchanged; the X9 Pro mounted, so its 28 ran; CI skips 29).
   `mypy --strict src/` clean, 146 files; `ruff check src tests tools` 0.
 - **CI:** run `38549671669` green on `6f49319`, the candidate's commit;
-  the close-out's run is in the handoff commit.
+  run `38552915783` green on the close-out (`c9ffc01`).
 
 ## 2. Where we are
 
