@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow
 from seeker import config
 from seeker.application import Application, resolve_log_dir
 from seeker.soulseek import poller
+from seeker.ui import tray
 from seeker.ui.error_hooks import (
     install_exception_hooks,
     install_qt_message_handler,
@@ -65,6 +66,8 @@ def main() -> None:
     config.load_env_file()
     if config.debug_poll():
         poller.logger.setLevel(logging.DEBUG)
+    if config.debug_tray():
+        tray.logger.setLevel(logging.DEBUG)
 
     # Spotify/SoulSeek config is resolved lazily now (config store,
     # falling back to .env) — see Application.auth_manager. The

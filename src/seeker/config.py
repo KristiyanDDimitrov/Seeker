@@ -58,3 +58,10 @@ def slskd_download_dir() -> str | None:
 # locked-retry storm investigation (HISTORY §63, §66).
 def debug_poll() -> bool:
     return os.getenv("SEEKER_DEBUG_POLL") == "1"
+
+
+# Diagnostic: "1" logs the tray menu opening and closing, each render
+# and each application state change at DEBUG, for a menu that closes
+# at once in fullscreen (HISTORY §237).
+def debug_tray() -> bool:
+    return os.getenv("SEEKER_DEBUG_TRAY") == "1"

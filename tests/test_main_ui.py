@@ -12,6 +12,7 @@ import pytest
 
 from seeker import main_ui
 from seeker.soulseek import poller
+from seeker.ui import tray
 
 
 def test_application_identity_is_seekers_own(qapp):
@@ -45,12 +46,14 @@ def isolated_entry_point(tmp_path, monkeypatch):
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SEEKER_DEBUG_POLL", raising=False)
+    monkeypatch.delenv("SEEKER_DEBUG_TRAY", raising=False)
     monkeypatch.setattr(sys, "excepthook", sys.excepthook)
     monkeypatch.setattr(threading, "excepthook", threading.excepthook)
 
     seeker_logger = logging.getLogger("seeker")
     handlers, level = list(seeker_logger.handlers), seeker_logger.level
     poll_level = poller.logger.level
+    tray_level = tray.logger.level
     yield log_dir
     for handler in seeker_logger.handlers:
         if handler not in handlers:
@@ -58,6 +61,7 @@ def isolated_entry_point(tmp_path, monkeypatch):
     seeker_logger.handlers[:] = handlers
     seeker_logger.setLevel(level)
     poller.logger.setLevel(poll_level)
+    tray.logger.setLevel(tray_level)
 
 
 def test_configure_logging_writes_the_seeker_tree_to_the_log_file(
@@ -283,3 +287,13 @@ def test_seeker_debug_poll_turns_on_the_gui_poll_trace(
     _run_main(monkeypatch, FakeApplication())
 
     assert poller.logger.level == logging.DEBUG
+
+
+def test_seeker_debug_tray_turns_on_the_tray_trace(
+        isolated_entry_point, monkeypatch,
+):
+    monkeypatch.setenv("SEEKER_DEBUG_TRAY", "1")
+
+    _run_main(monkeypatch, FakeApplication())
+
+    assert tray.logger.level == logging.DEBUG
