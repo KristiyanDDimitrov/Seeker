@@ -603,3 +603,45 @@ def test_quit_waits_for_stopped_work_to_end(qtbot, monkeypatch, caplog):
 
     assert window.thread_pool.activeThreadCount() == 0
     assert "cleanup_before_quit: every task ended in " in caplog.text
+
+
+def test_quit_waits_a_bounded_time_for_a_settings_task_and_logs_it(
+        qtbot, monkeypatch, caplog,
+):
+    # Settings' tasks run on the shell's pool, so the bounded wait and
+    # its log see them; a pool of Settings' own was waited for only by
+    # its destructor, after the log (HISTORY §231).
+    force_tray_available(monkeypatch, True)
+    monkeypatch.setattr(window_lifecycle, "QUIT_WAIT_MS", 200)
+    release = threading.Event()
+    started = threading.Event()
+
+    def held_health_check(*_args):
+        started.set()
+        release.wait(5)
+
+    monkeypatch.setattr(
+        "seeker.ui.settings_window.check_slskd_health", held_health_check,
+    )
+    application = FakeApplication()
+    application.slskd_base_url = "http://localhost:5030"
+    application.slskd_api_key = "key"
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    window.thread_pool.waitForDone(2000)
+    window.settings_page.test_connection_button.click()
+    assert started.wait(2)
+
+    try:
+        with caplog.at_level(
+                logging.INFO, logger="seeker.ui.window_lifecycle",
+        ):
+            window.cleanup_before_quit()
+    finally:
+        release.set()
+        window.thread_pool.waitForDone(5000)
+        window.settings_page.thread_pool.waitForDone(5000)
+
+    assert (
+        "cleanup_before_quit: 1 task(s) still running after 0.2s" in caplog.text
+    )

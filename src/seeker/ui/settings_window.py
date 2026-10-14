@@ -151,10 +151,16 @@ class SettingsPage(QWidget):
             application: Application,
             initial_tab: str | None = None,
             on_theme_mode_changed: Callable[[str], None] | None = None,
+            thread_pool: QThreadPool | None = None,
     ):
         super().__init__()
         self.application = application
-        self.thread_pool = QThreadPool()
+        # MainWindow's own pool, so a quit's bounded wait and its log
+        # see this page's tasks like any other's (HISTORY §231). None
+        # only in tests that construct SettingsPage standalone.
+        self.thread_pool = (
+            thread_pool if thread_pool is not None else QThreadPool()
+        )
         self._locations_by_name: dict[str, LibraryLocation] = {}
         self._rendered_locations: list[tuple[LibraryLocation, bool]] = []
         self._playlists_by_name: dict[str, Playlist] = {}
@@ -197,9 +203,9 @@ class SettingsPage(QWidget):
         self._refresh_connection_display()
 
     def stop_for_quit(self) -> None:
-        """End a Re-authorize's wait for the browser: it runs on this
-        page's own pool, whose destructor holds the process at exit
-        until the wait ends (up to 300 s, HISTORY §231)."""
+        """End a Re-authorize's wait for the browser: the pool's
+        destructor holds the process at exit until the wait ends (up
+        to 300 s, HISTORY §231)."""
         self.spotify_authorization_wait.cancel()
 
     def select_tab(self, tab_name: str) -> None:

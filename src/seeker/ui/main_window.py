@@ -518,6 +518,7 @@ class MainWindow(QMainWindow):
         # the sidebar, which has a button for every page.
         self.settings_page = SettingsPage(
             self.application, on_theme_mode_changed=self._apply_theme_mode,
+            thread_pool=self.thread_pool,
         )
         self._register_page("settings", build_page(
             "Settings", help_text.SETTINGS_WINDOW_SUBTITLE,
