@@ -47,8 +47,10 @@ short, under `src/seeker/`:
 
 ## Conventions
 
-- Python 3.13; `uv` for env and build. Type hints everywhere; `mypy
-  --strict` clean before work is done. Models are dataclasses, no
+- Python 3.13, pinned by `.python-version` (uv otherwise takes the
+  newest: CI's runner got 3.15, which numba refuses,
+  [§245](docs/history/241-270.md#245)); `uv` for env and build. Type
+  hints everywhere; `mypy --strict` clean before work is done. Models are dataclasses, no
   getter/setter classes.
 - slskd through its REST API, never a raw protocol library.
   `SoulseekClient` is synchronous `httpx`, the same pattern as
