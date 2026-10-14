@@ -40,6 +40,7 @@ through the exact same code every real user's Duplicates tab goes
 through — only the input data is disposable, not the mechanism.
 """
 
+import contextlib
 import os
 import shutil
 import statistics
@@ -58,15 +59,19 @@ from PySide6.QtWidgets import (
     QComboBox,
     QLabel,
     QListWidget,
+    QMessageBox,
     QPushButton,
     QTableWidget,
+    QWidget,
 )
 
 from fakes import FakeApplication
 from seeker.application import Application
 from seeker.audio.fingerprint import is_available as fingerprinting_is_available
 from seeker.config_store import load_config, resolve_config_path, save_config
+from seeker.errors import LibraryLocationNotFoundError
 from seeker.library.duplicate_service import DuplicateGroup
+from seeker.ui import plain_text
 from seeker.ui.main_window import MainWindow
 from seeker.ui.notice import InlineNotice
 from seeker.ui.pages.dashboard_page import DashboardPage
@@ -267,6 +272,35 @@ def _select_duplicates_location(combo: QComboBox, name: str) -> bool:
     return False
 
 
+def _confirm_scratch_deletes_only(
+        scratch_dir: Path, answers: list[bool],
+) -> Callable[[QWidget | None, str, str], QMessageBox.StandardButton]:
+    """Stands in for Duplicates' delete confirmation, a modal that would
+    otherwise block the run: Yes only when every path it lists is inside
+    the scratch directory, so no file of the real library is deleted.
+    Each answer is appended to `answers` for the caller to assert on.
+    """
+    scratch = scratch_dir.resolve()
+
+    def answer(
+            _parent: QWidget | None, _title: str, body: str,
+    ) -> QMessageBox.StandardButton:
+        listed = [
+            Path(line.strip()).resolve()
+            for line in body.splitlines()
+            if line.startswith("  ")
+        ]
+        inside = bool(listed) and all(
+            path.is_relative_to(scratch) for path in listed
+        )
+        answers.append(inside)
+        if inside:
+            return QMessageBox.StandardButton.Yes
+        return QMessageBox.StandardButton.No
+
+    return answer
+
+
 def _create_stress_duplicate_location(application: Application) -> Path:
     """Registers a small, disposable library location with two
     byte-identical synthetic WAV files — real audio, decoded and
@@ -292,11 +326,12 @@ def _create_stress_duplicate_location(application: Application) -> Path:
 
     try:
         # Best-effort cleanup of a same-named location left behind by a
-        # crashed prior run — remove_location() is a silent no-op if
-        # none exists (see LibraryService.remove_location).
-        application.library_service.remove_location(
-            STRESS_DUPLICATES_LOCATION_NAME
-        )
+        # crashed prior run; remove_location() raises for a name that is
+        # not registered, the usual case.
+        with contextlib.suppress(LibraryLocationNotFoundError):
+            application.library_service.remove_location(
+                STRESS_DUPLICATES_LOCATION_NAME
+            )
 
         location = application.library_service.add_location(
             STRESS_DUPLICATES_LOCATION_NAME, str(scratch_dir),
@@ -333,6 +368,7 @@ def _cleanup_stress_duplicate_location(
 
 
 @requires_stress_opt_in
+@pytest.mark.usefixtures("allow_real_docker_inspect")
 def test_broad_end_to_end_stress(qapp):
     if not X9_PRO_ROOT.is_dir():
         pytest.skip("x9-pro drive not mounted")
@@ -561,6 +597,9 @@ def test_broad_end_to_end_stress(qapp):
             # get_status/is_self_managed/get_reconciliation/get_uploads
             # calls against the real production slskd, overlapping with
             # every other real worker traffic this loop already fires.
+            # is_self_managed and the mount read run the real `docker
+            # inspect` (allow_real_docker_inspect); conftest refuses any
+            # other docker command.
             # Deliberately READ-ONLY: unlike Duplicates' delete action
             # (exercised against a disposable synthetic scratch
             # location above), Sharing's write path
@@ -612,7 +651,20 @@ def test_broad_end_to_end_stress(qapp):
                 checkbox = actions.findChildren(QCheckBox)[0]
                 delete_button = actions.findChildren(QPushButton)[0]
                 checkbox.setChecked(True)
-                delete_button.click()
+                assert duplicates_scratch_dir is not None
+                answers: list[bool] = []
+                with pytest.MonkeyPatch.context() as patch:
+                    patch.setattr(
+                        plain_text, "question",
+                        _confirm_scratch_deletes_only(
+                            duplicates_scratch_dir, answers,
+                        ),
+                    )
+                    delete_button.click()
+                assert answers == [True], (
+                    "the delete confirmation listed a path outside the "
+                    f"stress scratch directory, or never opened: {answers}"
+                )
 
                 # `group` is safe to close over despite living in the
                 # outer while loop (B023, suppressed): _pump() blocks
@@ -647,9 +699,9 @@ def test_broad_end_to_end_stress(qapp):
                 new_needs_review = (
                     original_config.needs_review_threshold or 70.0
                 ) - 1.0
-                live_settings.auto_match_threshold_field.setText(str(new_auto))
-                live_settings.needs_review_threshold_field.setText(
-                    str(new_needs_review)
+                live_settings.auto_match_threshold_field.setValue(new_auto)
+                live_settings.needs_review_threshold_field.setValue(
+                    new_needs_review
                 )
                 live_settings.save_thresholds_button.click()
                 qapp.processEvents()

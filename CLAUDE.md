@@ -436,8 +436,10 @@ Code documents loading it when a session reads files in `ui/`
   `docker` spawn at `Popen` for the whole session (as a missing
   executable) and fails the test that tried, a leaked worker's too;
   fake `detect_docker_state`, `bring_up_slskd` or `subprocess.run`.
-  A run once recreated Kris's slskd container.
-  [§213](docs/history/211-240.md#213)
+  A run once recreated Kris's slskd container. The stress test alone
+  runs the read-only `docker inspect` (`allow_real_docker_inspect`);
+  anything else of docker's stays refused there too.
+  [§213](docs/history/211-240.md#213), [§243](docs/history/241-270.md#243)
 - **Skips:** `tests/test_stress_e2e.py` (`requires_stress_opt_in`) runs
   only with `SEEKER_RUN_STRESS_TEST=1`: it drives real Spotify, slskd and
   the X9 Pro for minutes and mutates the production DB. Run it

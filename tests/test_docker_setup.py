@@ -748,6 +748,32 @@ def test_the_suite_refuses_to_run_the_real_docker(tmp_path, _docker_attempts):
     _docker_attempts.clear()
 
 
+def test_the_inspect_opt_in_lets_through_docker_inspect_alone(
+        tmp_path, allow_real_docker_inspect, _docker_attempts,
+):
+    # A stand-in named `docker` that echoes its arguments, so the
+    # command reaching the real Popen proves the guard let it through
+    # without this test ever spawning the real docker.
+    docker = tmp_path / "docker"
+    docker.write_text('#!/bin/sh\necho "$@"\n')
+    docker.chmod(0o755)
+
+    inspected = subprocess.run(  # noqa: S603 — the stand-in above
+        [str(docker), "inspect", "slskd", "--format", "{{json .Mounts}}"],
+        capture_output=True, text=True, check=True,
+    )
+    assert inspected.stdout == "inspect slskd --format {{json .Mounts}}\n"
+    assert _docker_attempts == []
+
+    with pytest.raises(FileNotFoundError):
+        subprocess.run(  # noqa: S603 — the stand-in above
+            [str(docker), "compose", "up", "-d"], check=True,
+        )
+    assert _docker_attempts == [f"{docker} compose up -d"]
+    # Recorded and refused; cleared so this test alone passes.
+    _docker_attempts.clear()
+
+
 def _bring_up_with_fakes() -> None:
     bring_up_slskd(
         compose_file="docker-compose.yml",

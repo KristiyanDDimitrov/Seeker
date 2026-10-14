@@ -4,6 +4,7 @@ import os
 import shlex
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -108,8 +109,15 @@ class _RealDockerRefused(FileNotFoundError):
     fixture below fails the test."""
 
 
+@pytest.fixture(scope="session")
+def _docker_inspect_allowed():
+    """Set while a test that opted in through
+    `allow_real_docker_inspect` runs; read from any thread."""
+    return threading.Event()
+
+
 @pytest.fixture(autouse=True, scope="session")
-def _docker_attempts():
+def _docker_attempts(_docker_inspect_allowed):
     """Every `docker` command any test tries to run, refused.
 
     A test once reached the real `bring_up_slskd` and recreated the
@@ -118,6 +126,7 @@ def _docker_attempts():
     every other spawn, whatever the import path or thread, and stays in
     place for the whole session, so a worker outliving its test is
     refused too. A test that fakes `subprocess.run` never reaches it.
+    `docker inspect`, which only reads, runs for a test that opted in.
     """
     attempts: list[str] = []
     real_popen = subprocess.Popen
@@ -125,7 +134,14 @@ def _docker_attempts():
     class RefusingPopen(real_popen):
         def __init__(self, args, *pargs, **kwargs):
             argv = shlex.split(args) if isinstance(args, str) else list(args)
-            if argv and Path(os.fsdecode(argv[0])).name == "docker":
+            if (
+                    argv
+                    and Path(os.fsdecode(argv[0])).name == "docker"
+                    and not (
+                        _docker_inspect_allowed.is_set()
+                        and [os.fsdecode(part) for part in argv[1:2]] == ["inspect"]
+                    )
+            ):
                 command = " ".join(os.fsdecode(part) for part in argv)
                 attempts.append(command)
                 raise _RealDockerRefused(
@@ -136,6 +152,17 @@ def _docker_attempts():
     subprocess.Popen = RefusingPopen
     yield attempts
     subprocess.Popen = real_popen
+
+
+@pytest.fixture
+def allow_real_docker_inspect(_docker_inspect_allowed):
+    """Lets this test run the real `docker inspect`, and nothing else
+    of docker's, for a test that drives the real slskd on purpose (the
+    stress test's Sharing visits). A worker that outlives the test is
+    refused again."""
+    _docker_inspect_allowed.set()
+    yield
+    _docker_inspect_allowed.clear()
 
 
 @pytest.fixture(autouse=True)

@@ -337,3 +337,4 @@ under their entry and live in the same file, after it.
 
 - §241 — Round 12 S17o: closing the wizard or ⌘Q while slskd starts asks the shell's question (`window_lifecycle.ask_to_quit`), through `closeEvent` and the `QEvent.Quit` filter; asked once, never when idle; screenshots of the question in both themes → [241-270.md#241](241-270.md#241)
 - §242 — Round 12 S17g, Code's half: the second release candidate, untagged at `6f49319` (SHA-256 `b203e98d…`), RELEASING.md step 3 passed; its checksum check runs beside the image; ACCEPTANCE.md puts the six 2026-10-12 failures first → [241-270.md#242](241-270.md#242)
+- §243 — The stress test may run the read-only `docker inspect` (`allow_real_docker_inspect` in `conftest.py`); Sharing's visits had tested only the no-Docker fallback since §213's guard; 10 X9 Pro tests fail on moved sample files → [241-270.md#243](241-270.md#243)
