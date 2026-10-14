@@ -21,8 +21,8 @@ v0.1.0 release; its plan is `docs/rounds/round-12/SESSION-PLAN.md`.
   X9 Pro mounted; CI skips 29). `mypy --strict src/` clean, 146
   files; `ruff check src tests tools` 0; radon D 0.
 - **CI:** run `38570802975` green on `35f6ba7`, the release commit
-  (`2390 passed, 29 skipped`, coverage 94.68 %); the close-out's run
-  is recorded in its follow-up commit.
+  (`2390 passed, 29 skipped`, coverage 94.68 %); run `38573348542`
+  green on the close-out (`189a918`).
 
 ## 2. Where we are
 
