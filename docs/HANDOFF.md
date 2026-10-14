@@ -11,44 +11,43 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17m–S17o's close-out (HISTORY §239–§241). Tree clean.
+- **HEAD:** S17g's close-out (HISTORY §242). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
-  `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
-  (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
-  rebuilds it.
-- **Local (Cocoa):** pytest `2417 passed, 1 skipped`, 0 failed (+12 on
-  S17l's 2405; the X9 Pro mounted, so its 28 ran; CI skips 29).
+  `6f49319`, 111,784,988 bytes, SHA-256
+  `b203e98dd9764b3d27ddbb0a5707148fb555ed28bbe1db4e2a215871febeda07`
+  (`dist/Seeker.dmg.sha256`, `shasum -c` OK beside it). It carries
+  every S17a–S17o fix; the commits after it touch only docs.
+- **Local (Cocoa):** pytest `2417 passed, 1 skipped`, 0 failed
+  (unchanged; the X9 Pro mounted, so its 28 ran; CI skips 29).
   `mypy --strict src/` clean, 146 files; `ruff check src tests tools` 0.
-- **CI:** run `38548411296` green (`b36c479`, audit and check); it covers every S17m–S17o commit and the close-out.
+- **CI:** run `38549671669` green on `6f49319`, the candidate's commit;
+  the close-out's run is in the handoff commit.
 
 ## 2. Where we are
 
-**S17m, S17n and S17o are done** (§239–§241), in one session at
-Kris's request, with one full test run and one CI push at the end
-(not per row). **Next: S17g**, the new candidate from this tree.
+**S17g, Code's half, is done** (§242): the second candidate, built and
+checked without launching it. **Next: Kris** re-runs the six
+2026-10-12 failures on it, at the top of
+`docs/rounds/round-12/ACCEPTANCE.md`, then the rest of that file. A
+failure there becomes a fix row; otherwise **S18**.
 
-## 3. Session report (S17m–S17o)
+## 3. Session report (S17g)
 
-Evidence in HISTORY §239–§241. Each behaviour commit's tests failed
-first on its parent, quoted there.
-- `034389a` S17m.1: a failed upgrade Replace shows on Review.
-- `4adbd60` S17m.2: Replace all and Resolve all are busy actions
-  their render alone enables (a render mid-batch re-enabled them: a
-  second click re-ran the batch); Resolve all on no groups opens no
-  dialog. `85d3b7a` renames the shared failure handler.
-- `3c26c08` S17n: `SettingsPage` takes `MainWindow.thread_pool`.
-- `3c763d4` refactor: `window_lifecycle.ask_to_quit`.
-- `19e0495` S17o: the wizard asks on close and on ⌘Q (`QEvent.Quit`
-  filter) while slskd starts, once.
-- Skills: `tdd` was not invoked as a skill; its red-green order was
-  followed by hand. No `self-eval`.
+Evidence in HISTORY §242.
+- The three checks, then `packaging/build_dmg.py` at `6f49319`
+  (~48 s), then RELEASING.md step 3 as written: all expected.
+- `92e7d1c`: RELEASING.md's `shasum -c` ran from the repository root,
+  where the bare name in the `.sha256` file does not resolve
+  (`FAILED open or read`); it now runs inside `dist/`.
+- ACCEPTANCE.md: the new candidate, the first one's checks kept under
+  their own heading, the six failures first with their rows and
+  HISTORY entries.
+- Skills: none loaded (`changelog-generator`, `runbook-generator`,
+  `ship-gate` are named for S16–S18; RELEASING.md is the runbook and
+  the checklist the gate, as in §222). No `self-eval`.
 
-## 4. Key context for whoever runs S17g or S18
+## 4. Key context for whoever runs S18 or a fix row
 
-- **S17g:** RELEASING.md's build steps on the current HEAD, untagged
-  (as `e10aa87` was); record the new SHA-256 in
-  `dist/Seeker.dmg.sha256` and ACCEPTANCE.md, then hand Kris the six
-  failed checks first. Never launch the built app.
 - **Review's bulk actions** all take the rows on screen and refuse a
   row that changed since (§76, §88, §235, §236). A new one follows
   `_render_confirm_all_button` and a busy key in
@@ -80,21 +79,18 @@ first on its parent, quoted there.
 - **Timing at scale without touching real data:** copy the DB with
   `sqlite3 -readonly … ".backup '<scratchpad>/seeker.db'"` and run
   the service against the copy with the X9 Pro mounted (§224).
-- **`dist/Seeker.dmg` was rebuilt 2026-10-12 12:10** and no longer
-  matches `dist/Seeker.dmg.sha256` (`b373f7ae…`, the candidate's).
-  S17g rebuilds it from the fixed tree anyway.
 - **The checklist is `ACCEPTANCE.md`;** results go in its Results
-  section. Install the candidate into `/Applications` first (no other
-  copy exists); its first launch runs the `last_searched_at`
-  migration.
+  section. A fix row after a failure means a third candidate: rebuild
+  as §242 did (untagged) and update the candidate table.
 - **`tools/window_checks.py` has never run against Seeker** (only its
   queries, against Finder). A bug in it is a tool fix, not an app
   failure.
 - **The sweep check has no scratch-config route:** enable it and wait
   a day (§222 explains why not `HOME`).
 - **S18:** RELEASING.md from step 1 on the release commit: date the
-  changelog's `[0.1.0]`, tag locally, rebuild (the checksum changes),
-  then show Kris the push and `gh release create` commands.
+  changelog's `[0.1.0]` (and decide whether S17f's "Confirm all" gets
+  a line), tag locally, rebuild (the checksum changes), then show Kris
+  the push and `gh release create` commands.
 - Never touch slskd or real data, and never launch the built app.
 
 ## 5. Decisions made
@@ -109,24 +105,22 @@ first on its parent, quoted there.
 
 ## 6. Blockers
 
-None for S17g. S18 waits on S17g's re-run.
+S18 waits on Kris's re-run of the six failures and the rest of
+ACCEPTANCE.md.
 
 ## 7. Files in progress
 
-None uncommitted. S17m–S17o done.
+None uncommitted. S17g's Code half done.
 
 ## 8. Waiting on Kris
 
-For the S17x rows (SESSION-PLAN → "Waiting on Kris" → "Acceptance
-failures"): the veto on Confirm all per section (S17f; both buttons
-and their questions are in Review's screenshots); live
-fullscreen checks (S17d on the S17g build: Dashboard, Library,
-Duplicates, fullscreen and back; if the tray menu closes again
-there, §237 says how to bring the trace back); on the S17g build, quit while
-Compute fingerprints runs and confirm the app exits within seconds.
-After S17g, the rest of `docs/rounds/round-12/ACCEPTANCE.md`: the
-fresh account, the live Retry/Cancel/Clean up, start at login again,
-the sweep, the window paths, the Fix…, the stress test, and the vetoes
+`docs/rounds/round-12/ACCEPTANCE.md`, from the top: the six
+2026-10-12 failures on the `6f49319` candidate (Scan's next step,
+Find duplicates to the end, quit during fingerprints and duplicates,
+fullscreen and back, the tray menu in fullscreen, Confirm all), with
+the S17c and S17f vetoes beside them. Then the rest: the fresh
+account, the live Retry/Cancel/Clean up, start at login again, the
+sweep, the window paths, the Fix…, the stress test, and the vetoes
 (S5, the wordmark, S15's wordings, S8's peer filenames, the wizard's
 share checkbox). Then S18's outward commands.
 

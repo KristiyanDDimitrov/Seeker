@@ -75,7 +75,7 @@ after Kris's explicit yes.
 | ☑ S17m | Review's upgrade Replace reports its failure; Replace all and Resolve all keep their render-decided enabled state — §239 (a render mid-batch re-enabled both, so a second click re-ran the batch: now busy actions; Resolve all on no groups opens no dialog) | §17m | ~60 K | — |
 | ☑ S17n | Settings' tasks on `MainWindow.thread_pool` (the wizard keeps its own: no shell exists yet) — §240 (`idealThreadCount()` 14, measured against the long task kinds) | §17n | ~90 K | — |
 | ☑ S17o | The wizard asks before quitting a slskd bring-up — §241 (`window_lifecycle.ask_to_quit`, the close and the `QEvent.Quit` filter, asked once) | §17o | ~60 K | — |
-| ☐ S17g | A new candidate from the fixed tree; Kris re-runs the six failed checks, then the rest of ACCEPTANCE.md | §17 | ~50 K | — |
+| ☐ S17g | A new candidate from the fixed tree; Kris re-runs the six failed checks, then the rest of ACCEPTANCE.md — Code's half §242 (`6f49319`, untagged, SHA-256 `b203e98d…`); Kris's half open | §17 | ~50 K | — |
 | ☐ S18 | Publish v0.1.0 (Kris approves the outward actions); close rounds 11 and 12 | §18 | ~60 K | — |
 
 ### Why this order

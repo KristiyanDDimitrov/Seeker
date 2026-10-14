@@ -6,14 +6,60 @@ a failure becomes a fix row before S18 (never shipped around).
 
 ## The candidate
 
+The second candidate (S17g, HISTORY §242), built from the fixed tree
+after S17a–S17o. The first, `e10aa87` (SHA-256 `b373f7ae…`), is
+superseded: the 2026-10-12 run's six failures are fixed in this one.
+
 | | |
 |---|---|
-| Commit | `e10aa87` (untagged by decision, 2026-10-11; S18 tags and rebuilds) |
-| Disk image | `dist/Seeker.dmg`, 111,772,916 bytes |
-| SHA-256 | `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e` |
-| Help → Build should read | `e10aa87 — built` and 2026-10-11, about 20:56 local (17:56 UTC) |
+| Commit | `6f49319` (untagged by decision, 2026-10-11; S18 tags and rebuilds) |
+| Disk image | `dist/Seeker.dmg`, 111,784,988 bytes |
+| SHA-256 | `b203e98dd9764b3d27ddbb0a5707148fb555ed28bbe1db4e2a215871febeda07` |
+| Help → Build should read | `6f49319 — built` and 2026-10-14, about 13:52 local (10:52 UTC) |
 
-## Code checked (2026-10-11, without launching the app)
+## Code checked (2026-10-14, without launching the app)
+
+- [x] RELEASING.md steps 1 and 3 on `6f49319`: CI green on it (run
+      `38549671669`); `2417 passed, 1 skipped`, `mypy --strict` clean,
+      `ruff` 0; `Identifier=io.github.kristiyanddimitrov.seeker`,
+      `Signature=adhoc`; `codesign --verify --deep --strict` ok; `spctl`
+      rejects (expected); version `0.1.0` twice; build identity
+      `6f49319`, not `-dirty`; tree clean after the build; `shasum -c`
+      OK (beside the image).
+- [x] The bundle carries `libqsvg`/`libqsvgicon`, the Barlow fonts and
+      42 licence folders.
+
+## Kris: the six failures first (2026-10-12's run, on this candidate)
+
+They failed in the test account; re-run them there, or on your own
+account with the candidate installed into `/Applications` from the
+DMG (no other copy exists; its first launch runs the
+`tracks.last_searched_at` migration). Each line names the fix row and
+its HISTORY entry.
+
+- [ ] **S17a:** "Scan library", and while it runs the Dashboard's next
+      step shows no "missing" count; the real count once the scan and
+      match finish (§223).
+- [ ] **S17b:** Find duplicates over the ~3,611 fingerprints runs past
+      3589 to the end, reporting its last stage (§224: 582 s → 4.7 s
+      measured on a copy).
+- [ ] **S17c (and S17h–S17k):** quit while Compute fingerprints runs,
+      and while Find duplicates runs: the app exits within seconds, no
+      beach ball (§226, §233). Veto, or let stand, "quitting stops a
+      running scan, fingerprint run or duplicate search; what finished
+      stays".
+- [ ] **S17d, S17k:** fullscreen and back on Dashboard, Library and
+      Duplicates: no slow, jerky resize, no overlapping tables (§225,
+      §234).
+- [ ] **S17e:** in fullscreen, open the tray menu: it stays open. If it
+      closes, §237 says how to bring the trace back.
+- [ ] **S17f:** Review → "Confirm all" in each section, with its
+      question (§235, §236). Veto, or let stand, one button per
+      section.
+
+Then the rest below, as before.
+
+## Code checked on the first candidate (`e10aa87`, 2026-10-11)
 
 - [x] RELEASING.md step 3: `Identifier=io.github.kristiyanddimitrov.seeker`,
       `Signature=adhoc`; `codesign --verify --deep --strict` ok; `spctl`
@@ -46,9 +92,8 @@ Docker Desktop in the other account may hold ports 5030/5031/50300
 
 ## Kris, on your own account
 
-Install the candidate into `/Applications` from the DMG (no other
-copy exists). The first launch runs the `tracks.last_searched_at`
-migration.
+Install the candidate into `/Applications` from the DMG, unless the
+six failures above already did.
 
 **The app**
 - [ ] Help → Build reads the line above.
