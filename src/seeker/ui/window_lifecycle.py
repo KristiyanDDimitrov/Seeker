@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QByteArray, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QCloseEvent
-from PySide6.QtWidgets import QMainWindow, QMessageBox
+from PySide6.QtWidgets import QMainWindow, QMessageBox, QWidget
 
 from seeker.application import Application
 from seeker.models.download_request import DownloadStatus
@@ -33,6 +33,55 @@ logger = logging.getLogger(__name__)
 # stopped task ends after its current file: one fingerprint took at
 # most 2.7 s over 50 real files, the largest included (HISTORY §226).
 QUIT_WAIT_MS = 5000
+
+
+def ask_to_quit(parent: QWidget, count: int, starting_slskd: bool) -> bool:
+    """Asks whether to quit while `count` downloads run or slskd is
+    starting; True to quit. The shell and the wizard ask the same."""
+    # Quitting stops Seeker's own reconciliation, not the transfer
+    # itself (HISTORY §123) — slskd keeps the download running in
+    # its own container regardless. Nothing is ever lost, so the
+    # word "lose" does not belong here.
+    #
+    # A bring-up is never stopped: killing Compose mid-recreate
+    # risks a half-made container, so the quit waits for it, up to
+    # its 120 s timeout (HISTORY §232).
+    noun = "download" if count == 1 else "downloads"
+    downloads = f"{count} {noun} still in progress"
+    if count and starting_slskd:
+        text = f"{downloads}, and slskd is still starting."
+    elif count:
+        text = f"{downloads}."
+    else:
+        text = "slskd is still starting."
+    details = []
+    if count:
+        details.append(
+            "Seeker hands transfers to SoulSeek, which keeps running "
+            "after you quit — but Seeker won't file the finished "
+            "tracks into your library until you open it again."
+        )
+    if starting_slskd:
+        details.append(
+            "Seeker lets Docker finish starting slskd before it "
+            "closes, which can take up to two minutes: stopping "
+            "part-way could leave slskd's container half made."
+        )
+    box = QMessageBox(parent)
+    box.setIcon(QMessageBox.Icon.Question)
+    box.setWindowTitle("Quit Seeker?")
+    box.setTextFormat(Qt.TextFormat.PlainText)
+    box.setText(text)
+    box.setInformativeText("\n\n".join(details))
+    quit_button = box.addButton(
+        "Quit Anyway", QMessageBox.ButtonRole.DestructiveRole,
+    )
+    keep_open_button = box.addButton(
+        "Keep Seeker Open", QMessageBox.ButtonRole.RejectRole,
+    )
+    box.setDefaultButton(keep_open_button)
+    box.exec()
+    return box.clickedButton() is quit_button
 
 
 @dataclass(frozen=True)
@@ -191,55 +240,7 @@ class WindowLifecycleController:
         starting_slskd = self._host.application.is_starting_slskd()
         if count == 0 and not starting_slskd:
             return True
-        return self._show_quit_confirmation(count, starting_slskd)
-
-    def _show_quit_confirmation(
-            self, count: int, starting_slskd: bool,
-    ) -> bool:
-        # Quitting stops Seeker's own reconciliation, not the transfer
-        # itself (HISTORY §123) — slskd keeps the download running in
-        # its own container regardless. Nothing is ever lost, so the
-        # word "lose" does not belong here.
-        #
-        # A bring-up is never stopped: killing Compose mid-recreate
-        # risks a half-made container, so the quit waits for it, up to
-        # its 120 s timeout (HISTORY §232).
-        noun = "download" if count == 1 else "downloads"
-        downloads = f"{count} {noun} still in progress"
-        if count and starting_slskd:
-            text = f"{downloads}, and slskd is still starting."
-        elif count:
-            text = f"{downloads}."
-        else:
-            text = "slskd is still starting."
-        details = []
-        if count:
-            details.append(
-                "Seeker hands transfers to SoulSeek, which keeps running "
-                "after you quit — but Seeker won't file the finished "
-                "tracks into your library until you open it again."
-            )
-        if starting_slskd:
-            details.append(
-                "Seeker lets Docker finish starting slskd before it "
-                "closes, which can take up to two minutes: stopping "
-                "part-way could leave slskd's container half made."
-            )
-        box = QMessageBox(self._host.window)
-        box.setIcon(QMessageBox.Icon.Question)
-        box.setWindowTitle("Quit Seeker?")
-        box.setTextFormat(Qt.TextFormat.PlainText)
-        box.setText(text)
-        box.setInformativeText("\n\n".join(details))
-        quit_button = box.addButton(
-            "Quit Anyway", QMessageBox.ButtonRole.DestructiveRole,
-        )
-        keep_open_button = box.addButton(
-            "Keep Seeker Open", QMessageBox.ButtonRole.RejectRole,
-        )
-        box.setDefaultButton(keep_open_button)
-        box.exec()
-        return box.clickedButton() is quit_button
+        return ask_to_quit(self._host.window, count, starting_slskd)
 
     def cleanup_before_quit(self) -> None:
         # The one real cleanup path for every quit route (tray Quit,
