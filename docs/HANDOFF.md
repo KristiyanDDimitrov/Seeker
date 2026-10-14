@@ -19,7 +19,7 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2405 passed, 1 skipped`, 0 failed (+9 on
   S17e's 2396; the X9 Pro mounted, so its 28 ran; CI skips 29).
   `mypy --strict src/` clean, 146 files; `ruff check src tests tools` 0.
-- **CI:** see §7 for the push's run.
+- **CI:** run `38542313378` green (`a7c93e9`, audit and check); it covers `1989d1a`, `eb47120`, `5bbf8a0` and the close-out.
 
 ## 2. Where we are
 
@@ -115,7 +115,7 @@ None for S17m. S17g waits on S17m–S17o; S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. S17l done. CI: PUSH_PENDING
+None uncommitted. S17l done.
 
 ## 8. Waiting on Kris
 
