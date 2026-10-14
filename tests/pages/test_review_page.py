@@ -479,6 +479,62 @@ def test_replace_all_upgrades_cancelled_dialog_calls_nothing(
     assert application.review_service.apply_upgrade_decisions_batch_calls == []
 
 
+def _accept_replace_all(monkeypatch) -> None:
+    monkeypatch.setattr(
+        BulkReplaceUpgradesDialog, "exec",
+        lambda self: QDialog.DialogCode.Accepted,
+    )
+    monkeypatch.setattr(plain_text, "information", lambda *a, **k: None)
+
+
+def test_replace_all_upgrades_stays_disabled_while_it_runs(qtbot, monkeypatch):
+    _accept_replace_all(monkeypatch)
+    details = [make_upgrade_details(request_id=1)]
+    application = FakeApplication()
+    application.review_service._pending_upgrades = details
+    gate = threading.Event()
+    application.review_service.decision_gate = gate
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    page._render_pending_upgrades(details)
+
+    try:
+        page.replace_all_upgrades_button.click()
+        qtbot.waitUntil(
+            lambda: application.review_service
+            .apply_upgrade_decisions_batch_calls != [],
+        )
+        # The poll renders the same rows again while the batch runs.
+        page._render_pending_upgrades(details)
+
+        assert not page.replace_all_upgrades_button.isEnabled()
+    finally:
+        gate.set()
+
+    qtbot.waitUntil(page.replace_all_upgrades_button.isEnabled)
+
+
+def test_a_failed_replace_all_shows_its_error_and_offers_the_rows_again(
+        qtbot, monkeypatch,
+):
+    _accept_replace_all(monkeypatch)
+    details = [make_upgrade_details(request_id=1)]
+    error = PermissionError(13, "Permission denied", "/music/new.flac")
+    application = FakeApplication()
+    application.review_service._pending_upgrades = details
+    application.review_service.apply_upgrade_decisions_batch_error = error
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    page._render_pending_upgrades(details)
+
+    page.replace_all_upgrades_button.click()
+
+    qtbot.waitUntil(lambda: page.notice.text() == describe_error(error))
+    qtbot.waitUntil(page.replace_all_upgrades_button.isEnabled)
+
+
 def test_replace_all_upgrades_result_shown_in_message_box(qtbot, monkeypatch):
     from seeker.soulseek.review_service import BulkUpgradeReplaceResult
 

@@ -33,6 +33,7 @@ from fakes import (
     make_duplicate_group,
     wait_for_workers,
 )
+from seeker.error_text import describe_error
 from seeker.models.fingerprint_result import FingerprintResult
 from seeker.models.library_location import LibraryLocation
 from seeker.models.local_file import LocalFile
@@ -694,6 +695,90 @@ def test_resolve_all_duplicates_unconfirmed_checkbox_calls_nothing(
     wait_for_workers(window)
 
     assert application.duplicate_service.resolve_groups_calls == []
+
+
+def _accept_resolve_all(monkeypatch) -> None:
+    def fake_exec(self):
+        self.confirm_checkbox.setChecked(True)
+        return QDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(BulkResolveDuplicatesDialog, "exec", fake_exec)
+    monkeypatch.setattr(plain_text, "information", lambda *a, **k: None)
+
+
+def test_resolve_all_duplicates_stays_disabled_while_it_runs(
+        qtbot, monkeypatch,
+):
+    _accept_resolve_all(monkeypatch)
+    from seeker.library.duplicate_service import BulkDuplicateResolutionResult
+
+    group = make_duplicate_group()
+    application = FakeApplication()
+    application.duplicate_service.resolve_groups_result = (
+        BulkDuplicateResolutionResult(
+            groups_resolved=0, groups_failed=1, files_deleted=0,
+            files_failed=1, files_skipped_same_physical_file=0,
+            bytes_freed=0, details=["Group failed."], plan_outcomes=[False],
+        )
+    )
+    gate = threading.Event()
+    application.duplicate_service.resolve_gate = gate
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._duplicates_page
+    page._render_duplicate_groups([group])
+
+    try:
+        page.resolve_all_duplicates_button.click()
+        qtbot.waitUntil(
+            lambda: application.duplicate_service.resolve_groups_calls != [],
+        )
+        # Another group's Delete finishing renders the groups again.
+        page._render_duplicate_groups([group])
+
+        assert not page.resolve_all_duplicates_button.isEnabled()
+    finally:
+        gate.set()
+
+    # The group failed, so it stays and the button offers it again.
+    qtbot.waitUntil(page.resolve_all_duplicates_button.isEnabled)
+
+
+def test_resolve_all_duplicates_on_no_groups_opens_no_dialog(
+        qtbot, monkeypatch,
+):
+    opened: list[BulkResolveDuplicatesDialog] = []
+    monkeypatch.setattr(
+        BulkResolveDuplicatesDialog, "exec",
+        lambda self: opened.append(self) or QDialog.DialogCode.Rejected,
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._duplicates_page
+    page._render_duplicate_groups([])
+
+    page._on_resolve_all_duplicates_clicked()
+
+    assert opened == []
+
+
+def test_a_failed_resolve_all_shows_its_error_and_offers_the_groups_again(
+        qtbot, monkeypatch,
+):
+    _accept_resolve_all(monkeypatch)
+    error = PermissionError(13, "Permission denied", "/music/a.flac")
+    application = FakeApplication()
+    application.duplicate_service.resolve_groups_error = error
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._duplicates_page
+    page._render_duplicate_groups([make_duplicate_group()])
+
+    page.resolve_all_duplicates_button.click()
+
+    qtbot.waitUntil(lambda: page.notice.text() == describe_error(error))
+    qtbot.waitUntil(page.resolve_all_duplicates_button.isEnabled)
 
 
 def test_resolve_all_duplicates_drops_only_succeeded_groups_locally(

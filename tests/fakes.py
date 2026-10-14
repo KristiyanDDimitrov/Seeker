@@ -284,6 +284,10 @@ class FakeDuplicateService:
             files_failed=0, files_skipped_same_physical_file=0,
             bytes_freed=0, details=[], plan_outcomes=[],
         )
+        # When set, resolve_groups() holds the worker until the test
+        # sets it, after recording the call.
+        self.resolve_gate: threading.Event | None = None
+        self.resolve_groups_error: Exception | None = None
 
     def compute_fingerprints(
             self,
@@ -372,6 +376,10 @@ class FakeDuplicateService:
 
     def resolve_groups(self, plans: list, stop=None):
         self.resolve_groups_calls.append(list(plans))
+        if self.resolve_gate is not None:
+            self.resolve_gate.wait(timeout=5)
+        if self.resolve_groups_error is not None:
+            raise self.resolve_groups_error
         return self.resolve_groups_result
 
 
@@ -513,6 +521,7 @@ class FakeReviewService:
         self.apply_upgrade_decisions_batch_result = BulkUpgradeReplaceResult(
             replaced=0, failed=0, details=[],
         )
+        self.apply_upgrade_decisions_batch_error: Exception | None = None
 
     def get_review_candidates(self) -> list:
         return self._review_candidates
@@ -567,6 +576,9 @@ class FakeReviewService:
         self.apply_upgrade_decisions_batch_calls.append(
                 (request_ids, delete_old)
         )
+        self._hold_decision()
+        if self.apply_upgrade_decisions_batch_error is not None:
+            raise self.apply_upgrade_decisions_batch_error
         return self.apply_upgrade_decisions_batch_result
 
 

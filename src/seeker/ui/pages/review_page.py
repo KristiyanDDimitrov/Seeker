@@ -93,11 +93,12 @@ _REVIEW_LOCAL_COLUMNS = theme.ColumnLayout(
 # table at all.
 _REVIEW_SECTION_MIN_HEIGHT = 140
 
-# The busy actions the sections' "Confirm all" buttons run under: the
-# activity strip shows each, and its section's render keeps the button
-# disabled while it runs.
+# The busy actions the sections' bulk buttons run under: the activity
+# strip shows each, and its section's render keeps the button disabled
+# while it runs.
 CONFIRM_ALL_CANDIDATES_KEY = "confirm_all_candidates"
 CONFIRM_ALL_MATCHES_KEY = "confirm_all_matches"
+REPLACE_ALL_UPGRADES_KEY = "replace_all_upgrades"
 
 _NEEDS_TITLE = "SoulSeek candidates to confirm"
 _UPGRADES_TITLE = "Downloaded upgrades to review"
@@ -613,10 +614,7 @@ class ReviewPage(QWidget):
         if self._context.is_hidden_to_tray():
             return
 
-        self.replace_all_upgrades_button.setEnabled(len(upgrades) > 0)
-        self.replace_all_upgrades_button.setText(
-            f"Replace all ({len(upgrades)})" if upgrades else "Replace all"
-        )
+        self._render_replace_all_button(len(upgrades))
 
         # Prune keys for rows that no longer exist, so this can't grow
         # unbounded across a long session (HISTORY §86).
@@ -765,6 +763,18 @@ class ReviewPage(QWidget):
 
         self.poll_review_items()
 
+    def _render_replace_all_button(self, count: int) -> None:
+        # The render alone owns this button's enabled state, as
+        # _render_confirm_all_button's does (HISTORY §145).
+        button = self.replace_all_upgrades_button
+        button.setText(f"Replace all ({count})" if count else "Replace all")
+        button.setEnabled(
+            count > 0
+            and not self._context.busy_actions.is_running(
+                REPLACE_ALL_UPGRADES_KEY,
+            ),
+        )
+
     def _on_replace_all_upgrades_clicked(self) -> None:
         # Built fresh from what's actually on screen right now, never a
         # stale plan from an earlier click (HISTORY §76, §88).
@@ -781,16 +791,14 @@ class ReviewPage(QWidget):
         delete_old = dialog.delete_old_checkbox.isChecked()
         request_ids = [details.request_id for details in upgrades]
 
-        run_worker(
-            self._context.thread_pool,
+        self.replace_all_upgrades_button.setEnabled(False)
+        self._context.run_busy_worker(
+            REPLACE_ALL_UPGRADES_KEY, None,
             lambda: self._context.application.review_service
             .apply_upgrade_decisions_batch(
                 request_ids, delete_old, stop=self._context.quitting,
             ),
-            button=self.replace_all_upgrades_button,
-            on_error=lambda message: self.notice.show_message(
-                message, kind="error",
-            ),
+            on_error=self._on_confirm_all_failed,
             on_finished=self._on_bulk_replace_upgrades_finished,
         )
 

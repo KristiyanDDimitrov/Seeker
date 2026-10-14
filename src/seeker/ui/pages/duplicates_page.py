@@ -54,6 +54,10 @@ from seeker.ui.workers import run_worker
 # comparison against a real -1 constant (HISTORY §56).
 KEEP_ALL_DUPLICATES_ID = 0
 
+# The busy action "Resolve all groups" runs under: the activity strip
+# shows it, and the render keeps the button disabled while it runs.
+RESOLVE_ALL_DUPLICATES_KEY = "resolve_all_duplicates"
+
 
 def _group_key(group: DuplicateGroup) -> frozenset[int]:
     """A group's member file ids: it has no id of its own, and a
@@ -702,11 +706,7 @@ class DuplicatesPage(QWidget):
             if key in live_group_keys
         }
 
-        self.resolve_all_duplicates_button.setEnabled(len(groups) > 0)
-        self.resolve_all_duplicates_button.setText(
-            f"Resolve all groups ({len(groups)})" if groups
-            else "Resolve all groups"
-        )
+        self._render_resolve_all_button(len(groups))
 
         if not groups:
             self.duplicates_table.setRowCount(0)
@@ -1217,11 +1217,29 @@ class DuplicatesPage(QWidget):
 
         return plan, keep_path, delete_paths
 
+    def _render_resolve_all_button(self, count: int) -> None:
+        # The render alone owns this button's enabled state; one a
+        # finish re-enabled would offer groups a render may already
+        # have dropped (HISTORY §145).
+        button = self.resolve_all_duplicates_button
+        button.setText(
+            f"Resolve all groups ({count})" if count else "Resolve all groups"
+        )
+        button.setEnabled(
+            count > 0
+            and not self._context.busy_actions.is_running(
+                RESOLVE_ALL_DUPLICATES_KEY,
+            ),
+        )
+
     def _on_resolve_all_duplicates_clicked(self) -> None:
         # Built fresh from what's actually on screen right now (the
         # current groups AND the current keep selections), never a
         # stale plan from an earlier click (HISTORY §76, §88).
         groups = self._current_duplicate_groups
+
+        if not groups:
+            return
 
         plans_with_labels: list[
                 tuple[GroupResolutionPlan, str, list[str]]
@@ -1257,18 +1275,22 @@ class DuplicatesPage(QWidget):
 
         plans = [plan for plan, _, _ in plans_with_labels]
 
-        run_worker(
-            self._context.thread_pool,
+        self.resolve_all_duplicates_button.setEnabled(False)
+        self._context.run_busy_worker(
+            RESOLVE_ALL_DUPLICATES_KEY, None,
             lambda: self._context.application.duplicate_service.resolve_groups(
                 plans, stop=self._context.quitting,
             ),
-            button=self.resolve_all_duplicates_button,
             status_label=self.duplicates_status_label,
             on_finished=lambda result: self._on_bulk_resolve_duplicates_finished(
                 result, resolved_groups,
             ),
-            on_error=self.feedback.show_error,
+            on_error=self._on_bulk_resolve_duplicates_failed,
         )
+
+    def _on_bulk_resolve_duplicates_failed(self, message: str) -> None:
+        self.feedback.show_error(message)
+        self._render_resolve_all_button(len(self._current_duplicate_groups))
 
     def _on_bulk_resolve_duplicates_finished(
             self,
