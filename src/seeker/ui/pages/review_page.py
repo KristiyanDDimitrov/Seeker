@@ -798,7 +798,7 @@ class ReviewPage(QWidget):
             .apply_upgrade_decisions_batch(
                 request_ids, delete_old, stop=self._context.quitting,
             ),
-            on_error=self._on_confirm_all_failed,
+            on_error=self._on_bulk_action_failed,
             on_finished=self._on_bulk_replace_upgrades_finished,
         )
 
@@ -979,7 +979,7 @@ class ReviewPage(QWidget):
             lambda: self._context.application.library_service
             .confirm_matches(matches, stop=self._context.quitting),
             on_finished=self._on_confirm_all_matches_finished,
-            on_error=self._on_confirm_all_failed,
+            on_error=self._on_bulk_action_failed,
         )
 
     def _on_confirm_all_matches_finished(
@@ -1015,7 +1015,7 @@ class ReviewPage(QWidget):
                 candidates, stop=self._context.quitting,
             ),
             on_finished=self._on_confirm_all_candidates_finished,
-            on_error=self._on_confirm_all_failed,
+            on_error=self._on_bulk_action_failed,
         )
 
     def _on_confirm_all_candidates_finished(
@@ -1027,7 +1027,7 @@ class ReviewPage(QWidget):
         )
         self.poll_review_items()
 
-    def _on_confirm_all_failed(self, message: str) -> None:
+    def _on_bulk_action_failed(self, message: str) -> None:
         self.notice.show_message(message, kind="error")
         self.poll_review_items()
 
