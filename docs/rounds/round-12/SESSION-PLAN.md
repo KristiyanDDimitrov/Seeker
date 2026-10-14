@@ -64,7 +64,7 @@ after Kris's explicit yes.
 | ☑ S17b | Find duplicates: the "freeze" at 3589/3611 is the throttle's last report before a silent quality stage; report it, make it cheap — §224 (582 s → 4.7 s; item 4 not needed) | §17b | ~100 K | After §17b.2 (the stage reports progress) |
 | ☑ S17c | Quit never hangs on a running task (item 125): a stop signal for long work, a bounded wait — §226 (the sample: `~QThreadPool` waiting on a fingerprint; fingerprints and duplicate search stop on quit, a 5 s bounded wait; scan and tagging still take no stop) | §17c | ~110 K | After §17c.1 for duplicates and fingerprints |
 | ☑ S17d | Fullscreen and back: a resize refits columns from cached measures, not per-row work; measured before and after — §225 (fit per storm 1.9 s → 0.4 ms; §17d.2 not needed) | §17d | ~110 K | After §17d.1 with the storm's numbers |
-| ☐ S17e | The tray menu closing at once in fullscreen: log what runs, fix ours or document AppKit's (Kris reproduces) | §17e | ~70 K | After §17e.1 (the logging, Kris's run) |
+| ☑ S17e | The tray menu closing at once in fullscreen: log what runs, fix ours or document AppKit's (Kris reproduces) — §237: not reproduced on the current tree (the 2 s render ruled out), the trace reverted, counted done by Kris | §17e | ~70 K | After §17e.1 (the logging, Kris's run) |
 | ☑ S17f | Review: "Confirm all" per section, with a confirmation — part one §235 (local matches, stopped at the split point); part two §236 (the SoulSeek candidates section; an slskd outage ends the batch) | §17f | ~100 K | After the local matches section |
 | ☑ S17h | A finish handler survives a deleted button: the four `QPushButton already deleted` crashes skip `on_finished`; then the `button=` call site (added 2026-10-12, Kris: "anything that can make the app freeze") — part one §227 (§17h.1 done, stopped at the split point; the call sites listed there); part two §228 (the eight per-row buttons on `RunningRows`, a sweep) | §17h | ~80 K | After §17h.1 (the handler) |
 | ☑ S17i | Quit stops the network waits: the playlist download between tracks, a search's 45 s wait, Spotify's rate-limit and login waits and sync, Sharing's share-ready poll; slskd's bring-up measured — part one §229 (§17i.1–2, stopped at the split point; manual search and Retry join part two); part two's first slice §230 (manual search and Retry; stopped on budget, §17i.3–5 open); second slice §231 (§17i.3–4; stopped on budget, §17i.5 open, its evidence recorded); part three §232 (§17i.5: the bring-up is waited for, logged, and named in the quit confirmation) | §17i | ~120 K | After §17i.2 (playlist download and search wait) |
@@ -199,8 +199,9 @@ BRIEF §0.11.
       fingerprint run or duplicate search; what finished stays".
 - [ ] **S17d:** fullscreen and back on the packaged build, once the
       fix is in.
-- [ ] **S17e:** reproduce the vanishing tray menu once in a dev run
-      with the debug logging on.
+- [x] **S17e:** reproduce the vanishing tray menu once in a dev run
+      with the debug logging on. Done 2026-10-14: not reproduced
+      (HISTORY §237).
 - [ ] **S17f:** veto, or let stand, "Confirm all" as one button per
       Review section.
 

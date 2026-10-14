@@ -11,45 +11,40 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17f part two's close-out (HISTORY §236). Tree clean.
+- **HEAD:** S17e's close-out (HISTORY §237). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2396 passed, 1 skipped`, 0 failed (was 2386; ten
-  new tests; the X9 Pro mounted, so its 28 ran; CI skips 29). `radon
-  cc -n D` nothing. `mypy --strict src/` clean, 146 files; `ruff
-  check src tests tools` 0.
-- **CI:** run `38453497494` green (`1484d8c`); it covers `cdb2a1a`, `e619b51`, `2274290` and the close-out.
+- **Local (Cocoa):** pytest `2396 passed, 1 skipped`, 0 failed (unchanged: S17e's
+  trace and its five tests were added, then reverted; the X9 Pro
+  mounted, so its 28 ran; CI skips 29). `mypy --strict src/` clean,
+  146 files; `ruff check src tests tools` 0.
+- **CI:** pending for `233188a`, `32d1192` and the close-out.
 
 ## 2. Where we are
 
-**S17f is done** (§235, §236): each of Review's three sections has
-its bulk action; the SoulSeek candidates' "Confirm all (N)" asks
-first, requests each row only as shown, and an slskd outage ends the
-batch. S17e waits on Kris. **Next: S17g**, a new candidate from the
-fixed tree, then Kris's re-run of the six failed checks (§9 lists
-small rows Kris may want first).
+**S17e is done** (§237): with `SEEKER_DEBUG_TRAY=1` on, Kris's dev
+run did not reproduce the fullscreen tray menu closing; the 2 s
+render is ruled out. The trace is reverted and Kris counted the row
+done. Every S17a–S17k row is now closed. **Next: S17g**, a new
+candidate from the fixed tree, then Kris's re-run of the failed
+checks (§9 lists small rows Kris may want first).
 
-## 3. Session report (S17f, part two)
+## 3. Session report (S17e)
 
-Evidence in HISTORY §236.
-- `cdb2a1a` refactor: `ReviewService._request_candidate`, one
-  confirm's enqueue, shared by the single row and the batch.
-- `e619b51` `ReviewService.confirm_review_candidates(candidates,
-  stop=)` over the shown `(track, candidate)` pairs; a changed
-  candidate or a refused enqueue is a failure left for review; an
-  `httpx.TransportError` ends the batch as `ConfirmAllResult.outage`.
-- `2274290` the button, question ("N downloads will start"), notice
-  (success, warning, or error on an outage).
-- Every new test failed first (4 service, 6 page); the running guard
-  mutation-checked for both sections.
-- Screenshots: Review, both themes, both sizes; the three header
-  buttons align.
-- Skills: `tdd`. Divergence: the batch takes the shown rows, not bare
-  track ids.
+Evidence in HISTORY §237.
+- `233188a` `SEEKER_DEBUG_TRAY=1` traced the tray menu's show and
+  hide, each render and each application state change (five tests,
+  each failed first).
+- Kris's run: two fullscreen opens stayed 8.5 s and 9.7 s through
+  four and five renders; one windowed open 5.6 s. The app was active
+  at every click, so hypothesis (a) went untested.
+- `32d1192` reverts `233188a` at Kris's word.
+- Skills: `tdd` for the trace; `focused-fix` not reached (nothing to
+  fix).
 
-## 4. Key context for whoever runs S17g, S17e or S18
+## 4. Key context for whoever runs S17g or S18
 
 - **S17g:** RELEASING.md's build steps on the current HEAD, untagged
   (as `e10aa87` was); record the new SHA-256 in
@@ -116,12 +111,11 @@ Evidence in HISTORY §236.
 
 ## 6. Blockers
 
-None for S17g. S17e waits on Kris reproducing the problem with
-logging on. S18 waits on S17g's re-run.
+None for S17g. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. S17f done.
+None uncommitted. S17e done.
 
 ## 8. Waiting on Kris
 
@@ -129,7 +123,8 @@ For the S17x rows (SESSION-PLAN → "Waiting on Kris" → "Acceptance
 failures"): the veto on Confirm all per section (S17f; both buttons
 and their questions are in Review's screenshots); live
 fullscreen checks (S17d on the S17g build: Dashboard, Library,
-Duplicates, fullscreen and back; S17e); on the S17g build, quit while
+Duplicates, fullscreen and back; if the tray menu closes again
+there, §237 says how to bring the trace back); on the S17g build, quit while
 Compute fingerprints runs and confirm the app exits within seconds.
 After S17g, the rest of `docs/rounds/round-12/ACCEPTANCE.md`: the
 fresh account, the live Retry/Cancel/Clean up, start at login again,
