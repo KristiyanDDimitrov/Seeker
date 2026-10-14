@@ -404,6 +404,54 @@ def test_request_download_does_not_wrap_unrecognized_error(
         client.request_download("peer1", "song.flac", 12345)
 
 
+def test_two_clients_never_enqueue_at_once(monkeypatch):
+    # slskd answers a third concurrent enqueue with 429 (HISTORY §238).
+    # Pages and services build their own clients, so the guard must
+    # hold across instances, not per client.
+    counter_lock = threading.Lock()
+    first_inside = threading.Event()
+    second_inside = threading.Event()
+    in_flight = 0
+    peak = 0
+    calls = 0
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        nonlocal in_flight, peak, calls
+        with counter_lock:
+            in_flight += 1
+            calls += 1
+            call = calls
+            peak = max(peak, in_flight)
+        if call == 1:
+            first_inside.set()
+            # Hold the first enqueue open until the second one arrives,
+            # or long enough that it would have if it could.
+            second_inside.wait(timeout=0.5)
+        else:
+            second_inside.set()
+        with counter_lock:
+            in_flight -= 1
+        return FakeResponse({"batch": {"transfers": [{"id": f"t{call}"}]}})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    def enqueue():
+        SoulseekClient("http://localhost:5030", "test-api-key").request_download(
+            "peer1", "song.flac", 12345,
+        )
+
+    first = threading.Thread(target=enqueue)
+    first.start()
+    assert first_inside.wait(timeout=5)
+    second = threading.Thread(target=enqueue)
+    second.start()
+    first.join(timeout=5)
+    second.join(timeout=5)
+
+    assert calls == 2
+    assert peak == 1
+
+
 @pytest.mark.parametrize(
     ("method", "path"),
     [

@@ -72,6 +72,14 @@ class SlskdUnauthorizedError(SeekerError):
 RECOGNIZED_REJECTION_PATTERNS = ("not shared", "appears to be offline")
 
 
+# slskd lets two enqueues run at once and answers a third with 429
+# (HISTORY §238); an enqueue holds its slot through the peer lookup, so
+# it can take seconds. Module-level because pages and services each
+# build their own client: one process sends one enqueue at a time,
+# which leaves slskd's second slot for another process (a cron sweep).
+_ENQUEUE_LOCK = threading.Lock()
+
+
 def is_recognized_rejection(text: str | None) -> bool:
     if not text:
         return False
@@ -243,12 +251,13 @@ class SoulseekClient:
             body["options"] = {"destination": destination}
 
         try:
-            response = httpx.post(
-                f"{self.base_url}/api/v0/transfers/downloads/batches",
-                json=body,
-                headers=self._headers(),
-                timeout=15.0,
-            )
+            with _ENQUEUE_LOCK:
+                response = httpx.post(
+                    f"{self.base_url}/api/v0/transfers/downloads/batches",
+                    json=body,
+                    headers=self._headers(),
+                    timeout=15.0,
+                )
             response.raise_for_status()
         except httpx.HTTPStatusError as error:
             # A recognized rejection can arrive synchronously as a
