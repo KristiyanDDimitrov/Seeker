@@ -1,7 +1,8 @@
 import threading
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from fakes import wait_for_workers
 from seeker.application import Application
@@ -1447,3 +1448,117 @@ def test_a_new_soulseek_attempt_clears_the_last_outcome(
     # Only the new attempt's own outcome shows, with no stale detail.
     assert "leading or trailing spaces" in wizard.soulseek_notice.text()
     assert wizard.soulseek_notice.toolTip() == ""
+
+
+def _answer_quit_question(monkeypatch, answer: str) -> list[QMessageBox]:
+    """Answers the quit question with the named button, recording each
+    question asked."""
+    shown: list[QMessageBox] = []
+
+    def fake_clicked_button(self):
+        return next(
+            (button for button in self.buttons() if button.text() == answer),
+            None,
+        )
+
+    def fake_exec(self):
+        shown.append(self)
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    monkeypatch.setattr(QMessageBox, "clickedButton", fake_clicked_button)
+    return shown
+
+
+def _wizard_while_slskd_starts(
+        qtbot, tmp_path, monkeypatch, starting: bool = True,
+) -> tuple[OnboardingWizard, list[bool]]:
+    wizard = _built_wizard(qtbot, tmp_path, monkeypatch)
+    # Kept alive past close(), so the test can look at it afterwards.
+    wizard.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+    state = [starting]
+    monkeypatch.setattr(
+        wizard.application, "is_starting_slskd", lambda: state[0],
+    )
+    wizard.show()
+    qtbot.waitExposed(wizard)
+    return wizard, state
+
+
+def _quit_event_cancelled(wizard: OnboardingWizard) -> bool:
+    # True = consumed = the quit is cancelled (MainWindow's own seam).
+    return wizard.eventFilter(
+        QApplication.instance(), QEvent(QEvent.Type.Quit),
+    )
+
+
+def test_closing_the_wizard_while_slskd_starts_asks_and_can_stay_open(
+        qtbot, tmp_path, monkeypatch,
+):
+    shown = _answer_quit_question(monkeypatch, "Keep Seeker Open")
+    wizard, state = _wizard_while_slskd_starts(qtbot, tmp_path, monkeypatch)
+
+    closed = wizard.close()
+
+    assert not closed
+    assert wizard.isVisible()
+    assert [box.text() for box in shown] == ["slskd is still starting."]
+    assert "two minutes" in shown[0].informativeText()
+    assert shown[0].defaultButton().text() == "Keep Seeker Open"
+    state[0] = False
+
+
+def test_closing_the_wizard_while_slskd_starts_quits_once_confirmed(
+        qtbot, tmp_path, monkeypatch,
+):
+    shown = _answer_quit_question(monkeypatch, "Quit Anyway")
+    wizard, state = _wizard_while_slskd_starts(qtbot, tmp_path, monkeypatch)
+
+    closed = wizard.close()
+    # The last window closing posts a quit, which reaches the filter
+    # with the bring-up still running: asked once is enough.
+    cancelled = _quit_event_cancelled(wizard)
+
+    assert closed
+    assert not cancelled
+    assert len(shown) == 1
+    state[0] = False
+
+
+def test_quitting_while_slskd_starts_asks_through_the_quit_event(
+        qtbot, tmp_path, monkeypatch,
+):
+    shown = _answer_quit_question(monkeypatch, "Keep Seeker Open")
+    wizard, state = _wizard_while_slskd_starts(qtbot, tmp_path, monkeypatch)
+
+    assert _quit_event_cancelled(wizard)
+    assert [box.text() for box in shown] == ["slskd is still starting."]
+    state[0] = False
+
+
+def test_quitting_while_slskd_starts_proceeds_once_confirmed(
+        qtbot, tmp_path, monkeypatch,
+):
+    shown = _answer_quit_question(monkeypatch, "Quit Anyway")
+    wizard, state = _wizard_while_slskd_starts(qtbot, tmp_path, monkeypatch)
+
+    assert not _quit_event_cancelled(wizard)
+    # Qt closes the windows on its way out; the close asks nothing more.
+    assert wizard.close()
+    assert len(shown) == 1
+    state[0] = False
+
+
+def test_the_wizard_asks_nothing_when_slskd_is_not_starting(
+        qtbot, tmp_path, monkeypatch,
+):
+    shown = _answer_quit_question(monkeypatch, "Keep Seeker Open")
+    wizard, _state = _wizard_while_slskd_starts(
+        qtbot, tmp_path, monkeypatch, starting=False,
+    )
+
+    assert not _quit_event_cancelled(wizard)
+    assert not wizard.eventFilter(
+        QApplication.instance(), QEvent(QEvent.Type.ApplicationStateChange),
+    )
+    assert wizard.close()
+    assert shown == []

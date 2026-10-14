@@ -4,7 +4,7 @@ import webbrowser
 from collections.abc import Callable
 from datetime import UTC, datetime
 
-from PySide6.QtCore import Qt, QThreadPool, QTimer
+from PySide6.QtCore import QEvent, QObject, Qt, QThreadPool, QTimer
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -51,6 +51,7 @@ from seeker.ui.status_lamp import (
     StatusChip,
 )
 from seeker.ui.step_indicator import StepIndicator
+from seeker.ui.window_lifecycle import ask_to_quit
 from seeker.ui.wordmark import Wordmark
 from seeker.ui.workers import run_worker
 
@@ -99,6 +100,9 @@ class OnboardingWizard(QMainWindow):
         self.application = application
         self.on_complete = on_complete
         self.thread_pool = QThreadPool()
+        # Set once the person has said to quit while slskd starts, so the
+        # close and the quit it leads to ask only once.
+        self._quit_confirmed = False
 
         self._library_location_path: str | None = None
         self._docker_state: DockerState | None = None
@@ -130,6 +134,10 @@ class OnboardingWizard(QMainWindow):
 
         if self.stack.currentIndex() == 2:
             self._refresh_docker_state()
+
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
 
     def _build_column(self) -> QWidget:
         self.column = QWidget()
@@ -410,8 +418,37 @@ class OnboardingWizard(QMainWindow):
         # Closing the wizard quits the app, and aboutToQuit no longer
         # reaches a closed WA_DeleteOnClose window's slot (observed,
         # HISTORY §231), so the close ends the wait itself.
+        if not self._confirm_quit_while_slskd_starts():
+            event.ignore()
+            return
+
+        # Gone or going: never asks beside the MainWindow that follows.
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
         self.stop_for_quit()
         super().closeEvent(event)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        # ⌘Q and the Dock's Quit reach the QApplication as a Quit event
+        # before aboutToQuit, the seam MainWindow's filter uses too
+        # (HISTORY §124); True cancels the quit.
+        if (
+                watched is QApplication.instance()
+                and event.type() == QEvent.Type.Quit
+        ):
+            return not self._confirm_quit_while_slskd_starts()
+        return super().eventFilter(watched, event)
+
+    def _confirm_quit_while_slskd_starts(self) -> bool:
+        """True to let a close or quit go ahead: nothing is starting, or
+        the person said to quit and wait for the bring-up (HISTORY
+        §232)."""
+        if self._quit_confirmed or not self.application.is_starting_slskd():
+            return True
+
+        self._quit_confirmed = ask_to_quit(self, 0, starting_slskd=True)
+        return self._quit_confirmed
 
     def offer_library_share(self, location: LibraryLocation) -> None:
         """Offers the SoulSeek step's checkbox for `location`, the folder
