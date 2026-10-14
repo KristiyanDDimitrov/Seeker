@@ -5,9 +5,11 @@ from datetime import UTC, datetime
 from seeker.models.download_request import (
     BLOCKS_REDOWNLOAD,
     FAILED_OUTCOMES,
+    HOLDS_A_FALLBACK,
     IN_FLIGHT,
     RETRYING_IN_BACKGROUND,
     STAMPS_COMPLETED_AT,
+    STARTS_A_FALLBACK,
     DownloadRequest,
     DownloadRole,
     DownloadStatus,
@@ -574,6 +576,39 @@ class DownloadRequestRepository:
             return None
 
         return _row_to_download_request(row)
+
+    def get_interrupted_fallbacks(
+            self,
+            connection: sqlite3.Connection,
+    ) -> list[tuple[str, DownloadRole]]:
+        """Each (track, role) whose fallback started but stopped before
+        it reached a file: a row of the role ended, an entry is still
+        shortlisted, and nothing of the role is on its way."""
+        starts, starts_params = _status_in(STARTS_A_FALLBACK)
+        holds, holds_params = _status_in(HOLDS_A_FALLBACK)
+        rows = connection.execute(
+            f"""
+            SELECT DISTINCT waiting.track_id, waiting.role
+            FROM download_requests AS waiting
+            WHERE waiting.status = ?
+            AND EXISTS (
+                SELECT 1 FROM download_requests AS ended
+                WHERE ended.track_id = waiting.track_id
+                AND ended.role = waiting.role
+                AND ended.{starts}
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM download_requests AS held
+                WHERE held.track_id = waiting.track_id
+                AND held.role = waiting.role
+                AND held.{holds}
+            )
+            ORDER BY waiting.track_id, waiting.role
+            """,  # noqa: S608
+            (DownloadStatus.SHORTLISTED, *starts_params, *holds_params),
+        ).fetchall()
+
+        return [(row["track_id"], DownloadRole(row["role"])) for row in rows]
 
     def supersede_other_active_for_track(
             self,

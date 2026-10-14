@@ -18,6 +18,7 @@ from seeker.database.repositories.track_match_repository import (
     TrackMatchRepository,
 )
 from seeker.download_dedup import candidate_key, most_recent_per_candidate
+from seeker.error_text import describe_error
 from seeker.models.download_request import (
     DownloadRequest,
     DownloadRole,
@@ -284,6 +285,8 @@ class DownloadPoller:
                     "Failed to poll '%s': %s", request.filename, error,
                 )
 
+        self._resume_interrupted_fallbacks(counts)
+
         # Re-issue request_download for every request that was already
         # 'locked' before this run started (not ones that just became
         # locked above, or via the cascade below — those wait for the
@@ -333,6 +336,26 @@ class DownloadPoller:
             describe_transfer_failure(transfer.state, transfer.exception),
         )
 
+    def _resume_interrupted_fallbacks(self, counts: PollResult) -> None:
+        # A cascade slskd interrupted (busy, or down mid-cascade) left
+        # its next entry shortlisted after the row that started it had
+        # already left `pending`: nothing else would ever request it.
+        with self.database.transaction() as connection:
+            interrupted = self.download_requests.get_interrupted_fallbacks(
+                connection,
+            )
+
+        for track_id, role in interrupted:
+            try:
+                self._cascade(track_id, role, counts)
+            except httpx.TransportError as error:
+                raise SlskdUnreachableError(self._soulseek().base_url) from error
+            except Exception as error:
+                logger.warning(
+                    "Failed to resume the fallback for %s: %s",
+                    track_id, error,
+                )
+
     def fall_back(self, track_id: str, role: DownloadRole) -> None:
         """Requests the track's next shortlisted entry of `role` now,
         past any refused at once: for a request refused before the
@@ -364,7 +387,16 @@ class DownloadPoller:
             # Loaded from the DB via get_next_shortlisted() above.
             assert next_entry.id is not None
 
-            status = self._activate_shortlisted_entry(next_entry)
+            try:
+                status = self._activate_shortlisted_entry(next_entry)
+            except SlskdBusyError:
+                # The entry stays shortlisted; the next poll's
+                # _resume_interrupted_fallbacks asks again.
+                logger.info(
+                    "slskd is busy; the fallback for %s resumes next poll",
+                    track_id,
+                )
+                return
 
             if status == DownloadStatus.FAILED:
                 counts.failed += 1
@@ -421,6 +453,29 @@ class DownloadPoller:
                 failure_reason=describe_rejection(error.reason or str(error)),
             )
             return DownloadStatus.FAILED
+        except (httpx.TransportError, SlskdBusyError):
+            # Not this entry's fault: it stays shortlisted for the
+            # next poll's _resume_interrupted_fallbacks.
+            raise
+        except Exception as error:
+            # Failed, not left shortlisted: the resume would otherwise
+            # ask for it again every poll.
+            logger.warning(
+                "Fallback to '%s' failed at enqueue: %s",
+                request.filename, error,
+            )
+            self._update_status(
+                request.id, DownloadStatus.FAILED,
+                failure_reason=describe_error(error, details_hint=""),
+            )
+            return DownloadStatus.FAILED
+
+        # slskd holds the transfer from here on: recorded at once, so a
+        # status check that fails below never sends it again.
+        with self.database.transaction() as connection:
+            self.download_requests.update_transfer_id_and_status(
+                request.id, transfer_id, DownloadStatus.QUEUED, connection,
+            )
 
         # An async-shape rejection doesn't raise from request_download
         # itself (confirmed live, HISTORY §13) — it shows up almost

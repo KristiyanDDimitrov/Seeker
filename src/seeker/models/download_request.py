@@ -47,6 +47,14 @@ UNRESOLVED = IN_FLIGHT | RETRYING_IN_BACKGROUND | AWAITING_A_HUMAN
 # being worked on, or already downloaded.
 BLOCKS_REDOWNLOAD = UNRESOLVED | {DownloadStatus.COMPLETED}
 
+# A row of a role that ended this way sent the poll to the role's
+# next shortlisted entry (DownloadPoller._cascade).
+STARTS_A_FALLBACK = FAILED_OUTCOMES | {DownloadStatus.LOCKED}
+
+# While a row of a role is in one of these, its shortlisted entries
+# wait: one file is on its way, or already arrived.
+HOLDS_A_FALLBACK = IN_FLIGHT | AWAITING_A_HUMAN | {DownloadStatus.COMPLETED}
+
 # A row that will never report new transfer progress.
 SHOWS_NO_FURTHER_PROGRESS = STAMPS_COMPLETED_AT | AWAITING_A_HUMAN
 

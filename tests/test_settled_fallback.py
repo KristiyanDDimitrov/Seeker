@@ -5,6 +5,8 @@
 poll requests the next one, in turn, when a settled row fails or
 locks, and places a backup like any settled download (HISTORY §206).
 """
+import contextlib
+
 import httpx
 import pytest
 
@@ -35,7 +37,11 @@ from seeker.models.library_location import LibraryLocation
 from seeker.models.playlist import Playlist
 from seeker.models.soulseek_file import SoulseekFile
 from seeker.models.track import Track
-from seeker.soulseek.client import SoulseekDownloadError
+from seeker.soulseek.client import (
+    SlskdBusyError,
+    SlskdUnreachableError,
+    SoulseekDownloadError,
+)
 from seeker.soulseek.download_service import (
     DownloadService,
     TrackSearchOutcome,
@@ -198,6 +204,87 @@ def test_the_fallback_cascades_past_a_backup_rejected_at_once(tmp_path):
     assert statuses["backup2.flac"] == "failed"
     assert statuses["backup3.flac"] == "downloading"
     assert statuses["upgrade.flac"] == "shortlisted"
+
+
+@pytest.mark.parametrize(
+    "interruption",
+    [SlskdBusyError(), httpx.ConnectError("[Errno 61] Connection refused")],
+    ids=["busy", "outage"],
+)
+def test_a_fallback_slskd_interrupted_resumes_on_the_next_poll(
+        tmp_path, interruption,
+):
+    # The failed row has left the poll's pending set, so only a later
+    # poll can request the backup slskd could not take.
+    service = make_service(
+        tmp_path,
+        states={"t1": "Completed, Errored", "b2": "Requested"},
+        retry_results={"backup2.flac": interruption},
+    )
+    _seed_settled_with_backups(service)
+
+    with contextlib.suppress(SlskdUnreachableError):
+        first = service.poll_downloads()
+        # Counted once: slskd being busy is not a second failure.
+        assert first.failed == 1
+
+    assert _status_by_filename(service)["backup2.flac"] == "shortlisted"
+
+    service.soulseek.retry_results["backup2.flac"] = "b2"
+    service.poll_downloads()
+
+    assert _status_by_filename(service) == {
+        "settled.flac": "failed",
+        "backup2.flac": "queued",
+        "backup3.flac": "shortlisted",
+        "upgrade.flac": "shortlisted",
+    }
+
+
+def test_a_backup_whose_enqueue_errors_fails_and_is_never_asked_again(
+        tmp_path,
+):
+    # The resumed fallback must not turn one broken entry into a
+    # request every poll.
+    service = make_service(
+        tmp_path,
+        states={"t1": "Completed, Errored", "b3": "Requested"},
+        retry_results={
+            "backup2.flac": RuntimeError("500 Internal Server Error"),
+            "backup3.flac": "b3",
+        },
+    )
+    _seed_settled_with_backups(service)
+
+    service.poll_downloads()
+    service.poll_downloads()
+
+    assert [call[1] for call in service.soulseek.request_download_calls] == [
+        "backup2.flac", "backup3.flac",
+    ]
+    statuses = _status_by_filename(service)
+    assert statuses["backup2.flac"] == "failed"
+    assert statuses["backup3.flac"] == "queued"
+
+
+def test_a_backup_whose_status_check_errors_keeps_its_transfer(tmp_path):
+    # slskd already holds the transfer: asking for it again would
+    # fetch a second copy.
+    service = make_service(
+        tmp_path,
+        states={"t1": "Completed, Errored"},
+        retry_results={"backup2.flac": "b2"},
+    )
+    _seed_settled_with_backups(service)
+
+    service.poll_downloads()
+    service.soulseek.states["b2"] = "Requested"
+    service.poll_downloads()
+
+    assert [call[1] for call in service.soulseek.request_download_calls] == [
+        "backup2.flac",
+    ]
+    assert get_status(service, "b2") == "queued"
 
 
 def test_a_backup_finished_at_once_stays_in_flight_for_placement(tmp_path):
