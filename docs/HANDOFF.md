@@ -20,7 +20,8 @@ nine fields below follow the contract in
   trace and its five tests were added, then reverted; the X9 Pro
   mounted, so its 28 ran; CI skips 29). `mypy --strict src/` clean,
   146 files; `ruff check src tests tools` 0.
-- **CI:** pending for `233188a`, `32d1192` and the close-out.
+- **CI:** run `38526449714` green (`d591570`); it covers `233188a`,
+  `32d1192` and the close-out.
 
 ## 2. Where we are
 
