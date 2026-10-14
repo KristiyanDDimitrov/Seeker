@@ -19,7 +19,7 @@ nine fields below follow the contract in
 - **Local (Cocoa):** pytest `2417 passed, 1 skipped`, 0 failed (+12 on
   S17l's 2405; the X9 Pro mounted, so its 28 ran; CI skips 29).
   `mypy --strict src/` clean, 146 files; `ruff check src tests tools` 0.
-- **CI:** CI_PLACEHOLDER
+- **CI:** run `38548411296` green (`b36c479`, audit and check); it covers every S17m–S17o commit and the close-out.
 
 ## 2. Where we are
 
