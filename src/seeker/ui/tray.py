@@ -9,7 +9,6 @@ the menu bar" notice through `TrayController.show_hide_notice_once()`.
 
 from __future__ import annotations
 
-import logging
 import sys
 import time
 from collections.abc import Callable
@@ -19,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QThreadPool
-from PySide6.QtGui import QGuiApplication, QIcon
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from seeker.application import Application
@@ -32,8 +31,6 @@ if TYPE_CHECKING:
     # typing, guarded by `from __future__ import annotations` above
     # (never evaluated at import time).
     from seeker.ui.main_window import MainWindow
-
-logger = logging.getLogger(__name__)
 
 # An unreachable slskd must not emit a tray notification on every 20s
 # backend-poll error; untuned, same "reasonable starting guess"
@@ -86,9 +83,6 @@ class TrayController:
         self._last_error_notification_at: float | None = None
 
         self._tray_icon: QSystemTrayIcon | None = None
-        # Between the menu's aboutToShow and aboutToHide; read only by
-        # the debug trace.
-        self._menu_open = False
         self._build_tray_icon()
 
     @property
@@ -207,30 +201,10 @@ class TrayController:
         menu.addSeparator()
         quit_action = menu.addAction("Quit")
         quit_action.triggered.connect(self._on_tray_quit)
-        menu.aboutToShow.connect(self._on_menu_about_to_show)
-        menu.aboutToHide.connect(self._on_menu_about_to_hide)
 
         self._tray_icon.setContextMenu(menu)
         self._tray_icon.activated.connect(self._on_tray_icon_activated)
         self._tray_icon.show()
-
-    def _on_menu_about_to_show(self) -> None:
-        self._menu_open = True
-        app = QApplication.instance()
-        state = (
-            app.applicationState().name
-            if isinstance(app, QGuiApplication) else None
-        )
-        logger.debug(
-            "Tray menu opening (window visible=%s, fullscreen=%s, "
-            "application state=%s)",
-            self._host.window.isVisible(), self._host.window.isFullScreen(),
-            state,
-        )
-
-    def _on_menu_about_to_hide(self) -> None:
-        self._menu_open = False
-        logger.debug("Tray menu closed")
 
     def _on_tray_icon_activated(
             self,
@@ -299,12 +273,6 @@ class TrayController:
         # back on ApplicationActive) — it does not and cannot prove a
         # real Dock click reaches it, which no headless test can; that
         # needs a live check on a real desktop (HISTORY §116).
-        logger.debug(
-            "Application state %s (window visible=%s, fullscreen=%s, "
-            "menu open=%s)",
-            state.name, self._host.window.isVisible(),
-            self._host.window.isFullScreen(), self._menu_open,
-        )
         if state != Qt.ApplicationState.ApplicationActive:
             return
         if self._host.window.isVisible():
@@ -328,7 +296,6 @@ class TrayController:
     def render_tray_menu(self) -> None:
         if self._tray_icon is None:
             return
-        logger.debug("Rendering the tray menu (menu open=%s)", self._menu_open)
 
         parts = []
         active_downloads_count = self._host.active_downloads_count()
