@@ -11,38 +11,37 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17l's close-out (HISTORY §238). Tree clean.
+- **HEAD:** S17m–S17o's close-out (HISTORY §239–§241). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2405 passed, 1 skipped`, 0 failed (+9 on
-  S17e's 2396; the X9 Pro mounted, so its 28 ran; CI skips 29).
+- **Local (Cocoa):** pytest `2417 passed, 1 skipped`, 0 failed (+12 on
+  S17l's 2405; the X9 Pro mounted, so its 28 ran; CI skips 29).
   `mypy --strict src/` clean, 146 files; `ruff check src tests tools` 0.
-- **CI:** run `38542313378` green (`a7c93e9`, audit and check); it covers `1989d1a`, `eb47120`, `5bbf8a0` and the close-out.
+- **CI:** CI_PLACEHOLDER
 
 ## 2. Where we are
 
-**S17l is done** (§238): one slskd enqueue at a time per process; a
-`429` is sent again after 0.5/1/2 s, then `SlskdBusyError` (no
-locked-retry budget spent); BRIEF §17l's hypothesis (a backup left
-stranded when slskd interrupts the poll's fallback) was confirmed by
-test, for an outage too, and fixed. **Next: S17m** (Review's
-Replace; the bulk buttons' enabled state), then S17n, S17o, then
-**S17g**.
+**S17m, S17n and S17o are done** (§239–§241), in one session at
+Kris's request, with one full test run and one CI push at the end
+(not per row). **Next: S17g**, the new candidate from this tree.
 
-## 3. Session report (S17l)
+## 3. Session report (S17m–S17o)
 
-Evidence in HISTORY §238. Each commit's tests failed first.
-- `1989d1a` a module-level `_ENQUEUE_LOCK` around the batch POST.
-- `eb47120` `ENQUEUE_BUSY_WAITS`, `SlskdBusyError`; the locked retry
-  spends nothing on it and the poll's locked loop stops at it.
-- `5bbf8a0` `_resume_interrupted_fallbacks` (new sets
-  `STARTS_A_FALLBACK`, `HOLDS_A_FALLBACK`); a fallback entry whose
-  enqueue errors otherwise is failed; an accepted transfer is
-  recorded before its status check.
+Evidence in HISTORY §239–§241. Each behaviour commit's tests failed
+first on its parent, quoted there.
+- `034389a` S17m.1: a failed upgrade Replace shows on Review.
+- `4adbd60` S17m.2: Replace all and Resolve all are busy actions
+  their render alone enables (a render mid-batch re-enabled them: a
+  second click re-ran the batch); Resolve all on no groups opens no
+  dialog. `85d3b7a` renames the shared failure handler.
+- `3c26c08` S17n: `SettingsPage` takes `MainWindow.thread_pool`.
+- `3c763d4` refactor: `window_lifecycle.ask_to_quit`.
+- `19e0495` S17o: the wizard asks on close and on ⌘Q (`QEvent.Quit`
+  filter) while slskd starts, once.
 - Skills: `tdd` was not invoked as a skill; its red-green order was
-  followed by hand (every test failed first, quoted in §238).
+  followed by hand. No `self-eval`.
 
 ## 4. Key context for whoever runs S17g or S18
 
@@ -64,12 +63,11 @@ Evidence in HISTORY §238. Each commit's tests failed first.
   kill Compose mid-recreate. `Application.is_starting_slskd()` is
   the one way to ask; a new bring-up path must go through
   `bring_up_slskd` or the quit confirmation misses it.
-- **Settings and the wizard still run their own `QThreadPool`s**,
-  whose destructors hold the exit (measured, §231). The login wait
-  now cancels on quit; their other tasks (the bring-up, health
-  checks) do not, and `cleanup_before_quit`'s bounded wait and its
-  log never see them. Moving Settings onto `MainWindow.thread_pool`
-  (CLAUDE.md's rule) is still open (§232 → "Not done").
+- **Only the wizard runs its own `QThreadPool`** (no shell exists
+  yet), whose destructor holds the exit (measured, §231); Settings
+  is on `MainWindow.thread_pool` (§240). The wizard asks before a
+  close or quit while slskd starts (§241), through
+  `window_lifecycle.ask_to_quit`, the shell's own words.
 - **Long work that should stop on quit takes `stop:
   threading.Event | None`** and a page passes `self._context.quitting`;
   a new pool call without one goes in `TAKES_NO_STOP`
@@ -111,11 +109,11 @@ Evidence in HISTORY §238. Each commit's tests failed first.
 
 ## 6. Blockers
 
-None for S17m. S17g waits on S17m–S17o; S18 waits on S17g's re-run.
+None for S17g. S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. S17l done.
+None uncommitted. S17m–S17o done.
 
 ## 8. Waiting on Kris
 
@@ -138,6 +136,13 @@ share checkbox). Then S18's outward commands.
   settled enqueue stays busy, should the pick be recorded for a later
   poll rather than failing the track after its search? Should a busy
   slskd end Review's Confirm all, as an outage does?
+
+- S17m (§239 → "Not done"): Resolve all still opens its dialog
+  when every group is on "Keep all" (it says 0 groups; its button
+  stays disabled). Return before it instead?
+- S17o (§241): in dark mode the system's question icon on the quit
+  confirmation (shell and wizard alike) is barely visible. Leave it,
+  or draw our own?
 
 - Answered 2026-10-14 (the pools, the wizard's quit confirmation,
   the test segfault, Replace all/Resolve all, slskd's `429`): see

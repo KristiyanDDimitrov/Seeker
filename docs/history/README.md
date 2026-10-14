@@ -13,11 +13,11 @@ heading, so `file#N` lands on it. Link to an entry as
 heading-derived GitHub anchor, which breaks whenever a title changes.
 
 **Adding an entry (every session, per the round brief's §0.6).**
-Append it to the end of the last file, `211-240.md`: a
+Append it to the end of the last file, `241-270.md`: a
 `<a name="N"></a>` line directly above `### N — <title>`, numbering
 continuing from the last entry. Then add its line to that file's list
 below, in the same format. When the next number passes the last
-file's range, open the next range file (`211-240.md`, …) and add a
+file's range, open the next range file (`271-300.md`, …) and add a
 section for it here. Never renumber, move or rename an existing entry
 or file: every `file#N` link depends on both staying put. Keep each
 file under about 150 KB.
@@ -39,7 +39,8 @@ file under about 150 KB.
 | [`121-150.md`](121-150.md) | §121–§150: rounds 9–11 |
 | [`151-180.md`](151-180.md) | §151–§180: round 11 |
 | [`181-210.md`](181-210.md) | §181–§210: round 11's close and round 12 |
-| [`211-240.md`](211-240.md) | §211 onward: round 12. **New entries go here.** |
+| [`211-240.md`](211-240.md) | §211–§240: round 12 |
+| [`241-270.md`](241-270.md) | §241 onward: round 12. **New entries go here.** |
 
 No entry was ever written for §37, §57–§61, §97 or §108; those numbers
 are unused, not missing files. §62 exists only as a follow-up heading
@@ -329,3 +330,9 @@ under their entry and live in the same file, after it.
 - §236 — Round 12 S17f, part two: Review's SoulSeek candidates get "Confirm all (N)", asked first ("N downloads will start"); `ReviewService.confirm_review_candidates` requests each only while its candidate is the one shown, goes on past a refused enqueue, ends at an slskd outage (`ConfirmAllResult.outage`), stops on quit; S17f closed → [211-240.md#236](211-240.md#236)
 - §237 — Round 12 S17e: the tray menu closing at once in fullscreen, not reproduced on a dev run of the current tree with `SEEKER_DEBUG_TRAY=1` (two fullscreen opens stayed 8.5 s and 9.7 s through 4 and 5 renders: the 2 s render is ruled out); the trace reverted, S17e counted done by Kris → [211-240.md#237](211-240.md#237)
 - §238 — Round 12 S17l: slskd 0.26.0 refuses a third concurrent enqueue with `429`; `SoulseekClient` sends one enqueue at a time per process (a module-level lock), sends a `429` again after 0.5/1/2 s, then raises `SlskdBusyError` (no locked-retry budget spent); a fallback slskd interrupts (busy or down) resumes on the next poll (`get_interrupted_fallbacks`), an entry whose enqueue errors otherwise is failed → [211-240.md#238](211-240.md#238)
+- §239 — Round 12 S17m: a failed upgrade Replace shows on Review's notice; "Replace all" and "Resolve all groups" run as busy actions whose render alone enables them (a render mid-batch had re-enabled them, so a second click re-ran the batch); Resolve all's click on no groups opens no dialog → [211-240.md#239](211-240.md#239)
+- §240 — Round 12 S17n: `SettingsPage` runs on `MainWindow.thread_pool`, so a quit's bounded wait and its log see its tasks; `idealThreadCount()` 14 here against at most 14 single-instance long task kinds, measured; the wizard keeps its own pool → [211-240.md#240](211-240.md#240)
+
+### `241-270.md`
+
+- §241 — Round 12 S17o: closing the wizard or ⌘Q while slskd starts asks the shell's question (`window_lifecycle.ask_to_quit`), through `closeEvent` and the `QEvent.Quit` filter; asked once, never when idle; screenshots of the question in both themes → [241-270.md#241](241-270.md#241)

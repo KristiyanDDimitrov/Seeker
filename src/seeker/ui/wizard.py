@@ -441,9 +441,9 @@ class OnboardingWizard(QMainWindow):
         return super().eventFilter(watched, event)
 
     def _confirm_quit_while_slskd_starts(self) -> bool:
-        """True to let a close or quit go ahead: nothing is starting, or
-        the person said to quit and wait for the bring-up (HISTORY
-        §232)."""
+        """True to let a close or quit go ahead: nothing is starting,
+        or the person said to quit and wait for the bring-up
+        (HISTORY §232)."""
         if self._quit_confirmed or not self.application.is_starting_slskd():
             return True
 

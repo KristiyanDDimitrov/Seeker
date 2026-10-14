@@ -382,7 +382,8 @@ Code documents loading it when a session reads files in `ui/`
   `aboutToQuit` (observed). Reference: `MainWindow.eventFilter`
   through `WindowLifecycleController`. [§124](docs/history/121-150.md#124)
 - **`MainWindow.thread_pool` is passed to every `run_worker`, never
-  `globalInstance()`.** Its destructor waits for in-flight runnables
+  `globalInstance()`** (Settings' too; only the wizard, which runs
+  before any shell exists, has its own). Its destructor waits for in-flight runnables
   (observed in isolation, then in a quit-hang `sample`): the process
   lives as long as the slowest task. So long work takes a `stop`
   event checked between items, never inside one (`PageContext.
@@ -569,17 +570,17 @@ Genuinely open only, checked against every CI run on record (187, to
   above); what is left is outside that pool or past a timeout. A
   slskd bring-up is waited for by design, never killed mid-recreate
   (up to Compose's 120 s; the quit confirmation says so,
-  `Application.is_starting_slskd()`). Settings and the wizard run
-  their own `QThreadPool`s, outside the bounded wait, whose
-  destructors hold the exit (measured); a quit cancels only their
-  login wait (`stop_for_quit()`), and moving them onto the shell's
-  pool is open. A hung (not down) slskd holds a quit up to a REST
+  `Application.is_starting_slskd()`, and the wizard asks the same).
+  The wizard alone keeps its own `QThreadPool`, outside the bounded
+  wait, whose destructor holds the exit (measured); a quit cancels
+  its login wait (`stop_for_quit()`). A hung (not down) slskd holds a quit up to a REST
   call's 10 s timeout (UNVERIFIED that it ever hangs). The window
   stays on screen during the wait: on Cocoa a `hide()`, even with one
   `processEvents()`, shows only once the loop keeps turning
   (observed). [§125](docs/history/121-150.md#125),
   [§226](docs/history/211-240.md#226), [§231](docs/history/211-240.md#231),
-  [§232](docs/history/211-240.md#232), [§233](docs/history/211-240.md#233)
+  [§232](docs/history/211-240.md#232), [§233](docs/history/211-240.md#233),
+  [§240](docs/history/211-240.md#240), [§241](docs/history/241-270.md#241)
 - **The real DB still holds three nested locations** (`Music`⊂`X9
   Pro`, `Test`⊂`X9 Pro`, `Test`⊂`Music`; ~3,450 files double-indexed).
   With the X9 Pro mounted, Kris runs Settings → Library → Fix…,
