@@ -71,7 +71,7 @@ after Kris's explicit yes.
 | ☑ S17j | Quit stops library work (scan, tagging, renames; merge and remove if measured long); a sweep test that every long call passes the stop; close item 125 — §233 (scan, tagging, renames, plus Resolve all and Replace all the sweep found; merge/remove/match measured ≤ 0.2 s; item 125 narrowed, not closed: Settings' and the wizard's own pools, a hung slskd) | §17j | ~110 K | After §17j.1 (scan, tagging, renames) |
 | ☑ S17k | Duplicates' resize stall: ~67 ms a step from 5,400 cell widgets (§225); measured before and after — §234 (widgets only near the view: storm ~2,050 → ~340 ms, ~11 ms a step) | §17k | ~100 K | After the measurement and one approach |
 | **Before the new candidate (added 2026-10-14, Kris's answers to the handoff's questions)** | | | | |
-| ☐ S17l | slskd's `429`: Seeker never runs two enqueues at once; a `429` is "busy", never a failed track, a failed Confirm or a spent retry | §17l | ~100 K | After §17l.1 (the lock) |
+| ☑ S17l | slskd's `429`: Seeker never runs two enqueues at once; a `429` is "busy", never a failed track, a failed Confirm or a spent retry — §238 (the lock; a `429` sent again, then `SlskdBusyError`; the stranded-backup hypothesis confirmed and fixed) | §17l | ~100 K | After §17l.1 (the lock) |
 | ☐ S17m | Review's upgrade Replace reports its failure; Replace all and Resolve all keep their render-decided enabled state | §17m | ~60 K | — |
 | ☐ S17n | Settings' tasks on `MainWindow.thread_pool` (the wizard keeps its own: no shell exists yet) | §17n | ~90 K | — |
 | ☐ S17o | The wizard asks before quitting a slskd bring-up | §17o | ~60 K | — |

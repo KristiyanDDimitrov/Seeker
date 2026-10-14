@@ -11,43 +11,38 @@ nine fields below follow the contract in
 
 ## 1. Current state
 
-- **HEAD:** S17e's close-out (HISTORY §237). Tree clean.
+- **HEAD:** S17l's close-out (HISTORY §238). Tree clean.
 - **Release candidate:** `dist/Seeker.dmg`, built untagged at
   `e10aa87`, SHA-256 `b373f7ae5ae8809c3f507d363529011d89c1b025f7970f3c2dfa0c90700f1e1e`
   (`dist/Seeker.dmg.sha256`). It predates every S17x fix; S17g
   rebuilds it.
-- **Local (Cocoa):** pytest `2396 passed, 1 skipped`, 0 failed (unchanged: S17e's
-  trace and its five tests were added, then reverted; the X9 Pro
-  mounted, so its 28 ran; CI skips 29). `mypy --strict src/` clean,
-  146 files; `ruff check src tests tools` 0.
-- **CI:** run `38526449714` green (`d591570`); it covers `233188a`,
-  `32d1192` and the close-out.
+- **Local (Cocoa):** pytest `2405 passed, 1 skipped`, 0 failed (+9 on
+  S17e's 2396; the X9 Pro mounted, so its 28 ran; CI skips 29).
+  `mypy --strict src/` clean, 146 files; `ruff check src tests tools` 0.
+- **CI:** see §7 for the push's run.
 
 ## 2. Where we are
 
-**S17e is done** (§237): with `SEEKER_DEBUG_TRAY=1` on, Kris's dev
-run did not reproduce the fullscreen tray menu closing; the 2 s
-render is ruled out. The trace is reverted and Kris counted the row
-done. Every S17a–S17k row is now closed.
+**S17l is done** (§238): one slskd enqueue at a time per process; a
+`429` is sent again after 0.5/1/2 s, then `SlskdBusyError` (no
+locked-retry budget spent); BRIEF §17l's hypothesis (a backup left
+stranded when slskd interrupts the poll's fallback) was confirmed by
+test, for an outage too, and fixed. **Next: S17m** (Review's
+Replace; the bulk buttons' enabled state), then S17n, S17o, then
+**S17g**.
 
-**2026-10-14, planning only:** Kris answered §9's questions before
-S17g. They became four rows, S17l–S17o (BRIEF §17l–§17o, with
-what is established and what is a hypothesis). The test segfault is
-skipped, with the reason recorded there. **Next: S17l** (slskd's
-`429`), then S17m, S17n, S17o, then **S17g**.
+## 3. Session report (S17l)
 
-## 3. Session report (S17e)
-
-Evidence in HISTORY §237.
-- `233188a` `SEEKER_DEBUG_TRAY=1` traced the tray menu's show and
-  hide, each render and each application state change (five tests,
-  each failed first).
-- Kris's run: two fullscreen opens stayed 8.5 s and 9.7 s through
-  four and five renders; one windowed open 5.6 s. The app was active
-  at every click, so hypothesis (a) went untested.
-- `32d1192` reverts `233188a` at Kris's word.
-- Skills: `tdd` for the trace; `focused-fix` not reached (nothing to
-  fix).
+Evidence in HISTORY §238. Each commit's tests failed first.
+- `1989d1a` a module-level `_ENQUEUE_LOCK` around the batch POST.
+- `eb47120` `ENQUEUE_BUSY_WAITS`, `SlskdBusyError`; the locked retry
+  spends nothing on it and the poll's locked loop stops at it.
+- `5bbf8a0` `_resume_interrupted_fallbacks` (new sets
+  `STARTS_A_FALLBACK`, `HOLDS_A_FALLBACK`); a fallback entry whose
+  enqueue errors otherwise is failed; an accepted transfer is
+  recorded before its status check.
+- Skills: `tdd` was not invoked as a skill; its red-green order was
+  followed by hand (every test failed first, quoted in §238).
 
 ## 4. Key context for whoever runs S17g or S18
 
@@ -116,11 +111,11 @@ Evidence in HISTORY §237.
 
 ## 6. Blockers
 
-None for S17l. S17g waits on S17l–S17o; S18 waits on S17g's re-run.
+None for S17m. S17g waits on S17m–S17o; S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
-None uncommitted. S17e done.
+None uncommitted. S17l done. CI: PUSH_PENDING
 
 ## 8. Waiting on Kris
 
@@ -138,6 +133,11 @@ the sweep, the window paths, the Fix…, the stress test, and the vetoes
 share checkbox). Then S18's outward commands.
 
 ## 9. Open questions
+
+- S17l (§238 → "Not done"): when a playlist download's or sweep's
+  settled enqueue stays busy, should the pick be recorded for a later
+  poll rather than failing the track after its search? Should a busy
+  slskd end Review's Confirm all, as an outage does?
 
 - Answered 2026-10-14 (the pools, the wizard's quit confirmation,
   the test segfault, Replace all/Resolve all, slskd's `429`): see

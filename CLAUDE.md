@@ -337,8 +337,16 @@ investigation; `docs/history/README.md` resolves any `§N`.
   activates the next one at once (`_cascade(track_id, role)`; the
   locked row keeps its retry loop); the first settled file placed
   supersedes the rest. An upgrade cascades only to upgrades. A
-  person's choice gets no backups. [§206](docs/history/181-210.md#206),
-  [§207](docs/history/181-210.md#207)
+  person's choice gets no backups. A cascade slskd interrupts (busy,
+  down) resumes on the next poll (`get_interrupted_fallbacks`); an
+  entry whose enqueue errors otherwise fails, never waits.
+  [§206](docs/history/181-210.md#206),
+  [§207](docs/history/181-210.md#207), [§238](docs/history/211-240.md#238)
+- **slskd runs two enqueues at once and answers a third `429`.**
+  `SoulseekClient` sends one at a time per process (a module-level
+  lock), sends a `429` again after 0.5, 1 and 2 s, then raises
+  `SlskdBusyError`: no peer was asked, so no locked-retry budget is
+  spent. [§238](docs/history/211-240.md#238)
 - **A leftover is a file no claim names, and slskd must answer.**
   `LeftoverService` claims the basename of every `UNRESOLVED` request
   and every live slskd transfer (letters and digits only, `_<ticks>`
