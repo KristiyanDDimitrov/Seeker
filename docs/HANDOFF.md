@@ -5,124 +5,83 @@ first. Overwrite it last.** Keep it under about 120 lines: a baton, not a
 log. The log is `docs/history/` (index: `docs/history/README.md`). The
 nine fields below follow the contract in
 `docs/rounds/round-11/SESSION-PLAN.md`. Every document: `docs/README.md`.
-**The current round is 12:** `docs/rounds/round-12/SESSION-PLAN.md`.
+**No round is open:** round 12 (and round 11 with it) closed with the
+v0.1.0 release; its plan is `docs/rounds/round-12/SESSION-PLAN.md`.
 
 ---
 
 ## 1. Current state
 
-- **HEAD:** S17g's close-out (HISTORY §242). Tree clean.
-- **Release candidate:** `dist/Seeker.dmg`, built untagged at
-  `6f49319`, 111,784,988 bytes, SHA-256
-  `b203e98dd9764b3d27ddbb0a5707148fb555ed28bbe1db4e2a215871febeda07`
-  (`dist/Seeker.dmg.sha256`, `shasum -c` OK beside it). It carries
-  every S17a–S17o fix; the commits after it touch only docs.
-- **Local (Cocoa):** pytest `2417 passed, 1 skipped`, 0 failed
-  (unchanged; the X9 Pro mounted, so its 28 ran; CI skips 29).
-  `mypy --strict src/` clean, 146 files; `ruff check src tests tools` 0.
-- **CI:** run `38549671669` green on `6f49319`, the candidate's commit;
-  run `38552915783` green on the close-out (`c9ffc01`).
+- **Released: v0.1.0** (2026-10-14),
+  https://github.com/KristiyanDDimitrov/Seeker/releases/tag/v0.1.0.
+  Tag `v0.1.0` on `35f6ba7`; `Seeker.dmg` 111,788,167 bytes, SHA-256
+  `5691a25609cc9d054cd95f1f1ddfab44f362ac33fa4c9d7784ee312dab2a2943`.
+- **HEAD:** S18's close-out (HISTORY §245). Tree clean.
+- **Local (Cocoa):** pytest `2418 passed, 1 skipped`, 0 failed (the
+  X9 Pro mounted; CI skips 29). `mypy --strict src/` clean, 146
+  files; `ruff check src tests tools` 0; radon D 0.
+- **CI:** run `38570802975` green on `35f6ba7`, the release commit
+  (`2390 passed, 29 skipped`, coverage 94.68 %); the close-out's run
+  is recorded in its follow-up commit.
 
 ## 2. Where we are
 
-**S17g, Code's half, is done** (§242): the second candidate, built and
-checked without launching it. **Next: Kris** re-runs the six
-2026-10-12 failures on it, at the top of
-`docs/rounds/round-12/ACCEPTANCE.md`, then the rest of that file. A
-failure there becomes a fix row; otherwise **S18**.
+**Rounds 11 and 12 are complete.** No round 13 is planned. A new
+round starts with a new BRIEF and SESSION-PLAN under `docs/rounds/`.
 
-## 3. Session report (S17g)
+## 3. Session report (S18, with §243–§244)
 
-Evidence in HISTORY §242.
-- The three checks, then `packaging/build_dmg.py` at `6f49319`
-  (~48 s), then RELEASING.md step 3 as written: all expected.
-- `92e7d1c`: RELEASING.md's `shasum -c` ran from the repository root,
-  where the bare name in the `.sha256` file does not resolve
-  (`FAILED open or read`); it now runs inside `dist/`.
-- ACCEPTANCE.md: the new candidate, the first one's checks kept under
-  their own heading, the six failures first with their rows and
-  HISTORY entries.
-- Skills: none loaded (`changelog-generator`, `runbook-generator`,
-  `ship-gate` are named for S16–S18; RELEASING.md is the runbook and
-  the checklist the gate, as in §222). No `self-eval`.
+Evidence in HISTORY §243–§245.
+- Committed the stress test's `docker inspect` opt-in (§243).
+- The ten failing X9 Pro tests now read files that are still on the
+  drive: Lux moved, and §38's pairs were replaced by pairs measured on
+  scratch copies (§244).
+- Dated `[0.1.0]` in the changelog and gave Confirm all a line.
+  Recorded Kris's acceptance, with the unticked boxes waived.
+- CI broke on Python 3.15.0, which the runner now offers and numba
+  refuses. `.python-version` pins 3.13 (`35f6ba7`).
+- RELEASING.md steps 1–5: tag, build, verify, checksum, the notes.
+  Kris approved, then push and release. Code verified the release:
+  the downloaded assets pass `shasum -c`, and the update check
+  returns `UP_TO_DATE`.
+- Skills: none loaded; RELEASING.md is the runbook, as in §222/§242.
 
-## 4. Key context for whoever runs S18 or a fix row
+## 4. Key context for the next session
 
-- **Review's bulk actions** all take the rows on screen and refuse a
-  row that changed since (§76, §88, §235, §236). A new one follows
-  `_render_confirm_all_button` and a busy key in
-  `main_window._BUSY_ACTION_LABELS`.
-- **A per-row action takes a `RunningRows`, never `button=`**
-  (`ui/CLAUDE.md`; the sweep fails the build). Duplicates shows the
-  variant for a button whose enabled state also has a rule of its
-  own: keep the rule per row and reapply it at start and end.
-- **Each S17x row's BRIEF section separates what is established from
-  what is a hypothesis.** Measure before fixing, as §224–§226 did.
-- **A quit waits for a slskd bring-up by design** (§232): never
-  kill Compose mid-recreate. `Application.is_starting_slskd()` is
-  the one way to ask; a new bring-up path must go through
-  `bring_up_slskd` or the quit confirmation misses it.
-- **Only the wizard runs its own `QThreadPool`** (no shell exists
-  yet), whose destructor holds the exit (measured, §231); Settings
-  is on `MainWindow.thread_pool` (§240). The wizard asks before a
-  close or quit while slskd starts (§241), through
-  `window_lifecycle.ask_to_quit`, the shell's own words.
-- **Long work that should stop on quit takes `stop:
-  threading.Event | None`** and a page passes `self._context.quitting`;
-  a new pool call without one goes in `TAKES_NO_STOP`
-  (`tests/test_quit_stop_sweep.py`) with a measured reason, or the
-  build fails. Scratch timing with the real code: a scratch `HOME`
-  holding a DB copy (platformdirs reads `HOME`; assert the resolved
-  dir first), §233.
-- **The test account's files are unreadable from here**
-  (`/Users/test`); Kris copies them to `/Users/Shared/`.
-- **Timing at scale without touching real data:** copy the DB with
-  `sqlite3 -readonly … ".backup '<scratchpad>/seeker.db'"` and run
-  the service against the copy with the X9 Pro mounted (§224).
-- **The checklist is `ACCEPTANCE.md`;** results go in its Results
-  section. A fix row after a failure means a third candidate: rebuild
-  as §242 did (untagged) and update the candidate table.
-- **`tools/window_checks.py` has never run against Seeker** (only its
-  queries, against Finder). A bug in it is a tool fix, not an app
-  failure.
-- **The sweep check has no scratch-config route:** enable it and wait
-  a day (§222 explains why not `HOME`).
-- **S18:** RELEASING.md from step 1 on the release commit: date the
-  changelog's `[0.1.0]` (and decide whether S17f's "Confirm all" gets
-  a line), tag locally, rebuild (the checksum changes), then show Kris
-  the push and `gh release create` commands.
+- **A release:** RELEASING.md end to end; §245 is the worked example.
+  Bump `pyproject.toml`'s version and `uv lock`, then move
+  `[Unreleased]` in the changelog.
+- **Never move a published tag** (RELEASING.md → Roll back): a bad
+  build is withdrawn and released as `0.1.1`.
+- **`.python-version` pins 3.13.** Moving to 3.14/3.15 waits for numba
+  (and librosa) to support it. A bump is a reviewed commit.
 - Never touch slskd or real data, and never launch the built app.
 
 ## 5. Decisions made
 
-- **The candidate is untagged** (Kris, 2026-10-11): Help → Build shows
-  `e10aa87`; S18 tags.
-- **A quit stops running work at once, and what finished stays**
-  (BRIEF §17c's default; not vetoed). No new quit confirmation for it.
-- **No hard exit after the quit's bound** (§226: no measured reason;
-  a tag write in place could be cut).
-- **The checklist lives in its own file,** linked from here.
+- **Release with the acceptance partly waived** (Kris, 2026-10-14):
+  the important checks were done, and the rest stay open as
+  post-release checks, not passes.
+- **The notes are the changelog section plus RELEASING.md step 4's
+  parts, unwrapped** for GitHub's line breaks.
 
 ## 6. Blockers
 
-S18 waits on Kris's re-run of the six failures and the rest of
-ACCEPTANCE.md.
+None.
 
 ## 7. Files in progress
 
-None uncommitted. S17g's Code half done.
+None.
 
 ## 8. Waiting on Kris
 
-`docs/rounds/round-12/ACCEPTANCE.md`, from the top: the six
-2026-10-12 failures on the `6f49319` candidate (Scan's next step,
-Find duplicates to the end, quit during fingerprints and duplicates,
-fullscreen and back, the tray menu in fullscreen, Confirm all), with
-the S17c and S17f vetoes beside them. Then the rest: the fresh
-account, the live Retry/Cancel/Clean up, start at login again, the
-sweep, the window paths, the Fix…, the stress test, and the vetoes
-(S5, the wordmark, S15's wordings, S8's peer filenames, the wizard's
-share checkbox). Then S18's outward commands.
+- RELEASING.md step 5.2–5.3: download the DMG in a browser, install
+  it, and Help → "Check for updates…" says up to date.
+- The waived ACCEPTANCE.md boxes, as post-release checks: the fresh
+  account, the first live Retry/Cancel/Clean up, start at login again,
+  the sweep, window paths, the X9 Pro Fix… (CLAUDE.md → Open issues),
+  and S17d on the packaged build.
+- Item 125 is narrowed, not closed (§245 → Exit criteria).
 
 ## 9. Open questions
 
@@ -137,10 +96,6 @@ share checkbox). Then S18's outward commands.
 - S17o (§241): in dark mode the system's question icon on the quit
   confirmation (shell and wizard alike) is barely visible. Leave it,
   or draw our own?
-
-- Answered 2026-10-14 (the pools, the wizard's quit confirmation,
-  the test segfault, Replace all/Resolve all, slskd's `429`): see
-  SESSION-PLAN → "Waiting on Kris" and rows S17l–S17o.
 
 - "Match tracks" stays enabled while a scan runs, so a match can start
   beside `scan_and_match`'s own (§223). Disable it during a scan?

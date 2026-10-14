@@ -595,10 +595,11 @@ Genuinely open only, checked against every CI run on record (187, to
 
 Forward-looking only; everything shipped is in `docs/history/`.
 
-- **Round 12 ends in the v0.1.0 release.** Kris's walkthrough fixes,
-  a security re-audit, the daily sweep, X1/X2, then round 11's carried
-  release rows. Plan: `docs/rounds/round-12/SESSION-PLAN.md` (with
-  `BRIEF.md`); every document: `docs/README.md`.
+- **v0.1.0 is released** (2026-10-14, [§245](docs/history/241-270.md#245));
+  rounds 11 and 12 are closed. No round 13 is planned. Kris's waived
+  acceptance checks stay open as post-release checks
+  (`docs/rounds/round-12/ACCEPTANCE.md`); every document:
+  `docs/README.md`.
 - **Windows and Linux packaging: written, never run on real
   hardware**; no Linux installer format is scoped
   ([docs/packaging.md](docs/packaging.md)).

@@ -72,8 +72,8 @@ You need:
   SoulSeek;
 - optionally, `brew install chromaprint`, for duplicate detection.
 
-**The app.** Download `Seeker.dmg` from
-[Releases](https://github.com/KristiyanDDimitrov/Seeker/releases),
+**The app.** Download `Seeker.dmg` from the
+[latest release](https://github.com/KristiyanDDimitrov/Seeker/releases/latest),
 check it against the release's SHA-256, and drag Seeker to
 Applications. Seeker needs macOS 15 or later on Apple silicon. The
 build is ad-hoc signed, not notarized, so macOS blocks the first

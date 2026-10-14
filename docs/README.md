@@ -82,10 +82,10 @@ is its budgeted row-by-row map.
 - [`round-11`](rounds/round-11/BRIEF.md) — the final polish round and
   v0.1.0 release; [audit](rounds/round-11/AUDIT.md) (findings `A-NN`),
   [session plan](rounds/round-11/SESSION-PLAN.md). Stopped after S38;
-  its release rows carry to round 12.
+  its release rows carried to round 12, which closed it.
 - [`round-12`](rounds/round-12/BRIEF.md) — Kris's pre-release
   walkthrough, a security re-audit, the daily sweep, Retry/Cancel and
-  leftover cleanup, then the v0.1.0 release;
+  leftover cleanup, then the v0.1.0 release (published 2026-10-14);
   [session plan](rounds/round-12/SESSION-PLAN.md), [security audit](rounds/round-12/AUDIT.md),
   [acceptance checklist](rounds/round-12/ACCEPTANCE.md).
 

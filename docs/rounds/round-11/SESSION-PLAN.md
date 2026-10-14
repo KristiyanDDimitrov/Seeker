@@ -87,8 +87,8 @@ explicit yes.
 | **Phase M — Release** | | | | |
 | → S39 | Release engineering (carried to round 12 S16) | §39 | ~110 K | After §39.2 |
 | → S40 | Automatic update check (carried to round 12 S14) | §40 | ~90 K | None |
-| → S41 | Release-candidate acceptance (**Kris and Code**; carried to round 12 S17) | §41 | ~70 K | — |
-| → S42 | Publish v0.1.0 (Kris approves the outward actions); close the round (carried to round 12 S18) | §42 | ~60 K | — |
+| → S41 | Release-candidate acceptance (**Kris and Code**; carried to round 12 S17, done there) | §41 | ~70 K | — |
+| → S42 | Publish v0.1.0 (Kris approves the outward actions); close the round (carried to round 12 S18; released 2026-10-14, HISTORY §245) | §42 | ~60 K | — |
 | **Optional — [ASK]** | | | | |
 | → X1 | Clean up leftover slskd downloads (approved; round 12 S13) | §X1 | ~100 K | — |
 | → X2 | Retry and cancel on the Downloads page (approved; round 12 S12) | §X2 | ~110 K | — |
@@ -232,8 +232,8 @@ the `tc-tracker` handoff format.
       `io.github.kristiyanddimitrov.seeker`** (round 12 S16). Recommended:
       `io.github.kristiyanddimitrov.seeker`. It must change before the
       first release.
-- [ ] **S42** — the exact `git tag` and `gh release create` commands and
-      release notes, before they run.
+- [x] **S42** — the exact `git tag` and `gh release create` commands and
+      release notes, before they run. Approved 2026-10-14 (round 12 S18).
 - [x] **X1, X2** — **Answered 2026-10-08: both in** (round 12 S13, S12). Optional features: leftover-download cleanup;
       retry and cancel on Downloads.
 

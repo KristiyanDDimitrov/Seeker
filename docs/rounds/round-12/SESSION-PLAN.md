@@ -58,7 +58,7 @@ after Kris's explicit yes.
 | ☑ S16c | Bring slskd back when its container is gone: record share, data folder and login at every bring-up; `restart_slskd` recreates from them; a visible way back in Settings (added 2026-10-10, Kris) — part one §216 (§16c.1–2, stopped at the split point); part two §217 (the Start slskd form); follow-ups §218 (Settings' share optional) and §219 (the wizard's too) | §16c | ~110 K | After §16c.2 (service and CLI-testable restart) |
 | ☑ S16d | Settings: a tab's notice stays in view however far it scrolls (added 2026-10-11, Kris) — §220 | — | ~60 K | — |
 | ☑ S16e | Before acceptance (added 2026-10-11, Kris: "fix everything that could be fixed first"): the carried nits (Library's notice over the scroll bar, the Start slskd sentence's gap, the harness's wizard step, Sharing's per-row rebuild), the changelog, a clean tree — §221 | HANDOFF §4 | ~90 K | — |
-| ☐ S17 | Release-candidate acceptance (**Kris and Code**) — Code's half §222 (the candidate `e10aa87`, untagged; [ACCEPTANCE.md](ACCEPTANCE.md)); Kris's half open: the test-account run failed six checks (2026-10-12) → S17a–S17f, the freezes S17c found → S17h–S17k, the handoff's questions → S17l–S17o (2026-10-14), then a new candidate | §17 | ~70 K | — |
+| ☑ S17 | Release-candidate acceptance (**Kris and Code**) — Code's half §222 (the candidate `e10aa87`, untagged; [ACCEPTANCE.md](ACCEPTANCE.md)); Kris's half open: the test-account run failed six checks (2026-10-12) → S17a–S17f, the freezes S17c found → S17h–S17k, the handoff's questions → S17l–S17o (2026-10-14), then a new candidate; accepted by Kris 2026-10-14 with the unticked boxes waived (ACCEPTANCE.md → Results) | §17 | ~70 K | — |
 | **Phase E′ — Acceptance failures (added 2026-10-12, Kris's test-account run)** | | | | |
 | ☑ S17a | Dashboard: the next step shows no "missing" count until the scan and match finish — §223 | §17a | ~60 K | — |
 | ☑ S17b | Find duplicates: the "freeze" at 3589/3611 is the throttle's last report before a silent quality stage; report it, make it cheap — §224 (582 s → 4.7 s; item 4 not needed) | §17b | ~100 K | After §17b.2 (the stage reports progress) |
@@ -75,8 +75,8 @@ after Kris's explicit yes.
 | ☑ S17m | Review's upgrade Replace reports its failure; Replace all and Resolve all keep their render-decided enabled state — §239 (a render mid-batch re-enabled both, so a second click re-ran the batch: now busy actions; Resolve all on no groups opens no dialog) | §17m | ~60 K | — |
 | ☑ S17n | Settings' tasks on `MainWindow.thread_pool` (the wizard keeps its own: no shell exists yet) — §240 (`idealThreadCount()` 14, measured against the long task kinds) | §17n | ~90 K | — |
 | ☑ S17o | The wizard asks before quitting a slskd bring-up — §241 (`window_lifecycle.ask_to_quit`, the close and the `QEvent.Quit` filter, asked once) | §17o | ~60 K | — |
-| ☐ S17g | A new candidate from the fixed tree; Kris re-runs the six failed checks, then the rest of ACCEPTANCE.md — Code's half §242 (`6f49319`, untagged, SHA-256 `b203e98d…`); Kris's half open | §17 | ~50 K | — |
-| ☐ S18 | Publish v0.1.0 (Kris approves the outward actions); close rounds 11 and 12 | §18 | ~60 K | — |
+| ☑ S17g | A new candidate from the fixed tree; Kris re-runs the six failed checks, then the rest of ACCEPTANCE.md — Code's half §242 (`6f49319`, untagged, SHA-256 `b203e98d…`); Kris's half: accepted 2026-10-14 | §17 | ~50 K | — |
+| ☑ S18 | Publish v0.1.0 (Kris approves the outward actions); close rounds 11 and 12 — §245 (tag `v0.1.0` on `35f6ba7`, SHA-256 `5691a256…`; §243–§244 the tests, a Python pin first) | §18 | ~60 K | — |
 
 ### Why this order
 
@@ -199,8 +199,8 @@ BRIEF §0.11.
 - [ ] **S13:** the first real leftover-file cleanup is yours to click.
 - [ ] **S16c:** the first real bring-up of a deleted container, at
       the keyboard, choosing which slskd data folder to keep.
-- [ ] **S18:** the exact `git tag` and `gh release create` commands and
-      the release notes.
+- [x] **S18:** the exact `git tag` and `gh release create` commands and
+      the release notes. Approved 2026-10-14.
 
 **Acceptance failures (2026-10-12), Kris's part:**
 - [x] **S17c, before it starts:** in the test account, copy
