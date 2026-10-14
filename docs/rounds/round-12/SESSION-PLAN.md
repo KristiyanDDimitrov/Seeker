@@ -58,7 +58,7 @@ after Kris's explicit yes.
 | ☑ S16c | Bring slskd back when its container is gone: record share, data folder and login at every bring-up; `restart_slskd` recreates from them; a visible way back in Settings (added 2026-10-10, Kris) — part one §216 (§16c.1–2, stopped at the split point); part two §217 (the Start slskd form); follow-ups §218 (Settings' share optional) and §219 (the wizard's too) | §16c | ~110 K | After §16c.2 (service and CLI-testable restart) |
 | ☑ S16d | Settings: a tab's notice stays in view however far it scrolls (added 2026-10-11, Kris) — §220 | — | ~60 K | — |
 | ☑ S16e | Before acceptance (added 2026-10-11, Kris: "fix everything that could be fixed first"): the carried nits (Library's notice over the scroll bar, the Start slskd sentence's gap, the harness's wizard step, Sharing's per-row rebuild), the changelog, a clean tree — §221 | HANDOFF §4 | ~90 K | — |
-| ☐ S17 | Release-candidate acceptance (**Kris and Code**) — Code's half §222 (the candidate `e10aa87`, untagged; [ACCEPTANCE.md](ACCEPTANCE.md)); Kris's half open: the test-account run failed six checks (2026-10-12) → S17a–S17f, the freezes S17c found → S17h–S17k, then a new candidate | §17 | ~70 K | — |
+| ☐ S17 | Release-candidate acceptance (**Kris and Code**) — Code's half §222 (the candidate `e10aa87`, untagged; [ACCEPTANCE.md](ACCEPTANCE.md)); Kris's half open: the test-account run failed six checks (2026-10-12) → S17a–S17f, the freezes S17c found → S17h–S17k, the handoff's questions → S17l–S17o (2026-10-14), then a new candidate | §17 | ~70 K | — |
 | **Phase E′ — Acceptance failures (added 2026-10-12, Kris's test-account run)** | | | | |
 | ☑ S17a | Dashboard: the next step shows no "missing" count until the scan and match finish — §223 | §17a | ~60 K | — |
 | ☑ S17b | Find duplicates: the "freeze" at 3589/3611 is the throttle's last report before a silent quality stage; report it, make it cheap — §224 (582 s → 4.7 s; item 4 not needed) | §17b | ~100 K | After §17b.2 (the stage reports progress) |
@@ -70,6 +70,11 @@ after Kris's explicit yes.
 | ☑ S17i | Quit stops the network waits: the playlist download between tracks, a search's 45 s wait, Spotify's rate-limit and login waits and sync, Sharing's share-ready poll; slskd's bring-up measured — part one §229 (§17i.1–2, stopped at the split point; manual search and Retry join part two); part two's first slice §230 (manual search and Retry; stopped on budget, §17i.3–5 open); second slice §231 (§17i.3–4; stopped on budget, §17i.5 open, its evidence recorded); part three §232 (§17i.5: the bring-up is waited for, logged, and named in the quit confirmation) | §17i | ~120 K | After §17i.2 (playlist download and search wait) |
 | ☑ S17j | Quit stops library work (scan, tagging, renames; merge and remove if measured long); a sweep test that every long call passes the stop; close item 125 — §233 (scan, tagging, renames, plus Resolve all and Replace all the sweep found; merge/remove/match measured ≤ 0.2 s; item 125 narrowed, not closed: Settings' and the wizard's own pools, a hung slskd) | §17j | ~110 K | After §17j.1 (scan, tagging, renames) |
 | ☑ S17k | Duplicates' resize stall: ~67 ms a step from 5,400 cell widgets (§225); measured before and after — §234 (widgets only near the view: storm ~2,050 → ~340 ms, ~11 ms a step) | §17k | ~100 K | After the measurement and one approach |
+| **Before the new candidate (added 2026-10-14, Kris's answers to the handoff's questions)** | | | | |
+| ☐ S17l | slskd's `429`: Seeker never runs two enqueues at once; a `429` is "busy", never a failed track, a failed Confirm or a spent retry | §17l | ~100 K | After §17l.1 (the lock) |
+| ☐ S17m | Review's upgrade Replace reports its failure; Replace all and Resolve all keep their render-decided enabled state | §17m | ~60 K | — |
+| ☐ S17n | Settings' tasks on `MainWindow.thread_pool` (the wizard keeps its own: no shell exists yet) | §17n | ~90 K | — |
+| ☐ S17o | The wizard asks before quitting a slskd bring-up | §17o | ~60 K | — |
 | ☐ S17g | A new candidate from the fixed tree; Kris re-runs the six failed checks, then the rest of ACCEPTANCE.md | §17 | ~50 K | — |
 | ☐ S18 | Publish v0.1.0 (Kris approves the outward actions); close rounds 11 and 12 | §18 | ~60 K | — |
 
@@ -120,6 +125,13 @@ after Kris's explicit yes.
   S17j's sweep test runs once every long call takes the stop. S17k
   stands alone. Run order: S17h, S17i, S17j, S17k, then S17f, then
   S17g.
+- **S17l–S17o, added 2026-10-14 before S17g:** the candidate should
+  carry them, or Kris's re-run tests a build that is already out of
+  date. S17l goes first: Kris hit its `429` live, and S17f's Confirm
+  all makes concurrent enqueues likelier. S17m is small and in Review
+  too. S17n before S17o: both are about what holds a quit, and S17o's
+  confirmation is then the wizard's only gap. The test segfault (§231)
+  is skipped, with the reason in BRIEF §17l–§17o.
 
 ---
 
@@ -136,7 +148,7 @@ List your available skills and resolve their real names first.
 | S9 | `tech-debt-tracker` (show the radon counts drop) |
 | S10, S11 | `observability-designer` (what the sweep logs and reports) |
 | S16–S18 | `changelog-generator`, `runbook-generator`, `ship-gate` |
-| S17a–S17k | `tdd` (failing test first); `performance-profiler` for S17b, S17d and S17k (measure before and after); `focused-fix` for S17c, S17e, S17h–S17j |
+| S17a–S17o | `tdd` (failing test first); `performance-profiler` for S17b, S17d and S17k (measure before and after); `focused-fix` for S17c, S17e, S17h–S17j |
 | Any row, optional | `self-eval` before close-out |
 
 If a skill contradicts the brief, follow the skill for **how** and
@@ -204,6 +216,12 @@ BRIEF §0.11.
       (HISTORY §237).
 - [ ] **S17f:** veto, or let stand, "Confirm all" as one button per
       Review section.
+
+**Answered before S17g (2026-10-14):** look into the `429` (S17l);
+fix Replace all and Resolve all if they need it (S17m); move the
+pools if it helps and breaks nothing (S17n, Settings only); the
+wizard gets a quit confirmation (S17o); the test segfault is Code's
+call (skipped, BRIEF §17l–§17o).
 
 **Real-desktop checks:** R11's list (its session plan → "Waiting on
 Kris"), all still open, plus BRIEF §17's additions. S17 consolidates

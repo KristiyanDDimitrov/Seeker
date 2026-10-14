@@ -28,9 +28,13 @@ nine fields below follow the contract in
 **S17e is done** (§237): with `SEEKER_DEBUG_TRAY=1` on, Kris's dev
 run did not reproduce the fullscreen tray menu closing; the 2 s
 render is ruled out. The trace is reverted and Kris counted the row
-done. Every S17a–S17k row is now closed. **Next: S17g**, a new
-candidate from the fixed tree, then Kris's re-run of the failed
-checks (§9 lists small rows Kris may want first).
+done. Every S17a–S17k row is now closed.
+
+**2026-10-14, planning only:** Kris answered §9's questions before
+S17g. They became four rows, S17l–S17o (BRIEF §17l–§17o, with
+what is established and what is a hypothesis). The test segfault is
+skipped, with the reason recorded there. **Next: S17l** (slskd's
+`429`), then S17m, S17n, S17o, then **S17g**.
 
 ## 3. Session report (S17e)
 
@@ -112,7 +116,7 @@ Evidence in HISTORY §237.
 
 ## 6. Blockers
 
-None for S17g. S18 waits on S17g's re-run.
+None for S17l. S17g waits on S17l–S17o; S18 waits on S17g's re-run.
 
 ## 7. Files in progress
 
@@ -135,31 +139,9 @@ share checkbox). Then S18's outward commands.
 
 ## 9. Open questions
 
-- Move Settings' and the wizard's tasks onto `MainWindow.thread_pool`
-  (§231–§233: their destructors hold the exit outside the bounded
-  wait)? The last piece of item 125 besides a hung slskd.
-
-- The wizard has no quit confirmation: closing it mid-bring-up waits
-  for Compose (≤ 120 s) with no word, though its page shows the
-  bring-up running (§232). Ask before closing, or leave it?
-
-- **A pre-existing test segfault** (§231): "Garbage-collecting"
-  inside `ui/wordmark.py`'s `_Brows.paintEvent` during a
-  `test_wizard.py` test, about 1 run in 25 of `test_main_ui.py
-  test_wizard.py test_settings_window.py` at `c8a0045`. Not seen in a
-  full run or CI yet. A small row of its own before S17g (could the
-  same GC-in-paint crash reach the real app)?
-
-- Review's "Replace all" and Duplicates' "Resolve all groups" pass
-  `button=` with a render-decided enabled state (the §145 rule), and
-  an upgrade's Replace has no `on_error` (§228 → "Not done"). Fix in
-  a small row before S17g?
-
-- The test account's log has slskd answering `429 Too Many Requests`
-  on `POST /api/v0/transfers/downloads/batches` during a playlist
-  download (2026-10-08 18:58). Item 63's lead is a `500` on the same
-  endpoint: is a 429 handled as a recognized rejection, or does it
-  feed the locked-retry loop?
+- Answered 2026-10-14 (the pools, the wizard's quit confirmation,
+  the test segfault, Replace all/Resolve all, slskd's `429`): see
+  SESSION-PLAN → "Waiting on Kris" and rows S17l–S17o.
 
 - "Match tracks" stays enabled while a scan runs, so a match can start
   beside `scan_and_match`'s own (§223). Disable it during a scan?

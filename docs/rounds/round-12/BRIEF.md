@@ -1101,6 +1101,136 @@ and button sweeps green. Measure after; screenshots per §0.13
 
 **Split point:** after the measurement and one approach.
 
+## §17l–§17o — Before the new candidate (added 2026-10-14)
+
+**Kris (2026-10-14), on the handoff's open questions before S17g:**
+look into slskd's `429`; fix Replace all and Resolve all if they need
+it; move Settings' and the wizard's tasks onto the shell's pool if it
+improves things and breaks nothing; add a quit confirmation to the
+wizard. The test segfault (§231) was left to Code's judgement:
+**skipped.** Its crash site is wherever the cyclic GC happens to run,
+not `_Brows`' code: no allocation there differs from any other paint.
+It showed 1 run in 25 of a three-file loop and never in a full run or
+on CI, and an investigation has no bounded end. A crash in the real
+app would leave a macOS crash report in
+`~/Library/Logs/DiagnosticReports/`. Reopen it if it shows on CI or
+in the app.
+
+## §17l — slskd's enqueue limit answers `429` (S17l)
+
+**Established (slskd 0.26.0's source, the tag the Compose template
+pins; `TransfersController.cs`).** Both enqueue endpoints share
+`DownloadRequestLimiter = new SemaphoreSlim(2, 2)` and take it with
+`Wait(0)`: a third enqueue while two are in flight gets an immediate
+`429`, body "Only one concurrent operation is permitted. Wait until
+the previous request completes" (the text says one, the limit is
+two). An enqueue holds its slot through the peer's endpoint lookup
+and `EnqueueAsync`, so it can take seconds. The same controller turns
+any other exception into a `500` with the exception's message: item
+63's lead (a `500` on this endpoint) is a different path from this
+one.
+
+**Established (the test account's log, 2026-10-08 18:58:41).** The
+`429` hit Review's Confirm (`review_service.confirm_review_candidate`
+→ `request_download`), not the playlist download: a playlist download
+was running at the time. The candidate was placed at 18:59:56, so a
+second attempt succeeded.
+
+**Established (code).** `request_download` treats a `429` as
+unrecognized and re-raises the raw `httpx.HTTPStatusError`. Seeker
+enqueues from several threads at once: the playlist download and the
+sweep (`_request_and_record`), the poll (`_activate_shortlisted_entry`
+and `_attempt_locked_retry`), and Review's Confirm, Confirm all and
+upgrade Replace, Retry and manual search. So a `429`:
+- fails a Review Confirm, which the user then sees;
+- fails a track in a playlist download or a sweep after its search
+  (up to 45 s) was spent, with no row recorded;
+- spends one of a locked row's 8 retries (`except Exception` →
+  `_advance_locked_retry`), though slskd never asked the peer.
+
+**Hypothesis (check first).** A `429` raised from
+`_activate_shortlisted_entry` (it catches only `SoulseekDownloadError`)
+propagates out of `_cascade`, leaving the backup `shortlisted` beside
+a failed row, and no later poll activates it. S17f's Confirm all
+makes three enqueues at once likelier.
+
+**Do, one commit each, a failing test first.**
+1. **Seeker never runs two enqueues at once:** one lock in
+   `SoulseekClient` around the batch POST (a module-level lock: pages
+   and services build their own clients), so one process stays under
+   slskd's limit of two.
+2. **A `429` is "slskd is busy", never a failure:** `request_download`
+   waits briefly and retries a bounded number of times (a CLI sweep
+   from cron is a second process the lock cannot see). If slskd stays
+   busy, raise a `SeekerError` that `describe_error` words, and that
+   the locked-retry path treats like `httpx.TransportError`: no
+   attempt spent. Then the hypothesis above, with a test, fixed if
+   true.
+
+**Split point:** after (1).
+
+## §17m — Review's Replace and the bulk buttons' enabled state (S17m)
+
+**Established (§228 → "Not done").** An upgrade's Replace passes no
+`on_error`, so a failed Replace shows nothing on Review: an error the
+user never sees (CLAUDE.md: errors go to an `InlineNotice`). Review's
+"Replace all" and Duplicates' "Resolve all groups" pass `button=`,
+but their enabled state is decided at render (`setEnabled(len(…) >
+0)`), so the finish re-enables one over an empty list until the next
+render. That is cosmetic: Replace all's click returns on an empty
+list. Whether Resolve all's does is not checked.
+
+**Do, one commit each, a failing test first.**
+1. Replace's failure reaches Review's feedback target through
+   `describe_error`.
+2. The two buttons keep their render rule after a finish
+   (`ui/CLAUDE.md`'s §145 rule; Duplicates' per-row variant from §228
+   shows the pattern), and Resolve all's click on an empty list is
+   checked.
+
+**Split point:** none.
+
+## §17n — Settings' tasks on the shell's pool (S17n)
+
+**Established (§231–§233; code).** `SettingsWindow` and
+`OnboardingWizard` each make their own `QThreadPool()`. A pool's
+destructor waits for its running tasks, outside `cleanup_before_quit`'s
+5 s bounded wait and its log. **Only Settings can move:** it opens
+from `MainWindow`, while the wizard runs on a first launch before any
+`MainWindow` exists (`main_ui.py`), so it keeps its own pool and §17o
+covers it.
+
+**Risk to measure, not assume.** The shell's pool has Qt's default
+thread count (`idealThreadCount()`). Settings' short checks could
+queue behind long tasks only if every thread were busy. Count the
+long tasks that can run at once (playlist download, sweep, scan,
+fingerprints, duplicates, tagging) against this Mac's
+`idealThreadCount()`, and record it.
+
+**Do, a failing test first.** Settings takes the shell's pool (and
+its `quitting` event for any long task). The quit sweep
+(`tests/test_quit_stop_sweep.py`) covers its calls, and a task still
+running at quit is logged like any other. Settings closed mid-task
+must still be safe (the worker's context object).
+
+**Split point:** none.
+
+## §17o — The wizard asks before quitting a bring-up (S17o)
+
+**Established (§232).** Closing the wizard while a bring-up runs
+waits for Compose (up to 120 s) with no word. `MainWindow`'s quit
+confirmation already names a bring-up through
+`Application.is_starting_slskd()`.
+
+**Do, a failing test first.** Closing the wizard (and ⌘Q, through
+the same `QEvent.Type.Quit` seam, CLAUDE.md) while
+`is_starting_slskd()` asks first, with the same wording as the
+shell's confirmation. Cancel keeps the wizard open. Confirm quits
+and waits, as now. No question when nothing is starting.
+Screenshots per §0.13 (the question, both themes).
+
+**Split point:** none.
+
 ## §18 — Publish v0.1.0, close the round (S18)
 
 R11 §42 unchanged. Kris approves the exact `git tag`/`gh release
