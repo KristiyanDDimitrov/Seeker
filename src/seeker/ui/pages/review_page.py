@@ -750,6 +750,9 @@ class ReviewPage(QWidget):
             self._context.thread_pool, request_id, buttons,
             lambda: self._context.application.review_service
             .apply_upgrade_decision(request_id, replace, delete_old),
+            on_error=lambda message: self.notice.show_message(
+                message, kind="error",
+            ),
             on_finished=self._on_upgrade_decision_finished,
         )
 

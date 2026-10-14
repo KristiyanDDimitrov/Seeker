@@ -504,6 +504,8 @@ class FakeReviewService:
         self.apply_upgrade_decision_result: str | None = (
                 "Replaced with /new/path"
         )
+        # Raised by apply_upgrade_decision, after recording the call.
+        self.apply_upgrade_decision_error: Exception | None = None
         self.apply_upgrade_decisions_batch_calls: list[
             tuple[list[int], bool]
         ] = []
@@ -555,6 +557,8 @@ class FakeReviewService:
                 (request_id, replace, delete_old)
         )
         self._hold_decision()
+        if self.apply_upgrade_decision_error is not None:
+            raise self.apply_upgrade_decision_error
         return self.apply_upgrade_decision_result if replace else None
 
     def apply_upgrade_decisions_batch(

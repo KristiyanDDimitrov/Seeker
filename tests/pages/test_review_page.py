@@ -29,6 +29,7 @@ from fakes import (
     make_upgrade_details,
     wait_for_workers,
 )
+from seeker.error_text import describe_error
 from seeker.models.download_result import TrackFailure
 from seeker.models.review_result import ConfirmAllResult
 from seeker.ui import help_text, plain_text
@@ -372,6 +373,25 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
     )
     assert window._review_page.notice.text() == ""
     assert window._review_page.notice.isVisible() is False
+
+
+def test_a_failed_upgrade_replace_shows_its_error_on_review(qtbot):
+    error = PermissionError(13, "Permission denied", "/music/new.flac")
+    application = FakeApplication()
+    application.review_service.apply_upgrade_decision_error = error
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+    page = window._review_page
+    page._render_pending_upgrades([make_upgrade_details(request_id=5)])
+
+    actions = page.review_upgrades_table.cellWidget(0, 3)
+    buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
+    buttons["Replace"].click()
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=2000)
+
+    assert page.notice.text() == describe_error(error)
+    assert page.notice.property("variant") == "error"
+    assert 5 not in page._running_upgrades
 
 
 # --- Roadmap item R3.1: "Replace all" upgrades -----------------------------
