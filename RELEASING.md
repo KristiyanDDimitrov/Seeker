@@ -64,9 +64,12 @@ real Seeker data, so do it only on a machine where that is intended.
 Write the checksum next to the disk image:
 
 ```
-cd dist && shasum -a 256 Seeker.dmg > Seeker.dmg.sha256 && cd ..
-shasum -a 256 -c dist/Seeker.dmg.sha256
+cd dist && shasum -a 256 Seeker.dmg > Seeker.dmg.sha256
+shasum -a 256 -c Seeker.dmg.sha256 && cd ..
 ```
+
+The checksum file names the image by its bare name, so `-c` runs
+beside it: from the repository root it reports `FAILED open or read`.
 
 If any check fails, delete the local tag (`git tag -d vX.Y.Z`), fix,
 and start again from step 1.
