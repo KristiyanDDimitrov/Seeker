@@ -7,6 +7,22 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-26
+
+A security release; nothing else changes.
+
+### Security
+
+- **Certificate authorities updated** (certifi 2026.10.23,
+  PYSEC-2026-4320). 0.1.0 still trusted the emSign ECC Root CA - G3,
+  whose revoked intermediate certificates had compromised keys:
+  someone holding one of those keys and sitting on your network path
+  could have impersonated Spotify or GitHub to Seeker. Its
+  connections now reject that root.
+- **Build tooling updated** (setuptools 84.2.1, GHSA-xmj3-9gf7-h52w):
+  a Windows-only flaw in the tool that builds the app. Nothing in the
+  installed macOS app used it.
+
 ## [0.1.0] - 2026-10-14
 
 The first public release: a macOS desktop app (`Seeker.dmg`) and a
@@ -61,5 +77,6 @@ command-line tool (`seeker`) over one shared core.
 - Windows and Linux packaging is written but has never run on real
   hardware.
 
-[Unreleased]: https://github.com/KristiyanDDimitrov/Seeker/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/KristiyanDDimitrov/Seeker/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/KristiyanDDimitrov/Seeker/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/KristiyanDDimitrov/Seeker/releases/tag/v0.1.0
