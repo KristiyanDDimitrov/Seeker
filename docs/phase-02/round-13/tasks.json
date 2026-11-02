@@ -138,14 +138,14 @@
       "id": "S3b", "title": "Rosetta triage: each Intel bug test-first, test fixes, timings, commands and platform facts",
       "type": "investigation", "executes": "BRIEF.md §3 steps 4-6", "depends_on": ["S3"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 3,
-      "est_work_k": 35, "est_peak_k": 89, "actual_peak_k": null,
+      "est_work_k": 35, "est_peak_k": 89, "actual_peak_k": 75,
       "split_point": "After the chromaprint skip commit, before the timings (re-planned by S3, §255)",
       "reading_list": [
         {"path": "docs/history/241-270.md", "range": "S3's entry (its failure list)", "est_k": 1.0},
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "322-346", "est_k": 0.4},
         {"path": "each failing test", "range": "by range", "est_k": null}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["00e53f9", "eeffa22", "8cccddc"], "history": 258
     },
     {
       "id": "S4", "title": "CI: a blocking macos-15-intel job (PF-03)",
