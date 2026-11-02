@@ -12,40 +12,34 @@ beside it. Every document: `docs/README.md`.
 ## 1. Current state
 
 - **Released: v0.1.1** (2026-10-26), tag `v0.1.1` on `e470d1c`: a
-  security release (`e4ff751` bumped certifi and setuptools for two
-  advisories). It has no HISTORY entry yet; S1b writes it. v0.1.0:
-  HISTORY §245.
-- **HEAD:** the round-13 re-plan's commit on top of `e470d1c`. Tree
-  clean.
-- **The three numbers:** last quoted at S18 (`2b7e8d9`): pytest
-  `2418 passed, 1 skipped` locally with the X9 Pro (CI skips 29);
-  `mypy --strict src/` clean, 146 files; `ruff check src tests tools`
-  0. S0's check quotes them again.
-- **CI:** run `40348515619` green on `e470d1c`. The weekly scheduled
-  run `40326963931` (2026-10-26) failed on the two advisories v0.1.1
-  fixed.
+  security release. It has no HISTORY entry yet; S1b writes it.
+- **HEAD:** S0's close-out on top of `8997f5f` (the split). Tree clean
+  but for Kris's two untracked PDFs.
+- **The three numbers (S0, X9 Pro not mounted):** pytest `2390 passed, 29 skipped`;
+  mypy `--strict src/` clean, 146 files; ruff `check src tests tools` 0. With the drive: `2418 passed,
+  1 skipped` (§245).
+- **CI:** S0's push is recorded in the handoff commit after it.
 
 ## 2. Where we are
 
-Phase 01 is closed. Phase 02 was planned on 2026-10-17; **round 13
-(Intel Macs → v0.2.0) was re-planned on 2026-11-02** into 18 rows
-with the session-plan method. **Next row: S0**, the baseline cut, a
-solo session; Kris runs `/context` at its start. After S0 the rows run
-in waves, a lead session each (the plan's Execution section), starting
-with "Read docs/HANDOFF.md and lead wave 1".
+Round 13 (Intel Macs → v0.2.0), 18 rows. **S0 is done** (§246).
+**Next: wave 1**, started with "Read docs/HANDOFF.md and lead wave 1"
+(the plan's Execution section). Its lead first measures the new B
+(`tokens.py measure --last 1`) into `tasks.json` and this file.
 
-## 3. Session report (round 13 re-plan, 2026-11-02)
+## 3. Session report (S0, 2026-11-02)
 
-- Measured B: median 57 K over 20 sessions, 59–63 K since 2026-10-17.
-- `SESSION-PLAN.md` rewritten: 18 rows, each ≤ 65 K of work except S5
-  (~80 K); new `tasks.json`. BRIEF: base `e470d1c`, §1.1 marked done,
-  §1b's PR table refreshed and split into S1b and S1c, a new §1d
-  (Spotify Premium).
-- Committed the phase-02 planning documents with the re-plan, after a
-  link check (19 files, 257 links, 0 broken). No code changed except
-  one comment path in `tests/test_stress_e2e.py`.
+- `CLAUDE.md`: 37.1 KB → 15.4 KB core plus six topic files and
+  `docs/status.md`, moved by script by line range (`8997f5f`); 363
+  moved lines, each exactly once; link check 0 broken (two old false
+  positives).
+- Plugins off in `.claude/settings.local.json` (untracked).
+- `/context` was not captured at the start: **Kris runs it at wave
+  1's start**, and the split goes into wave 1's report.
+- Peak 120 K (base 61 K, work 58 K against 45 K est.).
 
 ## 4. Key context for the next session
+
 
 - **Intel's blocker is wheels, not code** (PF-01): numba 0.62.1 and
   llvmlite 0.45.1 are the last with Intel macOS wheels; numba 0.62.1
@@ -62,14 +56,18 @@ with "Read docs/HANDOFF.md and lead wave 1".
   planned asset names keep working.
 - **Spotify Premium:** neither the README nor the wizard mentions it
   (grep, 2026-11-02). S1d adds it.
-- **S0:** whether Claude Code loads a subfolder's `CLAUDE.md` on demand
-  is UNVERIFIED here. S0 records what it sees; S1 confirms it from a
-  fresh session.
+- **Topic `CLAUDE.md` files load on a Read-tool read** in their folder
+  (observed in S0 for `soulseek/`, §246); through Bash, UNVERIFIED.
+  The core's index names each file; read one by hand when unsure.
+  Accepted risks, Open issues and the Roadmap are in `docs/status.md`.
+- **Plugins:** marketing-skills and product-skills are `false` in
+  `.claude/settings.local.json` from S0 on; the next session's skill
+  listing shows whether that took.
 - **Subagents, UNVERIFIED until wave 1 records them:** custom agents
   load at session start; subagents get `CLAUDE.md`; none can spawn
   another; `isolation: "worktree"`'s branch, location and cleanup; a
   worker's baseline and transcript location. The plan → Execution.
-- HISTORY continues at §246 in `docs/history/241-270.md`.
+- HISTORY continues at §247 in `docs/history/241-270.md`.
 
 ## 5. Decisions made
 
@@ -104,7 +102,8 @@ None.
 ## 8. Waiting on Kris
 
 **Round 13:** Each wave: Kris starts the lead session; questions
-arrive through it. S0: `/context` at the start. S1b, S1c: each merge. S9:
+arrive through it. Wave 1: `/context` at the start. S1b, S1c: each
+merge. S9:
 the Intel image in the test account (BRIEF §9); an Intel Mac if one
 turns up. S10: each outward step. After S10: an Intel download on the
 website.

@@ -18,7 +18,7 @@
       "id": "S0", "title": "Baseline cut: CLAUDE.md core plus path-scoped topic files; marketing and product plugins off in this folder",
       "type": "refactor", "executes": "SESSION-PLAN.md -> S0", "depends_on": [], "ask": false,
       "gate": "Kris runs /context at the start; S1 measures the yield", "model": null, "executor": "solo", "wave": 0,
-      "est_work_k": 45, "est_peak_k": 107, "actual_peak_k": null,
+      "est_work_k": 45, "est_peak_k": 107, "actual_peak_k": 120,
       "split_point": "After the split is committed, before the pointer sweep",
       "reading_list": [
         {"path": "CLAUDE.md", "range": "headings only (grep -n '^##'); text already in context", "est_k": 0.3},
@@ -27,7 +27,7 @@
         {"path": "src/seeker/ui/CLAUDE.md", "range": "1-10", "est_k": 0.3},
         {"path": "docs/history/241-270.md", "range": "148-222", "est_k": 1.2}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["8997f5f"], "history": 246
     },
     {
       "id": "S1", "title": "Help -> Build names the architecture, and Rosetta (PF-05)",
