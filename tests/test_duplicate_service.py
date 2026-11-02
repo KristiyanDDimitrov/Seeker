@@ -291,11 +291,8 @@ def test_compute_fingerprints_classifies_a_0_byte_file(tmp_path):
     assert result.details[0]["reason"] == "empty_file"
 
 
-@requires_chromaprint
-def test_compute_fingerprints_classifies_an_undecodable_file(tmp_path):
-    # A real, non-empty, non-missing file that just isn't real audio —
-    # both soundfile and (if present) the ffmpeg fallback genuinely
-    # can't decode it, so this is the "decode_unsupported" reason.
+def _fingerprint_a_file_that_is_not_audio(tmp_path):
+    # A real, non-empty, non-missing file that just isn't real audio.
     database = make_database(tmp_path)
     music_dir = tmp_path / "music"
     music_dir.mkdir()
@@ -303,11 +300,44 @@ def test_compute_fingerprints_classifies_an_undecodable_file(tmp_path):
     (music_dir / "garbage.wav").write_bytes(b"not actually audio data")
     add_local_file(database, location, "garbage.wav", "wav", 3000)
 
-    service = make_service(database)
-    result = service.compute_fingerprints("Main")
+    return make_service(database).compute_fingerprints("Main")
+
+
+@requires_chromaprint
+def test_compute_fingerprints_classifies_an_undecodable_file(
+        tmp_path, monkeypatch):
+    # Neither soundfile nor the ffmpeg fallback can decode it, so the
+    # fallback's FingerprintError is the "decode_unsupported" reason.
+    # The ffmpeg is a stand-in that always fails: whether the machine
+    # has a real one (Homebrew's chromaprint pulls one in on Apple
+    # silicon; the Intel runner has none) must not decide the test.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    failing_ffmpeg = bin_dir / "ffmpeg"
+    failing_ffmpeg.write_text("#!/bin/sh\nexit 1\n")
+    failing_ffmpeg.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+    result = _fingerprint_a_file_that_is_not_audio(tmp_path)
 
     assert result.failed == 1
     assert result.details[0]["reason"] == "decode_unsupported"
+
+
+@requires_chromaprint
+def test_compute_fingerprints_without_ffmpeg_reports_the_decode_error(
+        tmp_path, monkeypatch):
+    # With no ffmpeg to try, compute_fingerprint re-raises soundfile's
+    # own error, as it did before the fallback existed; that is not a
+    # FingerprintError, so the reason is the generic "error".
+    empty_bin_dir = tmp_path / "empty-bin"
+    empty_bin_dir.mkdir()
+    monkeypatch.setenv("PATH", str(empty_bin_dir))
+
+    result = _fingerprint_a_file_that_is_not_audio(tmp_path)
+
+    assert result.failed == 1
+    assert result.details[0]["reason"] == "error"
 
 
 @requires_chromaprint
