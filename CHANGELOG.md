@@ -13,11 +13,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   silicon, Intel, or the Intel build on Apple silicon (Rosetta), with
   a pointer to the faster Apple silicon download.
 - **`seeker-ui --smoke-test [REPORT]` checks a build and exits:** it
-  imports every module, applies both themes offscreen and loads the
-  bundled fonts, icons and Compose template, times two analyses of a
-  generated click track and says whether chromaprint loads, then
-  prints a JSON report (also written to `REPORT`) and exits 0, or 1
-  naming what failed. It touches no settings, database or library.
+  checks a frozen build carries its identity, imports every module and
+  the macOS frameworks the spec bundles by hand, finds the native Qt
+  platform plugin, applies both themes offscreen and loads the bundled
+  fonts (each weight from its own file), icons and Compose template,
+  times two analyses of a generated click track and says whether
+  chromaprint loads, then prints a JSON report (also written to
+  `REPORT`) and exits 0, or 1 naming what failed or the report it
+  could not write. It touches no settings, database or library.
 
 ### Changed
 
