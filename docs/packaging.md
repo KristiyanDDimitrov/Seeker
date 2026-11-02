@@ -267,26 +267,41 @@ versions are recorded here instead. At each release, re-read them,
 compare, and check each one that changed or has a new advisory
 against its upstream security notes.
 
-| Library | Version (2026-10-09) | Arrives with | Reads peer files? |
-|---|---|---|---|
-| libsndfile | 1.2.2 | soundfile 0.14.0's wheel | yes: BPM, key, loudness |
-| Qt | 6.11.2 | PySide6 6.11.2 | no |
-| OpenSSL | 3.5.7 | Python 3.13.15 | no |
-| SQLite | 3.53.1 | Python 3.13.15 | no |
-| ffmpeg | 9.0.1 | Homebrew, not bundled | yes: fingerprints |
-| libchromaprint | 1.6.1 | Intel bundle: Homebrew's x86_64 copy, staged by the spec; arm64: Homebrew, not bundled | decoded audio only |
+| Library | Apple silicon (2026-10-09) | Intel (2026-11-03) | Arrives with | Reads peer files? |
+|---|---|---|---|---|
+| libsndfile | 1.2.2 | 1.2.2 | soundfile 0.14.0's wheel (one per architecture) | yes: BPM, key, loudness |
+| Qt | 6.11.2 | 6.11.2 | PySide6 6.11.2 (one universal2 wheel) | no |
+| OpenSSL | 3.5.7 | 3.5.9 | the build's own Python 3.13.15 | no |
+| SQLite | 3.53.1 | 3.53.1 | the build's own Python 3.13.15 | no |
+| ffmpeg | 9.0.1 | the user's | Homebrew, not bundled in either app | yes: fingerprints |
+| libchromaprint | 1.6.1 | the build machine's | Intel app: Homebrew's x86_64 copy, staged by the spec; Apple silicon app: Homebrew, not bundled | decoded audio only |
 
-The bundled four, from the environment the build uses:
+The Intel column was read in `.venv-x86_64` under Rosetta on
+2026-11-03 (the Apple silicon column, re-read the same day in `.venv`,
+still matches). OpenSSL and SQLite belong to the interpreter that
+builds the app, a uv-managed Python 3.13.15 for each architecture, so
+the two builds can differ there (they do for OpenSSL) and a CI runner's
+may differ again; read both from the environment that builds. The
+Intel app's libchromaprint is whatever Homebrew copy is in
+`/usr/local/lib` at build time, so its version is read then
+(`brew list --versions chromaprint`) and recorded with the release; no
+Intel app with the bundled library has been built yet. Homebrew's
+current formula is chromaprint 1.6.2 and ffmpeg 9.0.2 (formulae.brew.sh,
+2026-11-03), ahead of the 1.6.1 and 9.0.1 installed here.
+
+The bundled four, from the environment the build uses (run it with each
+architecture's own interpreter):
 
 ```
 uv run python -c "import ssl, sqlite3, soundfile; from PySide6 import QtCore; print(ssl.OPENSSL_VERSION, sqlite3.sqlite_version, soundfile.__libsndfile_version__, QtCore.qVersion())"
 ```
 
-`ffmpeg -version` and `brew list --versions chromaprint` read the
-other two.
+`ffmpeg -version` and `brew list --versions chromaprint` read the other
+two. Neither app bundles ffmpeg; the Intel app carries its own
+libchromaprint, and the Apple silicon app finds the user's.
 
 **Tracked, because they decode peer files unsandboxed (AUDIT S-03,
-accepted):** open against libsndfile 1.2.2 on 2026-10-09 are
+accepted):** open against libsndfile 1.2.2 (both architectures) on 2026-10-09 are
 CVE-2026-37555 (IMA ADPCM), CVE-2025-56226 (an mpeg_l3 leak) and
 CVE-2024-50612 (ogg_vorbis, encoder-side). At each release, take the
 first soundfile wheel or ffmpeg that fixes one, and update this list. The bundled four match the security audit's reading of
