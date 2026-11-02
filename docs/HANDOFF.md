@@ -16,7 +16,7 @@ beside it. Every document: `docs/README.md`.
   PDFs and `docs/phase-02/round-13/wave1-reports.md` (below).
 - **The three numbers (`9716c18`, Cocoa, X9 Pro mounted):** pytest
   `2419 passed, 1 skipped`; mypy `--strict src/` clean, 146 files; ruff 0.
-- **CI:** see the close-out commit's run (field 3).
+- **CI:** run `41441377682` green on `5da3150` (S1d's close-out): check and audit.
 
 ## 2. Where we are
 
@@ -34,9 +34,8 @@ wave 1"**: a fresh lead integrates S1, settles S1c, then writes wave
   exact locked versions** (Kris's choice; a bare `--upgrade-package`
   picks newer ones).
 - Three `row-worker`s (S1, S1d, #13's fix) and four `suite-runner`
-  checks ran; none misbehaved. Close-out commit's CI: queued at
-  push, result not read (a fresh lead reads it with `gh run list
-  --commit <full SHA>`).
+  checks ran; none misbehaved. CI `41441377682` green on
+  `5da3150`.
 - `/context` at wave start: asked; not captured in this session.
 
 ## 4. Key context for the next session
@@ -52,7 +51,9 @@ wave 1"**: a fresh lead integrates S1, settles S1c, then writes wave
 - **Worktrees branch from `origin/main`, not local `main`** (§249):
   push before spawning, or the worker starts behind. Each leaves a
   `worktree-agent-<id>` branch to delete with the worktree. S1d's
-  worktree is removed.
+  worktree (`agent-ab47103b78673e690`) was locked by its agent's
+  process and is not removed yet: `git worktree remove` it, then
+  delete `r13/S1d` and `worktree-agent-ab47103b78673e690`.
 - **A worker can't spawn or load skills**, gets the core `CLAUDE.md`
   at start, a topic file on a Read in its folder; its transcript is
   `~/.claude/projects/…/<lead session>/subagents/agent-<id>.jsonl`;
