@@ -37,6 +37,12 @@ investigation; `docs/history/README.md` resolves any `§N`.
   (no bundle identifier); its status is read live, never stored.
   Register/unregister on a packaged build is UNVERIFIED.
   [§131](../docs/history/121-150.md#131)
+- **Intel Macs are pinned to numba < 0.63, llvmlite < 0.46, numpy <
+  2.4** (the last x86_64 wheels) by marker-scoped `[tool.uv]
+  constraint-dependencies`, which fork `uv.lock`; permanent.
+  `required-environments` does not guard a package with an sdist
+  (numba, llvmlite, numpy all ship one): the lock test does.
+  [§253](../docs/history/241-270.md#253)
 - **Architecture text has one source:**
   `cpu_architecture.describe_architecture()`. Under Rosetta an x86_64
   process reports `platform.machine()` x86_64 and

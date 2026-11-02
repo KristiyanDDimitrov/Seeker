@@ -347,3 +347,4 @@ under their entry and live in the same file, after it.
 - §250 — Round 13 S1: Help and About name the architecture (Apple silicon, Intel, Rosetta via `sysctl.proc_translated`); a `help-build` screenshot screen → [241-270.md#250](241-270.md#250)
 - §251 — Round 13 S1c: slskd 0.26.2 moved logs to `/logs/live` (bare API key still reads it: observed); #1, #12, #13 landed; one pinned uv (0.13.6), #6 closed → [241-270.md#251](241-270.md#251)
 - §252 — A CI-only 'already deleted' setup error: `test_quit_stops_the_wait_for_a_new_share` ended before its worker's handler ran; it now waits for the registry to drain → [241-270.md#252](241-270.md#252)
+- §253 — Round 13 S2: Intel pins fork uv.lock (numba 0.62.1/llvmlite 0.45.1/numpy 2.3.5), native set unchanged; pip-audit skipped marker-false pins, now all 72 → [241-270.md#253](241-270.md#253)

@@ -99,7 +99,7 @@
       "id": "S2", "title": "The Intel pins and the forked lock; native set unchanged; audit (PF-01)",
       "type": "behaviour", "executes": "BRIEF.md §2 steps 1-3", "depends_on": ["S1b", "S1c"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 2,
-      "est_work_k": 60, "est_peak_k": 114, "actual_peak_k": null,
+      "est_work_k": 60, "est_peak_k": 114, "actual_peak_k": 85,
       "split_point": "After the lock commit, before the audit",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "234-299", "est_k": 0.9},
@@ -108,7 +108,7 @@
         {"path": "tools/audit_dependencies.py", "range": null, "est_k": 1.3},
         {"path": "uv documentation: constraint-dependencies, required-environments", "range": null, "est_k": 3.0}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["d18d79d", "659685a", "9462a36", "bfa23ef", "12e439a"], "history": 253
     },
     {
       "id": "S2b", "title": "tests/test_lock_platforms.py",
