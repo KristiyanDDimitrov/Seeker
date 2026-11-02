@@ -2,9 +2,9 @@
   "plan": "docs/phase-02/round-13/SESSION-PLAN.md",
   "brief": "docs/phase-02/round-13/BRIEF.md",
   "execution": "SESSION-PLAN.md, Execution: a lead and parallel workers",
-  "baseline_k": 62,
-  "baseline_note": "Measured 2026-11-02: median 57 K over 20 sessions, 59-63 K since 2026-10-17. S0 aims for ~54 K; est_peak_k assumes 54 from S1 on. S1 replaces this with the measured value.",
-  "worker_baseline_est_k": 30,
+  "baseline_k": 50,
+  "baseline_note": "Measured 2026-11-02 at wave 1's lead start (tokens.py measure --last 1): base 50 K after S0's split, down from a median of 57 K over 20 sessions. A row-worker estimates its own at ~18 K (S1d's report).",
+  "worker_baseline_est_k": 18,
   "budget": {"target_k": 120, "soft_ceiling_k": 150, "hard_ceiling_k": 180, "row_cap_work_k": 65},
   "rules": "Edit only your own row. Never delete or rewrite another row. Status: todo | doing | done | split | blocked. S3 may re-estimate S3b and add S3c.",
   "common_reading": [
@@ -51,7 +51,7 @@
       "id": "S1b", "title": "v0.1.1's record; Dependabot #5 mypy, #7 ruff, #8 platformdirs, #9 python-dotenv",
       "type": "behaviour", "executes": "BRIEF.md §1b", "depends_on": ["S0"], "ask": true,
       "gate": "Kris approves each merge", "model": null, "executor": "lead", "wave": 1,
-      "est_work_k": 60, "est_peak_k": 114, "actual_peak_k": null,
+      "est_work_k": 60, "est_peak_k": 114, "actual_peak_k": 149,
       "split_point": "After v0.1.1's record and two PRs",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "150-202", "est_k": 0.8},
@@ -60,7 +60,7 @@
         {"path": "pyproject.toml", "range": "1-56", "est_k": 0.4},
         {"path": "docs/history/241-270.md", "range": "148-222", "est_k": 1.2}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["a119971", "a02984a", "5a13b5b", "579cd0e", "08e24f5"], "history": 248
     },
     {
       "id": "S1c", "title": "Dependabot #1 checkout, #6 uv_build, #12 setup-uv, #13 slskd; the dependabot.yml comment",
@@ -76,7 +76,7 @@
         {"path": "docs/history/README.md", "range": "grep -n '§204\\|§238', then each entry's range", "est_k": 3.0},
         {"path": "gh pr view <n> --json title,files,statusCheckRollup", "range": "per PR", "est_k": 2.0}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "doing", "commits": [], "history": null
     },
     {
       "id": "S1d", "title": "Spotify Premium in the README and the wizard",
