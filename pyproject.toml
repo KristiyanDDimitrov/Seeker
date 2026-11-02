@@ -28,8 +28,14 @@ seeker = "seeker.main:main"
 seeker-ui = "seeker.main_ui:main"
 
 [build-system]
-requires = ["uv_build>=0.12.5,<0.13.0"]
+requires = ["uv_build>=0.13.6,<0.14.0"]
 build-backend = "uv_build"
+
+[tool.uv]
+# One uv everywhere: the same version in CI (ci.yml's setup-uv
+# `version:`) and on the developer's Mac, and a `uv_build` range that
+# contains it. Change all three together.
+required-version = "==0.13.6"
 
 [tool.uv.build-backend]
 # Agent instructions beside the code, not part of the package; and the
