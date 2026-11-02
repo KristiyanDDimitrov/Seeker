@@ -434,17 +434,21 @@ def _check_fonts() -> CheckResult:
 
 
 def _bundled_icons() -> list[Path]:
-    """Every icon file the UI asks for by name."""
+    """Every icon file the UI asks for by name, and the tray icon's
+    `@2x` twin, which Qt finds beside it by name for a Retina menu
+    bar."""
     palette_icons: list[Callable[[theme.Palette], Path]] = [
         theme.combo_chevron_path, theme.spin_up_arrow_path,
         theme.spin_down_arrow_path, theme.check_tick_path,
         theme.radio_dot_path,
     ]
+    tray_icon = tray.tray_icon_path()
     return [
         *(icon(palette) for icon in palette_icons
           for palette in (theme.LIGHT, theme.DARK)),
         *(icons.LUCIDE_DIR / f"{name}.svg" for name in icons.NAV_ICONS.values()),
-        tray.tray_icon_path(),
+        tray_icon,
+        tray_icon.with_name(f"{tray_icon.stem}@2x{tray_icon.suffix}"),
     ]
 
 

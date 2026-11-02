@@ -310,6 +310,29 @@ def test_a_weight_found_only_outside_the_bundle_fails_the_font_check(
     assert "SemiBold" in checked["detail"]
 
 
+def test_a_bundle_without_the_retina_tray_icon_fails_the_icon_check(
+        run, frozen_bundle, monkeypatch,
+):
+    """Qt finds `@2x` beside the tray icon by name, so only its file
+    shows that a Retina menu bar would get the sharp one."""
+    icons_dir = frozen_bundle / "icons"
+    source = icons_dir.resolve()
+    icons_dir.unlink()
+    icons_dir.mkdir()
+    retina = "seeker_menubar_Template@2x.png"
+    for file in source.iterdir():
+        if file.name != retina:
+            (icons_dir / file.name).symlink_to(file)
+    monkeypatch.setattr(smoke_test._build_info, "GIT_DESCRIBE", BUILT)
+
+    code, printed, _err = run()
+
+    assert code == 1
+    assert printed["failed"] == ["icons"]
+    (checked,) = (c for c in printed["checks"] if c["name"] == "icons")
+    assert retina in checked["detail"]
+
+
 def test_a_bundle_without_its_resources_fails_their_checks(
         run, monkeypatch, tmp_path,
 ):
