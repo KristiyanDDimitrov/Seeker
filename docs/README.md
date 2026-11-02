@@ -11,9 +11,11 @@ Every document in the repository, then where to start.
   flow, the download state machine, the threading model, where data
   lives.
 - [`cli.md`](cli.md) — every `seeker` command, configuring without the
-  wizard, running slskd by hand, and which screen covers each command.
-- [`packaging.md`](packaging.md) — building the `.app`, the `.dmg` and
-  the Windows installer; signing; what was verified (Windows and Linux:
+  wizard, running slskd by hand, which screen covers each command, and
+  `seeker-ui --smoke-test`.
+- [`packaging.md`](packaging.md) — building the `.app` and `.dmg` for
+  Apple silicon and Intel Macs, the smoke test, the Windows installer;
+  signing; what was verified on which hardware (Windows and Linux:
   written, never verified on real hardware).
 - [`../CHANGELOG.md`](../CHANGELOG.md) — what each release added or
   changed, in Keep a Changelog format.
