@@ -108,6 +108,7 @@ src/seeker/
 ├── login_item.py            # macOS "start at login" (SMAppService)
 ├── _build_info.py           # build identity; "dev" outside a packaged build
 ├── cpu_architecture.py      # Apple silicon, Intel or Rosetta, for Help and About
+├── frozen_imports.py        # what the spec bundles by hand; the smoke test imports it
 │
 ├── database/
 │   ├── connection.py        # Database, transaction(), migrations (_migrate)

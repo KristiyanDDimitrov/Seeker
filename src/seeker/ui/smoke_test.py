@@ -44,7 +44,7 @@ from PySide6.QtWidgets import (
 )
 
 import seeker
-from seeker import _build_info, cpu_architecture
+from seeker import _build_info, cpu_architecture, frozen_imports
 from seeker.audio import fingerprint
 from seeker.audio.analysis import SAMPLE_RATE, analyze_audio
 from seeker.soulseek import docker_setup
@@ -158,6 +158,7 @@ def run_smoke_test(request: SmokeTestRequest) -> int:
 
     imports, report.modules_imported = _check_imports()
     report.checks.append(imports)
+    report.checks.append(_check_hidden_imports())
 
     app = _application()
     report.platform = app.platformName()
@@ -227,6 +228,27 @@ def _check_imports() -> tuple[CheckResult, int]:
             imported += 1
     detail = "; ".join(problems) or f"Imported {imported} modules."
     return CheckResult("imports", not problems, detail), imported
+
+
+def _check_hidden_imports() -> CheckResult:
+    """Imports each module the spec bundles by hand, which the package
+    walk never reaches: its importers import it inside a function. They
+    are pyobjc's, so only macOS has them."""
+    if sys.platform != "darwin":
+        return CheckResult(
+            "hidden_imports", passed=True,
+            detail=f"None to import on {sys.platform}.",
+        )
+    problems: list[str] = []
+    for name in frozen_imports.HIDDEN_IMPORTS:
+        try:
+            importlib.import_module(name)
+        except Exception as error:  # any failure to import is the finding
+            problems.append(f"{name}: {_describe(error)}")
+    detail = "; ".join(problems) or (
+        f"Imported {', '.join(frozen_imports.HIDDEN_IMPORTS)}."
+    )
+    return CheckResult("hidden_imports", not problems, detail)
 
 
 def _describe(error: BaseException | None) -> str:

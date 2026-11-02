@@ -4,6 +4,7 @@ The frozen app runs the same code; here the checks resolve against
 `packaging/` and `src/`, what a source checkout ships.
 """
 
+import ast
 import json
 import os
 import subprocess
@@ -17,7 +18,11 @@ from seeker.audio.analysis import AudioAnalysis
 from seeker.ui import icons, smoke_test, theme
 
 SRC_SEEKER = Path(smoke_test.__file__).resolve().parents[1]
-CHECKS = ["imports", "theme", "fonts", "icons", "compose_template", "analysis"]
+SPEC = SRC_SEEKER.parents[1] / "packaging" / "seeker.spec"
+CHECKS = [
+    "imports", "hidden_imports", "theme", "fonts", "icons",
+    "compose_template", "analysis",
+]
 
 
 @pytest.fixture
@@ -130,6 +135,49 @@ def test_a_module_that_cannot_be_imported_fails_the_import_check(
     assert "seeker.audio.analysis: ImportError: No module named 'numba'" in (
         imports["detail"]
     )
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="the hidden imports are pyobjc's, installed only on macOS",
+)
+def test_a_hidden_import_that_cannot_be_imported_fails_its_check(
+        run, monkeypatch,
+):
+    """`login_item.py` imports ServiceManagement only inside a function,
+    so the package walk never does; a bundle without it must fail."""
+    real_import = smoke_test.importlib.import_module
+
+    def import_module(name):
+        if name == "ServiceManagement":
+            raise ImportError("No module named 'ServiceManagement'")
+        return real_import(name)
+
+    monkeypatch.setattr(smoke_test.importlib, "import_module", import_module)
+
+    code, printed, _err = run()
+
+    assert code == 1
+    assert printed["failed"] == ["hidden_imports"]
+    (checked,) = (c for c in printed["checks"] if c["name"] == "hidden_imports")
+    assert "ServiceManagement: ImportError" in checked["detail"]
+
+
+def test_the_spec_bundles_the_hidden_imports_the_check_imports():
+    """One list, so the spec and the check cannot drift apart."""
+    tree = ast.parse(SPEC.read_text(encoding="utf-8"), filename=str(SPEC))
+    imported = {
+        (node.module, alias.name)
+        for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+        for alias in node.names
+    }
+    (hidden,) = (
+        keyword.value for node in ast.walk(tree) if isinstance(node, ast.Call)
+        for keyword in node.keywords if keyword.arg == "hiddenimports"
+    )
+
+    assert ("seeker.frozen_imports", "HIDDEN_IMPORTS") in imported
+    assert ast.unparse(hidden) == "list(HIDDEN_IMPORTS)"
 
 
 def test_an_unparseable_stylesheet_fails_the_theme_check(run, monkeypatch):

@@ -65,6 +65,10 @@ APP_NAME = "Seeker"
 sys.path.insert(0, str(SPEC_DIR))
 import bundle_info  # noqa: E402
 
+# The source tree's own list, not an installed copy's.
+sys.path.insert(0, str(SRC_DIR))
+from seeker.frozen_imports import HIDDEN_IMPORTS  # noqa: E402
+
 ICONS_DIR = SPEC_DIR / "icons"
 ICON_ICNS = ICONS_DIR / "seeker_icon.icns"
 ICON_ICO = ICONS_DIR / "seeker_icon.ico"
@@ -109,13 +113,9 @@ a = Analysis(
     pathex=[str(SRC_DIR)],
     binaries=[],
     datas=datas,
-    # ui/tray.py's deferred `from AppKit import ...` (the
-    # Dock-icon-hiding activation-policy switch) isn't statically
-    # visible to PyInstaller's own import scanner as a top-level
-    # import, so it needs to be listed explicitly or a frozen build
-    # would ship without it. ServiceManagement — same story, for
-    # login_item.py.
-    hiddenimports=["AppKit", "Foundation", "objc", "ServiceManagement"],
+    # Imported only inside functions, which PyInstaller's scanner does
+    # not follow; the smoke test imports the same list.
+    hiddenimports=list(HIDDEN_IMPORTS),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
