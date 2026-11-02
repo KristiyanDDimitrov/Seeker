@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import httpx
@@ -199,7 +200,7 @@ SLSKD_HEALTHY_STATE = "Connected, LoggedIn"
 # (confirmed via its live swagger spec) — a bad-password rejection and
 # an unrelated "kicked, another client already logged in" case both
 # converge on the same terminal state, "Disconnected". The real reason
-# only ever appears via /api/v0/logs' Error-level entries, matched by
+# only ever appears in slskd's log buffer's Error entries, matched by
 # message substring — no structured error-code field exists to pin to
 # instead, confirmed by inspecting a real captured entry's shape
 # ({timestamp, context, level, message}). Matched case-insensitively.
@@ -236,6 +237,31 @@ def _parse_log_timestamp(raw: object) -> datetime | None:
         return None
 
 
+def _read_slskd_log_buffer(
+        base_url: str,
+        headers: dict[str, str],
+) -> Any:
+    """slskd's recent log buffer, as its JSON list of entries.
+
+    Seen in slskd's source: 0.26.0 serves the buffer at GET
+    /api/v0/logs; 0.26.2 at GET /api/v0/logs/live (administrator role
+    only), where a bare /api/v0/logs is its catch-all 404. An install
+    keeps its own Compose copy (HISTORY §140, §222), so both stay in the
+    field: try /live, and fall back only on a 404.
+    """
+    response = httpx.get(
+        f"{base_url}/api/v0/logs/live", headers=headers, timeout=10.0,
+    )
+
+    if response.status_code == httpx.codes.NOT_FOUND:
+        response = httpx.get(
+            f"{base_url}/api/v0/logs", headers=headers, timeout=10.0,
+        )
+
+    response.raise_for_status()
+    return response.json()
+
+
 def check_slskd_health(
         base_url: str,
         api_key: str,
@@ -245,11 +271,11 @@ def check_slskd_health(
     wizard's own QTimer) calls this repeatedly, tracking overall
     elapsed time itself for the timeout.
 
-    `since` filters /api/v0/logs' Error entries to this specific
-    bring-up attempt: that endpoint returns the whole recent log
-    buffer, so without filtering, a stale entry from an earlier,
-    already-corrected attempt would false-positive every later poll as
-    BAD_CREDENTIALS forever. HISTORY §23.
+    `since` filters the log buffer's Error entries to this specific
+    bring-up attempt: slskd returns the whole recent buffer, so
+    without filtering, a stale entry from an earlier, already-corrected
+    attempt would false-positive every later poll as BAD_CREDENTIALS
+    forever. HISTORY §23.
     """
     headers = {"X-API-Key": api_key}
 
@@ -266,12 +292,7 @@ def check_slskd_health(
         return SlskdHealthCheckResult(SlskdHealthStatus.NOT_READY)
 
     try:
-        logs_response = httpx.get(
-            f"{base_url}/api/v0/logs", headers=headers, timeout=10.0,
-        )
-        logs_response.raise_for_status()
-
-        for entry in logs_response.json():
+        for entry in _read_slskd_log_buffer(base_url, headers):
             if entry.get("level") != "Error":
                 continue
 

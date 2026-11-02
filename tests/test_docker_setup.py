@@ -588,6 +588,63 @@ def test_check_slskd_health_ignores_error_entry_with_unparseable_timestamp(
     assert result.status == SlskdHealthStatus.NOT_READY
 
 
+BAD_CREDENTIALS_LOG = [
+    {
+        "timestamp": AFTER_SINCE,
+        "level": "Error",
+        "message": (
+            "Disconnected from the Soulseek server: invalid username or "
+            "password"
+        ),
+    },
+]
+
+
+def _slskd_serving_logs_only_at(logs_path):
+    """A disconnected slskd whose log buffer answers at `logs_path`
+    alone: any other /api path is its catch-all 404 (Program.cs, both
+    0.26.0 and 0.26.2)."""
+    requested = []
+
+    def fake_get(url, headers=None, timeout=None):
+        requested.append(url)
+
+        if url.endswith("/api/v0/application"):
+            return FakeResponse(200, {"server": {"state": "Disconnected"}})
+
+        if url.endswith(logs_path):
+            return FakeResponse(200, BAD_CREDENTIALS_LOG)
+
+        return FakeResponse(404, None)
+
+    return fake_get, requested
+
+
+def test_check_slskd_health_reads_the_log_buffer_at_logs_live(monkeypatch):
+    # slskd 0.26.1 moved the log buffer to GET /api/v0/logs/live; a
+    # bare /api/v0/logs then 404s, which silently hid a bad password.
+    fake_get, _requested = _slskd_serving_logs_only_at("/api/v0/logs/live")
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = check_slskd_health("http://localhost:5030", "key", SINCE)
+
+    assert result.status == SlskdHealthStatus.BAD_CREDENTIALS
+
+
+def test_check_slskd_health_falls_back_to_logs_when_live_is_missing(
+        monkeypatch,
+):
+    # An install keeps its per-user Compose copy, so slskd 0.26.0 (log
+    # buffer at GET /api/v0/logs, no /live route) stays in the field.
+    fake_get, requested = _slskd_serving_logs_only_at("/api/v0/logs")
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = check_slskd_health("http://localhost:5030", "key", SINCE)
+
+    assert result.status == SlskdHealthStatus.BAD_CREDENTIALS
+    assert requested[-1].endswith("/api/v0/logs")
+
+
 class FakePostResponse:
     def __init__(self, status_code: int):
         self.status_code = status_code
