@@ -106,13 +106,12 @@ Expected:
 - The smoke test exits 0 (`exit 0`). In its report, `architecture` is
   "Apple silicon" for the Apple silicon app and, for the Intel app, text
   that begins "Intel build on Apple silicon (Rosetta)" (a sentence
-  pointing at `Seeker.dmg` follows) or, on an Intel Mac, "Intel";
-  `chromaprint_available` is true
-  (for the Apple silicon app that needs Homebrew's chromaprint on this
-  Mac, and says nothing about the bundle, which holds none). The smoke
-  test touches no settings, database or library, so it is safe on any
-  Mac. The first cold analysis takes tens of seconds under Rosetta
-  (37 s measured, `docs/packaging.md`).
+  pointing at `Seeker.dmg` follows) or, on an Intel Mac, "Intel".
+  `chromaprint_available` is true; for the Apple silicon app that needs
+  Homebrew's chromaprint on this Mac and says nothing about the bundle,
+  which holds none. The smoke test touches no settings, database or
+  library, so it is safe on any Mac. The first cold analysis takes tens
+  of seconds under Rosetta (37 s measured, `docs/packaging.md`).
 - **For the Intel app, `chromaprint_available: true` proves the bundled
   library only if no other x86_64 copy can load on this Mac.**
   `audio/fingerprint.py` searches the bundle, then `/opt/homebrew/lib`,
@@ -121,11 +120,12 @@ Expected:
   (Homebrew's arm64 copy cannot load into an x86_64 process), so `true`
   proves it. If `/usr/local/lib/libchromaprint*` exists (Intel Homebrew,
   or the script run with its default prefix), move it aside for the run
-  and put it back after, as `build.yml` deletes it before its smoke test.
-  `find dist/Seeker.app -name 'libchromaprint*'` should list one file for
-  the Intel app and none for the Apple silicon one. This proves the
+  and put it back after, as `build.yml` deletes it before its smoke
+  test. `find dist/Seeker.app -name 'libchromaprint*'` lists
+  `libchromaprint.1.dylib` for the Intel app and nothing for the Apple
+  silicon one (the spec stages none there). Together they show the
   library loads in an x86_64 process on this Mac, from the app in
-  `dist/`. It does not prove a download's first launch after Gatekeeper
+  `dist/`. They do not show a download's first launch after Gatekeeper
   (step 5), or a Mac that has never had the library.
 - No modified files.
 
