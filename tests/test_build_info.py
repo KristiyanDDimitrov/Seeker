@@ -75,7 +75,9 @@ def test_frozen_build_reads_its_generated_build_identity(
     assert _build_info.BUILT_AT == "2026-10-10T11:17:43+00:00"
 
 
-def _load_build_dmg():
+def _load_build_dmg(monkeypatch):
+    # Run as a script, build_dmg.py finds its siblings on its own path.
+    monkeypatch.syspath_prepend(str(PROJECT_ROOT / "packaging"))
     spec = importlib.util.spec_from_file_location(
         "build_dmg", PROJECT_ROOT / "packaging" / "build_dmg.py",
     )
@@ -88,7 +90,7 @@ def _load_build_dmg():
 def test_build_dmg_removes_the_generated_module_after_a_failed_build(
         tmp_path, monkeypatch,
 ):
-    build_dmg = _load_build_dmg()
+    build_dmg = _load_build_dmg(monkeypatch)
     generated = tmp_path / "_build_info_generated.py"
     monkeypatch.setattr(build_dmg, "BUILD_INFO_PATH", generated)
     monkeypatch.setattr(build_dmg.sys, "platform", "darwin")

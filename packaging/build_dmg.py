@@ -4,8 +4,12 @@ commands documented in docs/packaging.md, run back to back:
 
     uv run python packaging/build_dmg.py
 
-Produces dist/Seeker.app (via PyInstaller) and dist/Seeker.dmg (via
-dmgbuild) in one call. Either step can still be run on its own with
+Produces dist/Seeker.app (via PyInstaller) and the image (via dmgbuild)
+in one call: dist/Seeker.dmg built from an arm64 interpreter,
+dist/Seeker-Intel.dmg from an x86_64 one (the spec targets the
+interpreter's architecture). Between the two steps bundle_check.py
+fails the build when a binary lacks that architecture or needs a newer
+macOS than the bundle declares. Either step can still be run on its own with
 the commands in docs/packaging.md — this is a convenience, not a
 replacement.
 """
@@ -15,11 +19,16 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Run as a script, so its own folder is on the path.
+import bundle_check
+import bundle_info
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PACKAGING_DIR = PROJECT_ROOT / "packaging"
 DIST_DIR = PROJECT_ROOT / "dist"
 APP_PATH = DIST_DIR / "Seeker.app"
-DMG_PATH = DIST_DIR / "Seeker.dmg"
+ARCHITECTURE = bundle_info.target_architecture()
+DMG_PATH = DIST_DIR / bundle_check.dmg_name(ARCHITECTURE)
 BUILD_INFO_PATH = PROJECT_ROOT / "src" / "seeker" / "_build_info_generated.py"
 
 
@@ -83,6 +92,17 @@ def _build() -> None:
             f"Expected {APP_PATH} after the PyInstaller build but it "
             "doesn't exist — check seeker.spec's BUNDLE() step."
         )
+
+    problems = bundle_check.check_bundle(
+        APP_PATH, ARCHITECTURE, bundle_info.MINIMUM_SYSTEM_VERSION,
+    )
+    if problems:
+        raise SystemExit(
+            f"{APP_PATH} failed the {ARCHITECTURE} check:\n  "
+            + "\n  ".join(problems)
+        )
+    print(f"{APP_PATH}: every Mach-O is {ARCHITECTURE}, minos <= "
+          f"{bundle_info.MINIMUM_SYSTEM_VERSION}")
 
     if DMG_PATH.exists():
         DMG_PATH.unlink()
