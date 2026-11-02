@@ -2,6 +2,7 @@
 
 import importlib.util
 import struct
+import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -151,3 +152,48 @@ def test_a_source_version_is_not_a_deployment_target():
     )
 
     assert _load().parse_minos(output) == (14, 0)
+
+
+def test_a_java_class_file_is_not_a_mach_o(tmp_path):
+    app = _bundle(tmp_path)
+    # Java's class magic is the fat magic; bytes 4-8 are minor, major.
+    (app / "Contents" / "Resources" / "Foo.class").write_bytes(
+        bytes.fromhex("cafebabe") + struct.pack(">HH", 0, 65) + b"\0" * 8,
+    )
+
+    found = _load().macho_files(app)
+
+    assert sorted(path.name for path in found) == ["Seeker", "libfoo.dylib"]
+
+
+def test_a_fat_file_with_few_slices_is_a_mach_o(tmp_path):
+    fat = tmp_path / "fat"
+    fat.write_bytes(
+        bytes.fromhex("cafebabe") + struct.pack(">I", 2) + b"\0" * 8,
+    )
+
+    assert list(_load().macho_files(tmp_path)) == [fat]
+
+
+def test_a_tool_failure_is_a_problem_not_a_crash(tmp_path):
+    def failing(command):
+        raise subprocess.CalledProcessError(1, command, stderr="bad file")
+
+    problems = _load().check_bundle(
+        _bundle(tmp_path), "arm64", "15.0", failing,
+    )
+
+    assert len(problems) == 2
+    assert all("lipo could not read" in problem for problem in problems)
+    assert "bad file" in problems[0]
+
+
+def test_minos_comparison_ignores_trailing_zeros(tmp_path):
+    tools = _Tools()
+    tools.otool["Seeker"] = BUILD_VERSION.replace("14.0", "15.0.0")
+
+    problems = _load().check_bundle(
+        _bundle(tmp_path), "arm64", "15.0", tools,
+    )
+
+    assert problems == []

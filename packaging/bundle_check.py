@@ -9,6 +9,7 @@ so a test can stand in for `lipo` and `otool`.
 """
 
 import re
+import struct
 import subprocess
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -23,6 +24,15 @@ _MACHO_MAGICS = {
         "feedface", "feedfacf", "cefaedfe", "cffaedfe",
         "cafebabe", "cafebabf", "bebafeca", "bfbafeca",
     )
+}
+
+# A fat file's magic is also a Java class file's; there bytes 4-8 are
+# the class version (45 and up), here the slice count. No fat file in a
+# bundle has this many slices.
+_MAX_FAT_SLICES = 20
+_FAT_MAGICS = {
+    bytes.fromhex("cafebabe"): ">I", bytes.fromhex("cafebabf"): ">I",
+    bytes.fromhex("bebafeca"): "<I", bytes.fromhex("bfbafeca"): "<I",
 }
 
 # One load command of `otool -l`. LC_SOURCE_VERSION also prints a
@@ -53,8 +63,17 @@ def macho_files(app: Path) -> Iterator[Path]:
         if path.is_symlink() or not path.is_file():
             continue
         with path.open("rb") as handle:
-            if handle.read(4) in _MACHO_MAGICS:
-                yield path
+            head = handle.read(8)
+        magic = head[:4]
+        if magic not in _MACHO_MAGICS:
+            continue
+        if magic in _FAT_MAGICS:
+            if len(head) < 8:
+                continue
+            (slices,) = struct.unpack(_FAT_MAGICS[magic], head[4:])
+            if not 0 < slices <= _MAX_FAT_SLICES:
+                continue
+        yield path
 
 
 def parse_minos(otool_output: str) -> tuple[int, ...] | None:
@@ -72,6 +91,17 @@ def _version(text: str) -> tuple[int, ...]:
     return tuple(int(part) for part in text.split("."))
 
 
+def _above(version: tuple[int, ...], ceiling: tuple[int, ...]) -> bool:
+    """`15.0.0` is not above `15.0`: tuples compare after padding."""
+    width = max(len(version), len(ceiling))
+    pad = (0,) * width
+    return (version + pad)[:width] > (ceiling + pad)[:width]
+
+
+def _why(error: subprocess.CalledProcessError) -> str:
+    return (error.stderr or "").strip() or f"exit {error.returncode}"
+
+
 def check_bundle(
     app: Path,
     architecture: str,
@@ -85,7 +115,11 @@ def check_bundle(
     main_executable = app / MAIN_EXECUTABLE
     for path in macho_files(app):
         relative = path.relative_to(app)
-        archs = run(["lipo", "-archs", str(path)]).split()
+        try:
+            archs = run(["lipo", "-archs", str(path)]).split()
+        except subprocess.CalledProcessError as error:
+            problems.append(f"lipo could not read {relative}: {_why(error)}.")
+            continue
         if architecture not in archs:
             problems.append(
                 f"{relative} has {' '.join(archs) or 'no architecture'}, "
@@ -96,10 +130,14 @@ def check_bundle(
             problems.append(
                 f"{relative} is not thin: {' '.join(archs)}."
             )
-        minos = parse_minos(
-            run(["otool", "-arch", architecture, "-l", str(path)]),
-        )
-        if minos is not None and minos > ceiling:
+        try:
+            minos = parse_minos(
+                run(["otool", "-arch", architecture, "-l", str(path)]),
+            )
+        except subprocess.CalledProcessError as error:
+            problems.append(f"otool could not read {relative}: {_why(error)}.")
+            continue
+        if minos is not None and _above(minos, ceiling):
             problems.append(
                 f"{relative} needs macOS {'.'.join(map(str, minos))}, "
                 f"above the bundle's {minimum_system_version}."
