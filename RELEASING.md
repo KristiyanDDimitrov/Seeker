@@ -253,7 +253,9 @@ What sets the date, from `docs/phase-02/README.md` → "The clock":
 numba and llvmlite publish no Intel macOS wheels after 0.62.1 and
 0.45.1, so Intel's pins are permanent; macOS 26 is the last release
 for Intel Macs; Rosetta's full support continues through macOS 27 and
-shrinks after; Homebrew, the source of the Intel app's libchromaprint,
-stopped building Intel bottles in September 2026 and ends Intel
-support in or after September 2027
-([Homebrew](https://docs.brew.sh/Support-Tiers), read 2026-11-03).
+shrinks after; Homebrew stopped building Intel bottles in September
+2026 and ends Intel support in or after September 2027
+([Homebrew](https://docs.brew.sh/Support-Tiers), read 2026-11-03). That
+no longer touches the Intel app's libchromaprint, which Seeker builds
+from source, only ffmpeg, the decode fallback a user installs from
+Homebrew.
