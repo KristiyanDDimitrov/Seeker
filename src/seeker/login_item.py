@@ -14,7 +14,7 @@ identifier — a `uv run seeker-ui` dev process has none, so this is
 gated on `sys.frozen` (the same PyInstaller-bundle signal every other
 frozen-only code path in this project already keys on — see
 soulseek/docker_setup.py's compose_template_path, tray.py's
-_resolve_tray_icon_path) in addition to `sys.platform`. Observed on
+tray_icon_path) in addition to `sys.platform`. Observed on
 macOS (Darwin 25.6.0, unbundled `uv run python`):
 `SMAppService.mainAppService().status()` returns
 `SMAppServiceStatusNotFound` (3) rather than raising, and

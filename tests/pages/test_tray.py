@@ -30,7 +30,7 @@ from fakes import (
 from seeker.models.active_download import ActiveDownload
 from seeker.models.download_request import DownloadRequest
 from seeker.ui.main_window import MainWindow
-from seeker.ui.tray import _resolve_tray_icon_path
+from seeker.ui.tray import tray_icon_path
 
 
 def test_tray_icon_not_built_when_unavailable(qtbot, monkeypatch):
@@ -336,20 +336,20 @@ def test_download_notifications_fire_after_seeding_found_no_history(
     assert "A: 1 track downloaded" in messages[0]
 
 
-def test_resolve_tray_icon_path_dev_mode_points_at_real_repo_file():
+def testtray_icon_path_dev_mode_points_at_real_repo_file():
     # Roadmap item 98 (B9.1) — the real template asset, not the
     # full-colour app .icns (setIsMask(True) against the .icns produced
     # a solid filled squircle instead of a legible glyph).
     import sys
 
     assert not getattr(sys, "frozen", False)
-    path = _resolve_tray_icon_path()
+    path = tray_icon_path()
 
     assert path.name == "seeker_menubar_Template.png"
     assert path.exists()
 
 
-def test_resolve_tray_icon_path_frozen_mode_uses_meipass(
+def testtray_icon_path_frozen_mode_uses_meipass(
         monkeypatch,
         tmp_path,
 ):
@@ -358,6 +358,6 @@ def test_resolve_tray_icon_path_frozen_mode_uses_meipass(
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
 
-    path = _resolve_tray_icon_path()
+    path = tray_icon_path()
 
     assert path == tmp_path / "icons" / "seeker_menubar_Template.png"

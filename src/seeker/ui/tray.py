@@ -120,7 +120,7 @@ class TrayController:
             )
             return
 
-        icon_path = _resolve_tray_icon_path()
+        icon_path = tray_icon_path()
         icon = QIcon(str(icon_path)) if icon_path.exists() else QIcon()
         # macOS "template image" convention — a monochrome glyph whose
         # alpha channel Qt/AppKit recolor automatically for the current
@@ -515,7 +515,7 @@ class TrayController:
         )
 
 
-def _resolve_tray_icon_path() -> Path:
+def tray_icon_path() -> Path:
     """Same sys.frozen/sys._MEIPASS branch as soulseek/docker_setup.py's
     compose_template_path(): an ordinary `uv run seeker-ui` dev run
     resolves against this file's own real location in the source tree; a
