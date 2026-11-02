@@ -35,14 +35,19 @@ the same commit, the Intel one in an x86_64 environment under Rosetta 2
 
 5. The Intel build's two prerequisites are in place:
    `.venv-x86_64` (`uv sync --locked` for the x86_64 interpreter,
-   `docs/packaging.md` → "The Intel app") and an x86_64 Homebrew
-   `chromaprint`: the build copies
-   `/usr/local/lib/libchromaprint.1.dylib` into the Intel app and fails
-   without it. Apple silicon's Homebrew lives in `/opt/homebrew`, so on
-   an Apple silicon Mac this means a second Homebrew in `/usr/local`,
-   installed and run under `arch -x86_64`. Homebrew builds no new Intel
-   bottles since September 2026, so that install may compile from
-   source (`docs/packaging.md`).
+   `docs/packaging.md` → "The Intel app") and the Intel libchromaprint,
+   which the build copies into the app and fails without. Seeker builds
+   it from a pinned, checksummed source (chromaprint 1.6.2; Homebrew
+   builds no Intel bottles), into the checkout, with no `sudo` and no
+   Intel Homebrew:
+
+   ```
+   packaging/build_chromaprint.sh "$PWD/build/chromaprint-x86_64"
+   ```
+
+   The script fails if the result links anything outside macOS. On an
+   Intel Mac it needs no argument: it installs into `/usr/local/lib`,
+   where the build looks by default.
 
 ## 2. Tag locally, then build both
 
@@ -60,10 +65,13 @@ This writes `dist/Seeker.app` and `dist/Seeker.dmg`. **Check this app
 different names and both stay).
 
 ```
-.venv-x86_64/bin/python packaging/build_dmg.py      # Intel, under Rosetta
+SEEKER_CHROMAPRINT_DIR="$PWD/build/chromaprint-x86_64/lib" \
+    .venv-x86_64/bin/python packaging/build_dmg.py   # Intel, under Rosetta
 ```
 
-This writes `dist/Seeker.app` again, now the Intel app, and
+The variable names the folder the build stages libchromaprint from
+(default `/usr/local/lib`: leave it out on an Intel Mac that installed
+there). This writes `dist/Seeker.app` again, now the Intel app, and
 `dist/Seeker-Intel.dmg`; check it too. Each build ends by checking its
 bundle: every Mach-O carries the build's architecture, the main
 executable is thin, and no binary needs a newer macOS than 15.0. A
@@ -99,9 +107,24 @@ Expected:
   "Apple silicon" for the Apple silicon app and "Intel build on Apple
   silicon (Rosetta)" for the Intel app; `chromaprint_available` is true
   (for the Apple silicon app that needs Homebrew's chromaprint on this
-  Mac). The smoke test touches no settings, database or library, so it
-  is safe on any Mac. The first cold analysis takes tens of seconds
-  under Rosetta (37 s measured, `docs/packaging.md`).
+  Mac, and says nothing about the bundle, which holds none). The smoke
+  test touches no settings, database or library, so it is safe on any
+  Mac. The first cold analysis takes tens of seconds under Rosetta
+  (37 s measured, `docs/packaging.md`).
+- **For the Intel app, `chromaprint_available: true` proves the bundled
+  library only if no other x86_64 copy can load on this Mac.**
+  `audio/fingerprint.py` searches the bundle, then `/opt/homebrew/lib`,
+  then `/usr/local/lib`. On an Apple silicon Mac with no Intel Homebrew
+  and the library built into `build/` as in step 1, there is none
+  (Homebrew's arm64 copy cannot load into an x86_64 process), so `true`
+  proves it. If `/usr/local/lib/libchromaprint*` exists (Intel Homebrew,
+  or the script run with its default prefix), move it aside for the run
+  and put it back after, as `build.yml` deletes it before its smoke test.
+  `find dist/Seeker.app -name 'libchromaprint*'` should list one file for
+  the Intel app and none for the Apple silicon one. This proves the
+  library loads in an x86_64 process on this Mac, from the app in
+  `dist/`. It does not prove a download's first launch after Gatekeeper
+  (step 5), or a Mac that has never had the library.
 - No modified files.
 
 Then open each app from `dist/` and check Help → Build: it reads
@@ -131,7 +154,9 @@ Release notes: the version's `CHANGELOG.md` section; which image is
 for which Mac (`Seeker.dmg` for Apple silicon, where About This Mac
 shows a Chip; `Seeker-Intel.dmg` for Intel, where it shows a Processor;
 both need macOS 15 or later); the SHA-256 from each `.sha256` file, with
-its image's name; the first-launch steps from `packaging/Read Me
+its image's name; the Intel app's bundled library, "libchromaprint 1.6.2"
+(`grep '^VERSION=' packaging/build_chromaprint.sh`; the version README →
+License points a recipient to for its source); the first-launch steps from `packaging/Read Me
 First.txt`; and README → License's second paragraph, with "the
 release's tag" naming this one (`vX.Y.Z`). Save them to a file outside
 the repository.
