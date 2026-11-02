@@ -59,9 +59,12 @@ Every image is rendered from invented data by
 
 ## Install
 
-Seeker is built and tested on macOS 15 or later, on Apple silicon and
-on Intel Macs. Windows and Linux builds are written but have never been
-verified on real hardware ([packaging](docs/packaging.md)).
+Seeker needs macOS 15 or later, on Apple silicon or on an Intel Mac. The
+Apple silicon app has been used on real hardware. The Intel app has been
+built, tested and smoke-tested by GitHub's Intel runner and under
+Rosetta, but no one has launched it on an Intel Mac yet (details below).
+Windows and Linux builds are written but have never been verified on
+real hardware ([packaging](docs/packaging.md)).
 
 You need:
 
@@ -100,16 +103,22 @@ Both need macOS 15 or later. A release before 0.2.0 has only
   Intel: MacBook Pro (2018 to 2020), MacBook Air (2020), iMac (2019 and
   2020), iMac Pro (2017), Mac mini (2018) and Mac Pro (2019).
 - **The wrong download.** `Seeker.dmg` is Apple silicon only and does
-  not run on an Intel Mac. `Seeker-Intel.dmg` does run on Apple
-  silicon, through Rosetta 2, but slower; Help → Build names the build
-  you have, and under Rosetta points at the faster download.
-- **How far the Intel build has been tested.** It has been built and
-  smoke-tested under Rosetta, and the test suite passes on GitHub's
-  Intel Macs; [docs/packaging.md](docs/packaging.md) says what has run
-  on a real Intel Mac. Intel support has a horizon (macOS 26 is the
-  last release for Intel Macs, and GitHub's Intel runners retire in
-  fall 2027): the last release that still builds and tests on Intel
-  will be Intel's final version, and this README will say which.
+  not run on an Intel Mac. `Seeker-Intel.dmg` should also run on Apple
+  silicon, through Rosetta 2, but slower: its smoke test passed that
+  way, though no one has opened its window there. Help's Architecture
+  line names the build you have; under Rosetta it begins "Intel build on
+  Apple silicon (Rosetta)" and points at the faster download.
+- **How far the Intel build has been tested.** On GitHub's Intel Mac
+  runner the app builds, its contents pass a check and a headless smoke
+  test, and the test suite passes; the app also built and passed that
+  smoke test under Rosetta on Apple silicon. No one has launched the
+  Intel app on an Intel Mac, so its first launch, Docker Desktop for
+  Intel and its speed on an older Intel Mac are untested
+  ([docs/packaging.md](docs/packaging.md#what-was-verified) has the
+  runs). Intel support has a horizon (macOS 26 is the last release for
+  Intel Macs, and GitHub's Intel runners retire in fall 2027): the last
+  release that still builds and tests on Intel will be Intel's final
+  version, and this README will say which.
 
 Check the download against the release's SHA-256 (each image has its
 own `.sha256` beside it), and drag Seeker to Applications. The build is
