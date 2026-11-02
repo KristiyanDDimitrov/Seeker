@@ -5,6 +5,8 @@ The frozen app runs the same code; here the checks resolve against
 """
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -224,3 +226,31 @@ def test_chromaprint_is_reported_and_never_fails_the_test(
 
     assert code == 0
     assert printed["chromaprint_available"] is available
+
+
+def test_the_entry_point_runs_the_check_offscreen_and_writes_nothing_else(
+        tmp_path,
+):
+    """The real `main_ui.main()` in a fresh process: it makes its own
+    offscreen QApplication, exits with the check's code and, with HOME
+    in tmp_path, leaves nothing there (no log, settings or database)."""
+    home = tmp_path / "home"
+    home.mkdir()
+    report_path = tmp_path / "report.json"
+    env = {**os.environ, "HOME": str(home)}
+    env.pop("QT_QPA_PLATFORM", None)
+
+    result = subprocess.run(  # noqa: S603 — this interpreter, a fixed script
+        [
+            sys.executable, "-c", "from seeker.main_ui import main; main()",
+            "--smoke-test", str(report_path),
+        ],
+        capture_output=True, text=True, env=env, cwd=tmp_path, timeout=120,
+        check=False,
+    )
+
+    assert (result.returncode, result.stderr) == (0, "")
+    report = json.loads(report_path.read_text())
+    assert report["passed"] is True
+    assert report["platform"] == "offscreen"
+    assert list(home.iterdir()) == []
