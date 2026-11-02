@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
+from chromaprint_gate import requires_chromaprint
 from seeker.audio.fingerprint import FingerprintingUnavailableError
 from seeker.audio.quality import LocalFileQuality
 from seeker.database.connection import Database
@@ -98,6 +99,7 @@ def make_service(database: Database) -> DuplicateService:
 
 # --- Real end-to-end: real generated audio, real libchromaprint -----------
 
+@requires_chromaprint
 def test_compute_and_find_duplicates_real_audio_end_to_end(tmp_path):
     database = make_database(tmp_path)
     music_dir = tmp_path / "music"
@@ -128,6 +130,7 @@ def test_compute_and_find_duplicates_real_audio_end_to_end(tmp_path):
     assert groups[0].similarity > 0.95
 
 
+@requires_chromaprint
 def test_find_duplicate_groups_reads_headers_and_decodes_no_audio(
         tmp_path, monkeypatch,
 ):
@@ -160,6 +163,7 @@ def test_find_duplicate_groups_reads_headers_and_decodes_no_audio(
     assert {f.quality.bitrate_kbps for f in groups[0].files} == {705}
 
 
+@requires_chromaprint
 def test_compute_fingerprints_skips_already_computed_files(tmp_path):
     database = make_database(tmp_path)
     music_dir = tmp_path / "music"
@@ -177,6 +181,7 @@ def test_compute_fingerprints_skips_already_computed_files(tmp_path):
     assert second.skipped_already_computed == 1
 
 
+@requires_chromaprint
 def test_compute_fingerprints_force_recomputes(tmp_path):
     database = make_database(tmp_path)
     music_dir = tmp_path / "music"
@@ -201,6 +206,7 @@ def _stop_after_first_file(stop: threading.Event):
     return progress
 
 
+@requires_chromaprint
 def test_compute_fingerprints_stops_between_files_and_keeps_the_done_ones(
         tmp_path,
 ):
@@ -228,6 +234,7 @@ def test_compute_fingerprints_stops_between_files_and_keeps_the_done_ones(
     assert not rerun.stopped
 
 
+@requires_chromaprint
 def test_find_duplicate_groups_stops_between_files(tmp_path):
     database = make_database(tmp_path)
     music_dir = tmp_path / "music"
@@ -247,6 +254,7 @@ def test_find_duplicate_groups_stops_between_files(tmp_path):
         )
 
 
+@requires_chromaprint
 def test_compute_fingerprints_classifies_a_missing_file(tmp_path):
     # Roadmap item 68 (Phase 8.2/8.3) — a local_files row whose real
     # file is gone (moved/deleted outside a rescan) gets its own
@@ -264,6 +272,7 @@ def test_compute_fingerprints_classifies_a_missing_file(tmp_path):
     assert result.details[0]["reason"] == "file_missing"
 
 
+@requires_chromaprint
 def test_compute_fingerprints_classifies_a_0_byte_file(tmp_path):
     # Roadmap item 68 (Phase 8.3) — flagged distinctly from a real
     # decode failure; it can never succeed a fingerprint attempt, so it
@@ -282,6 +291,7 @@ def test_compute_fingerprints_classifies_a_0_byte_file(tmp_path):
     assert result.details[0]["reason"] == "empty_file"
 
 
+@requires_chromaprint
 def test_compute_fingerprints_classifies_an_undecodable_file(tmp_path):
     # A real, non-empty, non-missing file that just isn't real audio —
     # both soundfile and (if present) the ffmpeg fallback genuinely
@@ -300,6 +310,7 @@ def test_compute_fingerprints_classifies_an_undecodable_file(tmp_path):
     assert result.details[0]["reason"] == "decode_unsupported"
 
 
+@requires_chromaprint
 def test_compute_fingerprints_unknown_location_raises(tmp_path):
     database = make_database(tmp_path)
     service = make_service(database)
@@ -335,6 +346,7 @@ def test_find_duplicate_groups_excludes_files_with_no_fingerprint_yet(
     assert groups == []
 
 
+@requires_chromaprint
 def test_find_duplicate_groups_skips_a_stale_row_instead_of_crashing(
         tmp_path,
 ):
@@ -380,6 +392,7 @@ def test_find_duplicate_groups_skips_a_stale_row_instead_of_crashing(
     assert reported[-1] == ("Measuring quality", 2, 2)
 
 
+@requires_chromaprint
 def test_find_duplicate_groups_drops_only_the_stale_file_from_a_larger_group(
         tmp_path,
 ):
@@ -1193,6 +1206,7 @@ def test_summarize_scopes_flags_a_location_with_no_scanned_files(tmp_path):
     assert summary.empty_locations == [location.name]
 
 
+@requires_chromaprint
 def test_compute_fingerprints_scoped_to_a_folder(tmp_path):
     database = make_database(tmp_path)
     music_dir = tmp_path / "music"
@@ -1224,6 +1238,7 @@ def test_compute_fingerprints_scoped_to_a_folder(tmp_path):
     assert fingerprints["OutOfScope/b.wav"] is None
 
 
+@requires_chromaprint
 def test_find_duplicate_groups_scoped_to_a_folder_excludes_outside_matches(
         tmp_path,
 ):
@@ -1254,6 +1269,7 @@ def test_find_duplicate_groups_scoped_to_a_folder_excludes_outside_matches(
     assert len(groups_both) == 1
 
 
+@requires_chromaprint
 def test_find_duplicate_groups_across_scopes_pools_across_two_real_locations(
         tmp_path,
 ):
@@ -1296,6 +1312,7 @@ def test_find_duplicate_groups_across_scopes_pools_across_two_real_locations(
     assert len(groups[0].files) == 2
 
 
+@requires_chromaprint
 def test_compute_fingerprints_reports_real_progress(tmp_path):
     database = make_database(tmp_path)
     music_dir = tmp_path / "music"
@@ -1319,6 +1336,7 @@ def test_compute_fingerprints_reports_real_progress(tmp_path):
     assert all(stage == "Fingerprinting" for stage, _, _ in reported)
 
 
+@requires_chromaprint
 def test_find_duplicate_groups_reports_every_real_stage(tmp_path):
     database = make_database(tmp_path)
     music_dir = tmp_path / "music"

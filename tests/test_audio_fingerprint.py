@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from chromaprint_gate import requires_chromaprint
 from seeker.audio import fingerprint as audio_fingerprint
 from seeker.audio.fingerprint import (
     Fingerprint,
@@ -29,11 +30,6 @@ def hamming_similarity(fingerprint_a: str, fingerprint_b: str) -> float:
 requires_x9_pro = pytest.mark.skipif(
     not X9_PRO_ROOT.is_dir(),
     reason="x9-pro drive not mounted",
-)
-
-requires_chromaprint = pytest.mark.skipif(
-    audio_fingerprint._load_library() is None,
-    reason="libchromaprint isn't installed on this machine",
 )
 
 requires_ffmpeg = pytest.mark.skipif(

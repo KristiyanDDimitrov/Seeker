@@ -16,7 +16,6 @@ test_ui_smoke.py.
 
 import threading
 
-import pytest
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -27,6 +26,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
 )
 
+from chromaprint_gate import requires_chromaprint
 from fakes import (
     FakeApplication,
     confirm_yes,
@@ -897,6 +897,7 @@ def test_duplicate_groups_keep_selection_pruned_when_group_removed(qtbot):
     assert window._duplicates_page._duplicates_keep_selection == {}
 
 
+@requires_chromaprint
 def test_duplicates_actions_column_renders_with_a_real_service_and_real_fingerprinting(
         qtbot, tmp_path,
 ):
@@ -923,7 +924,6 @@ def test_duplicates_actions_column_renders_with_a_real_service_and_real_fingerpr
     import numpy as np
     import soundfile as sf
 
-    from seeker.audio import fingerprint as audio_fingerprint
     from seeker.database.connection import Database
     from seeker.database.repositories.library_location_repository import (
         LibraryLocationRepository,
@@ -937,9 +937,6 @@ def test_duplicates_actions_column_renders_with_a_real_service_and_real_fingerpr
     from seeker.library.duplicate_service import DuplicateService
     from seeker.library.scanner import LibraryScanner
     from seeker.models.library_location import LibraryLocation
-
-    if audio_fingerprint._load_library() is None:
-        pytest.skip("libchromaprint isn't installed on this machine")
 
     scratch = tmp_path / "dupes"
     scratch.mkdir()
