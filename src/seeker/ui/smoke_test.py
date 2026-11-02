@@ -200,12 +200,27 @@ def run_smoke_test(request: SmokeTestRequest) -> int:
 
     text = report.to_json()
     print(text)
-    if request.report_path is not None:
-        request.report_path.write_text(text + "\n", encoding="utf-8")
+    written = request.report_path is None or _write_report(
+        request.report_path, text,
+    )
     if report.failed:
         print(f"Smoke test failed: {', '.join(report.failed)}", file=sys.stderr)
-        return 1
-    return 0
+    return 0 if written and not report.failed else 1
+
+
+def _write_report(path: Path, text: str) -> bool:
+    """Writes the report, or names on stderr why it could not: a
+    windowed build is read through this file alone."""
+    try:
+        path.write_text(text + "\n", encoding="utf-8")
+    except OSError as error:
+        print(
+            f"Could not write the smoke test report {path}: "
+            f"{error.strerror or error}",
+            file=sys.stderr,
+        )
+        return False
+    return True
 
 
 def _run_check(name: str, check: Callable[[], CheckResult]) -> CheckResult:

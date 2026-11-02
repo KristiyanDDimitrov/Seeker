@@ -289,6 +289,21 @@ def test_a_check_that_raises_fails_and_the_report_is_still_written(
     assert err == f"Smoke test failed: {', '.join(failed)}\n"
 
 
+def test_a_report_that_cannot_be_written_is_named_and_fails_the_run(
+        run, tmp_path,
+):
+    """Every check passes, but the file a windowed build is read
+    through is missing: the run must say so and exit 1."""
+    report_path = tmp_path / "missing" / "report.json"
+
+    code, printed, err = run(report_path)
+
+    assert code == 1
+    assert printed["passed"] is True
+    assert err.startswith(f"Could not write the smoke test report {report_path}: ")
+    assert "No such file or directory" in err
+
+
 def test_the_analysis_check_finds_the_click_tracks_tempo_twice(run):
     _code, printed, _err = run()
 
