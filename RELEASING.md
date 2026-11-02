@@ -104,8 +104,10 @@ Expected:
 - `CFBundleShortVersionString` and `CFBundleVersion` are `X.Y.Z`.
 - `lipo -archs` prints exactly `ARCH`: the executable is thin.
 - The smoke test exits 0 (`exit 0`). In its report, `architecture` is
-  "Apple silicon" for the Apple silicon app and "Intel build on Apple
-  silicon (Rosetta)" for the Intel app; `chromaprint_available` is true
+  "Apple silicon" for the Apple silicon app and, for the Intel app, text
+  that begins "Intel build on Apple silicon (Rosetta)" (a sentence
+  pointing at `Seeker.dmg` follows) or, on an Intel Mac, "Intel";
+  `chromaprint_available` is true
   (for the Apple silicon app that needs Homebrew's chromaprint on this
   Mac, and says nothing about the bundle, which holds none). The smoke
   test touches no settings, database or library, so it is safe on any
