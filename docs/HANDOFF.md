@@ -90,7 +90,7 @@ None.
 - **Dependabot #14** (setup-uv 10.3.2 → 10.3.3, green): approve? It
   touches `ci.yml`, which S4 copies.
 - #1, #5, #7, #8 are still open though their changes are on `main`;
-  PR #6 unchecked (`gh pr close 6` if open).
+  PR #6 is closed.
 - `/context` at the next lead's start.
 - Later, unchanged: S9's Intel image test (BRIEF §9); S10's outward
   steps; R14/R15 and phase 01's items: `git show d507065:docs/HANDOFF.md`
