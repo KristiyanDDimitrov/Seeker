@@ -352,3 +352,4 @@ under their entry and live in the same file, after it.
 - §255 — Round 13 S3: `.venv-x86_64` under Rosetta; Intel pins install, librosa runs, no AVX (westmere); 17 x86_64 failures, all arm64-only chromaprint → [241-270.md#255](241-270.md#255)
 - §256 — Round 13 S5: `seeker-ui --smoke-test`: identity, imports, hidden imports, Qt plugin, polished themes, bundled fonts/icons, 123 BPM analysis → [241-270.md#256](241-270.md#256)
 - §257 — Round 13 S5b: frozen arm64 smoke test passes (cold 3.7 s, warm 0.035 s); a build-time module manifest closes the frozen-walk gap → [241-270.md#257](241-270.md#257)
+- §258 — Round 13 S3b: one chromaprint gate, `SEEKER_REQUIRE_CHROMAPRINT=1` turns its skip into a failure; Rosetta cold analyze 67 s vs 23 s native → [241-270.md#258](241-270.md#258)

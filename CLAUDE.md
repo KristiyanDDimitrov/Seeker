@@ -258,6 +258,21 @@ UNVERIFIED). `docs/status.md` loads only when read.
 - [`docs/status.md`](docs/status.md) — accepted risks, open issues,
   roadmap: planning, or a symptom that may be a known issue.
 
+### Platforms
+
+- **Intel pins and the x86_64 check.** The lock's Intel set is numba
+  0.62.1, llvmlite 0.45.1, numpy 2.3.5 (arm64 gets newer); the
+  commands under Commands create `.venv-x86_64` on Apple silicon,
+  which runs under Rosetta with no `arch` prefix and shares the real
+  data folders (never start the app from it; BRIEF §0.5). Rosetta
+  exposes no AVX (llvmlite: `westmere`), so numba needs no
+  `NUMBA_CPU_NAME`; that is Rosetta, not an Intel Mac. A Rosetta run
+  cannot load arm64 Homebrew's libchromaprint: the 25 real-chromaprint
+  tests skip through `tests/chromaprint_gate.py`, and
+  `SEEKER_REQUIRE_CHROMAPRINT=1` makes them fail instead (set it where
+  the library must exist). Cold `analyze_audio` takes about 3x as long
+  under Rosetta (67 s against 23 s, numba compiling). [§258](docs/history/241-270.md#258)
+
 ## Working agreements
 
 Hard-won, all five stay.

@@ -3,7 +3,7 @@
 A skip on "no library loads" also hides a lookup bug (a wrong search
 path on Intel, say). The runner that must have the library sets
 `SEEKER_REQUIRE_CHROMAPRINT=1`: the test then runs and fails with the
-real `FingerprintingUnavailableError`. HISTORY §257.
+real `FingerprintingUnavailableError`. HISTORY §258.
 """
 
 import os
