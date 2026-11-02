@@ -136,8 +136,11 @@ bring-up.
 showing a window or touching settings, the database or the library: it
 imports every module, loads the bundled fonts, icons and Compose
 template, applies both themes, times two analyses of a generated click
-track and prints a JSON report (also written to `REPORT`, an absolute
-path). The exit code is 0 when every check passed, 1 when one failed
-or the report could not be written, 2 for an empty path. It is how a
-frozen app is checked; [packaging.md](packaging.md#the-smoke-test) has
-the details and [`RELEASING.md`](../RELEASING.md) runs it on each image.
+track and prints a JSON report, also written to `REPORT`. A relative
+`REPORT` is made absolute against the directory the process started in
+(`smoke_test.py`, which notes a Finder launch starts at `/`), so give an
+absolute one there. The exit code is 0 when every
+check passed, 1 when one failed or the report could not be written, 2
+for an empty path. It is how a frozen app is checked;
+[packaging.md](packaging.md#the-smoke-test) has the details and
+[`RELEASING.md`](../RELEASING.md) runs it on each image.
