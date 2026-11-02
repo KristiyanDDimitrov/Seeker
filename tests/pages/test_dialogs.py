@@ -114,6 +114,25 @@ def test_about_dialog_shows_build_identity(qtbot):
     assert "dev" in combined
 
 
+def test_about_dialog_names_the_architecture_escaped(qtbot, monkeypatch):
+    # The text is Seeker's own, but About is a RichLabel: it is escaped
+    # like the build identity beside it.
+    monkeypatch.setattr(
+        "seeker.ui.dialogs.describe_architecture", lambda: "Intel <b>x</b>",
+    )
+    dialog = AboutDialog()
+    qtbot.addWidget(dialog)
+
+    combined = "\n".join(
+        widget.text() for widget in dialog.findChildren(QLabel)
+    )
+
+    assert (
+        f"<p>{help_text.HELP_ARCHITECTURE_LABEL} Intel &lt;b&gt;x&lt;/b&gt;</p>"
+        in combined
+    )
+
+
 def test_about_dialog_shows_author_license_and_notices(qtbot):
     dialog = AboutDialog()
     qtbot.addWidget(dialog)

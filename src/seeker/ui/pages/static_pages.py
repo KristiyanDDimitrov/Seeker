@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker import _build_info
+from seeker.cpu_architecture import describe_architecture
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import build_support_links_row
 from seeker.ui.pages.context import PageContext, build_page
@@ -127,10 +128,10 @@ class HelpPage(QWidget):
         outer_layout.addWidget(page)
 
     def _build_locations_card(self) -> QFrame:
-        """Each data path, then the build, in one card: the two things
-        a problem report needs. Next to the paths rather than only in
-        About, since this page is where "which build is this?" starts
-        (HISTORY §81)."""
+        """Each data path, then the build and the architecture it runs
+        as, in one card: what a problem report needs. Next to the
+        paths rather than only in About, since this page is where
+        "which build is this?" starts (HISTORY §81)."""
         locations = self._context.application.data_locations
         build_identity = help_text.format_build_identity(
             _build_info.GIT_SHA, _build_info.GIT_DESCRIBE,
@@ -146,6 +147,7 @@ class HelpPage(QWidget):
             (help_text.DATA_LOCATION_SLSKD_LABEL, str(locations.slskd_data_dir)),
             (help_text.DATA_LOCATION_LOG_LABEL, str(locations.log_dir)),
             (help_text.HELP_BUILD_IDENTITY_LABEL, build_identity),
+            (help_text.HELP_ARCHITECTURE_LABEL, describe_architecture()),
         )
 
         inner = QWidget()

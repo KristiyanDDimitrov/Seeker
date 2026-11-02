@@ -7,6 +7,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Help and About name the architecture Seeker runs as:** Apple
+  silicon, Intel, or the Intel build on Apple silicon (Rosetta), with
+  a pointer to the faster Apple silicon download.
+
 ### Changed
 
 - **Spotify Premium is named up front.** Spotify runs an app in

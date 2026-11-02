@@ -182,6 +182,9 @@ TOOLTIP_OPEN_LOG_FOLDER = (
     "Open the log folder: useful when reporting a problem."
 )
 HELP_BUILD_IDENTITY_LABEL = "Build:"
+# Its value is cpu_architecture.describe_architecture(): Qt-free, so a
+# report outside the UI can say the same.
+HELP_ARCHITECTURE_LABEL = "Architecture:"
 
 
 def format_build_identity(

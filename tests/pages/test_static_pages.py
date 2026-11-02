@@ -150,6 +150,35 @@ def test_help_page_shows_build_identity_and_per_account_note(qtbot):
     assert "per macOS user account" in combined
 
 
+def test_help_page_names_the_architecture_beside_the_build(
+        qtbot, monkeypatch,
+):
+    from PySide6.QtWidgets import QFormLayout
+
+    from seeker.cpu_architecture import ROSETTA, ROSETTA_ADVICE
+
+    rosetta = f"{ROSETTA}. {ROSETTA_ADVICE}"
+    monkeypatch.setattr(
+        "seeker.ui.pages.static_pages.describe_architecture", lambda: rosetta,
+    )
+    application = FakeApplication()
+    window = MainWindow(application)
+    qtbot.addWidget(window)
+
+    (form,) = window._help_page.findChildren(QFormLayout)
+    rows = {
+        form.itemAt(row, QFormLayout.ItemRole.LabelRole).widget().text():
+            form.itemAt(row, QFormLayout.ItemRole.FieldRole).widget().text()
+        for row in range(form.rowCount())
+    }
+    assert rows[help_text.HELP_ARCHITECTURE_LABEL] == rosetta
+    # Directly under Build: the two lines a problem report quotes.
+    labels = list(rows)
+    assert labels.index(help_text.HELP_ARCHITECTURE_LABEL) == (
+        labels.index(help_text.HELP_BUILD_IDENTITY_LABEL) + 1
+    )
+
+
 # --- Support page (roadmap item 64) -----------------------------------
 
 def test_support_page_exists_directly_below_help_in_the_sidebar(qtbot):

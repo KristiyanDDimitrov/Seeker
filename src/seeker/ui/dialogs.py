@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from seeker import _build_info
 from seeker.audio.formats import AUDIO_EXTENSIONS
+from seeker.cpu_architecture import describe_architecture
 from seeker.destination_resolution import (
     InvalidDestinationSubfolderError,
     validate_destination_subfolder,
@@ -99,6 +100,8 @@ class AboutDialog(QDialog):
         body += (
             f"<p>{help_text.HELP_BUILD_IDENTITY_LABEL} "
             f"{html.escape(build_identity)}</p>"
+            f"<p>{help_text.HELP_ARCHITECTURE_LABEL} "
+            f"{html.escape(describe_architecture())}</p>"
         )
 
         text_label = RichLabel(body)
