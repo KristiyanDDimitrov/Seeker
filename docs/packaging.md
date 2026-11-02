@@ -115,43 +115,54 @@ Mac an x86_64 environment under Rosetta 2, beside `.venv`:
 ```
 uv python install cpython-3.13.15-macos-x86_64-none
 UV_PROJECT_ENVIRONMENT=.venv-x86_64 uv sync --locked --python cpython-3.13.15-macos-x86_64-none
-packaging/build_chromaprint.sh "$PWD/build/chromaprint-x86_64"
-SEEKER_CHROMAPRINT_DIR="$PWD/build/chromaprint-x86_64/lib" \
+packaging/build_chromaprint.sh "$PWD/.chromaprint"
+SEEKER_CHROMAPRINT_DIR="$PWD/.chromaprint/lib" \
     .venv-x86_64/bin/python packaging/build_dmg.py      # dist/Seeker-Intel.dmg
 ```
 
 That environment shares the real data folders, so it only builds: never
-start the app from it ([CLAUDE.md](../CLAUDE.md#platforms)). On an
-Intel Mac, or CI's Intel runner, `packaging/build_chromaprint.sh` with
-no argument installs into `/usr/local/lib`, which is where
-`SEEKER_CHROMAPRINT_DIR` defaults, so the folder and the variable can
-be left out.
+start the app from it ([CLAUDE.md](../CLAUDE.md#platforms)). The two
+`.chromaprint` lines are for a Mac with no `/usr/local/lib`; on an Intel
+Mac, or CI's Intel runner, `packaging/build_chromaprint.sh` with no
+argument installs into `/usr/local/lib`, which is where
+`SEEKER_CHROMAPRINT_DIR` defaults, so the folder and the variable can be
+left out. The variable is read when the spec runs, so set it on the
+build command itself, and give an absolute path: a relative one
+resolves against PyInstaller's working directory, the repository root.
+Do not put the library under `build/`: `build_dmg.py` runs PyInstaller
+with `--clean`, which empties `build/` before the spec runs.
+`.chromaprint/` is in `.gitignore` for this, so `RELEASING.md`'s clean
+tree holds.
 
 - **libchromaprint ships in the Intel app, not the Apple silicon one,
   and Seeker builds it.** `packaging/build_chromaprint.sh [PREFIX]`
-  takes the upstream source tarball for chromaprint 1.6.2 (its `VERSION`),
-  checks its SHA-256, and builds x86_64 only, for a deployment target of
-  15.0 (the bundle's floor), with the vDSP FFT and without FFmpeg. The
-  result links Accelerate, libc++ and libSystem alone (`otool -L` in the
-  CI build, [Build run
+  takes the upstream source tarball for chromaprint 1.6.2 (its `VERSION`,
+  with the `SHA256` it checks), and builds x86_64 only, for a deployment
+  target of 15.0 (the bundle's floor), with the vDSP FFT and without
+  FFmpeg. It cross-compiles with Xcode's tools, so an Apple silicon Mac
+  with no Intel Homebrew builds it. The result links Accelerate, libc++
+  and libSystem alone (`otool -L` in the CI build, [Build run
   41537431447](https://github.com/KristiyanDDimitrov/Seeker/actions/runs/41537431447));
   the script fails on a dependency outside macOS's own folders, since one
-  loads on the machine that built it and not on a user's Mac. PREFIX
-  defaults to `/usr/local` and the script uses `sudo` there only when it
-  cannot write; given a folder of the checkout it needs neither, and it
-  cross-compiles x86_64 with Xcode's tools, so an Apple silicon Mac with
-  no Intel Homebrew builds it. Homebrew is not the source: it treats
-  Intel Macs as Tier 3 since September 2026 and builds no new Intel
-  bottles ([Homebrew's support
+  loads on the machine that built it and not on a user's Mac. It
+  installs to `PREFIX/lib` (PREFIX defaults to `/usr/local`), creating
+  that folder first and using `sudo` only when it can neither create nor
+  write it, so a prefix inside the repository needs none; it builds in a
+  temporary directory under `TMPDIR`, removed on exit, so the library is
+  in the repository and the build scratch is not. Homebrew is not the
+  source: it treats Intel Macs as Tier 3 since September 2026 and builds
+  no new Intel bottles ([Homebrew's support
   tiers](https://docs.brew.sh/Support-Tiers), read 2026-11-03; its API
   lists none for `chromaprint` 1.6.2, `ffmpeg` or `mpg123`), so `brew
   install chromaprint` there compiles ffmpeg and ten more formulae for a
-  library that needs none of them. `bundle_info.chromaprint_binaries`
-  copies `libchromaprint.1.dylib` from `SEEKER_CHROMAPRINT_DIR` (default
-  `/usr/local/lib`) to the bundle's resource root, which
-  `audio/fingerprint.py` searches before the Homebrew prefixes, and the
-  spec adds its licence texts under `licenses/chromaprint/`. A missing
-  library fails the build, so the app never silently loses
+  library that needs none of them.
+  `bundle_info.chromaprint_binaries` copies `libchromaprint.1.dylib`
+  from `bundle_info.chromaprint_library_dir()` (`SEEKER_CHROMAPRINT_DIR`
+  when set and not empty, else `/usr/local/lib`) to the bundle's resource
+  root, which `audio/fingerprint.py` searches before the Homebrew
+  prefixes, and the spec adds its licence texts (`packaging/licenses/`)
+  under `licenses/chromaprint/`. A missing library fails the build, with
+  these steps in the message, so the app never silently loses
   fingerprinting. The Apple silicon app still finds the user's own
   Homebrew copy.
 - **Both architectures write `dist/Seeker.app`.** Each build replaces
@@ -191,7 +202,7 @@ copy loaded. `audio/fingerprint.py` looks in the bundle, then
 library only where no other copy can load there:
 
 - **Intel app, built on an Apple silicon Mac with no Intel Homebrew**
-  (the library built into `build/chromaprint-x86_64`): no other x86_64
+  (the library built into `.chromaprint/`): no other x86_64
   copy is on the search path, and Homebrew's arm64 copy cannot load into
   an x86_64 process (observed under Rosetta,
   [HISTORY §258](history/241-270.md#258)), so `true` proves the bundled
