@@ -29,7 +29,12 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QMessageLogContext, QtMsgType, qInstallMessageHandler
+from PySide6.QtCore import (
+    QLibraryInfo,
+    QMessageLogContext,
+    QtMsgType,
+    qInstallMessageHandler,
+)
 from PySide6.QtGui import QFontDatabase, QImage
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
@@ -65,6 +70,10 @@ _DISPLAY_STYLES = ("Medium", "SemiBold")
 CLICK_BPM = 60 * SAMPLE_RATE / (512 * 21)
 _CLICK_SECONDS = 10.0
 _BPM_TOLERANCE = 2.0
+
+# The platform plugin a person's launch loads, by the platforms a build
+# ships for. The check itself runs offscreen, so it looks for the file.
+_NATIVE_PLATFORM_PLUGINS = {"darwin": "libqcocoa.dylib", "win32": "qwindows.dll"}
 
 _QT_WARNINGS = (
     QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg,
@@ -159,6 +168,7 @@ def run_smoke_test(request: SmokeTestRequest) -> int:
     imports, report.modules_imported = _check_imports()
     report.checks.append(imports)
     report.checks.append(_check_hidden_imports())
+    report.checks.append(_check_platform_plugin())
 
     app = _application()
     report.platform = app.platformName()
@@ -249,6 +259,26 @@ def _check_hidden_imports() -> CheckResult:
         f"Imported {', '.join(frozen_imports.HIDDEN_IMPORTS)}."
     )
     return CheckResult("hidden_imports", not problems, detail)
+
+
+def _check_platform_plugin() -> CheckResult:
+    plugin = _NATIVE_PLATFORM_PLUGINS.get(sys.platform)
+    if plugin is None:
+        return CheckResult(
+            "platform_plugin", passed=True,
+            detail=f"No native plugin is shipped for {sys.platform}.",
+        )
+    directory = Path(
+        QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath),
+    ) / "platforms"
+    if not (directory / plugin).is_file():
+        return CheckResult(
+            "platform_plugin", passed=False,
+            detail=f"No {plugin} in {directory}.",
+        )
+    return CheckResult(
+        "platform_plugin", passed=True, detail=f"Found {directory / plugin}.",
+    )
 
 
 def _describe(error: BaseException | None) -> str:

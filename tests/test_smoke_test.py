@@ -20,8 +20,8 @@ from seeker.ui import icons, smoke_test, theme
 SRC_SEEKER = Path(smoke_test.__file__).resolve().parents[1]
 SPEC = SRC_SEEKER.parents[1] / "packaging" / "seeker.spec"
 CHECKS = [
-    "imports", "hidden_imports", "theme", "fonts", "icons",
-    "compose_template", "analysis",
+    "imports", "hidden_imports", "platform_plugin", "theme", "fonts",
+    "icons", "compose_template", "analysis",
 ]
 
 
@@ -178,6 +178,30 @@ def test_the_spec_bundles_the_hidden_imports_the_check_imports():
 
     assert ("seeker.frozen_imports", "HIDDEN_IMPORTS") in imported
     assert ast.unparse(hidden) == "list(HIDDEN_IMPORTS)"
+
+
+def test_a_bundle_without_the_native_platform_plugin_fails_its_check(
+        run, monkeypatch, tmp_path,
+):
+    """The check runs offscreen, so only the plugin's file shows that a
+    person's launch would find the native one."""
+    (tmp_path / "platforms").mkdir()
+    (tmp_path / "platforms" / "libqoffscreen.dylib").touch()
+
+    class LibraryInfo(smoke_test.QLibraryInfo):
+        @staticmethod
+        def path(which):
+            assert which == smoke_test.QLibraryInfo.LibraryPath.PluginsPath
+            return str(tmp_path)
+
+    monkeypatch.setattr(smoke_test, "QLibraryInfo", LibraryInfo)
+
+    code, printed, _err = run()
+
+    assert code == 1
+    assert printed["failed"] == ["platform_plugin"]
+    (checked,) = (c for c in printed["checks"] if c["name"] == "platform_plugin")
+    assert str(tmp_path / "platforms") in checked["detail"]
 
 
 def test_an_unparseable_stylesheet_fails_the_theme_check(run, monkeypatch):
