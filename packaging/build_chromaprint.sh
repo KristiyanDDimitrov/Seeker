@@ -38,6 +38,17 @@ only_system_dependencies() {
     fi
 }
 
+# Installs the finished build in $1 under the prefix $2, through sudo
+# when the current user cannot write the prefix's lib/.
+install_library() {
+    local build=$1 prefix=$2
+    if [ -w "$prefix/lib" ]; then
+        cmake --install "$build"
+    else
+        sudo cmake --install "$build"
+    fi
+}
+
 main() {
     local prefix=${1:-/usr/local}
     local archive="$WORK/chromaprint-$VERSION.tar.gz"
@@ -59,11 +70,7 @@ main() {
         -DCMAKE_OSX_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET" \
         -DCMAKE_INSTALL_PREFIX="$prefix"
     cmake --build "$WORK/build"
-    if [ -w "$prefix/lib" ]; then
-        cmake --install "$WORK/build"
-    else
-        sudo cmake --install "$WORK/build"
-    fi
+    install_library "$WORK/build" "$prefix"
 
     lipo -archs "$library"
     otool -L "$library"

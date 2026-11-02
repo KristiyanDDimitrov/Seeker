@@ -2,13 +2,17 @@
 from a pinned source because Homebrew builds no new Intel bottles.
 
 The build itself needs a compiler and the network and runs in CI
-(build.yml); these tests read the script and run its one pure function.
+(build.yml); these tests read the script and run its functions, the
+install step with cmake and sudo stubbed.
 """
 
 import importlib.util
+import os
 import re
 import subprocess
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "packaging" / "build_chromaprint.sh"
@@ -44,6 +48,40 @@ def _guard(otool_output: str) -> subprocess.CompletedProcess[str]:
         ["/bin/bash", "-c", f'source "{SCRIPT}"; only_system_dependencies'],
         input=otool_output, capture_output=True, text=True, check=False,
     )
+
+
+def _install(tmp_path: Path, prefix: Path) -> list[str]:
+    """Runs install_library with cmake and sudo stubbed on PATH and
+    returns the commands the stubs saw, one line each. The sudo stub
+    runs what it is given, as sudo would."""
+    stubs = tmp_path / "stubs"
+    stubs.mkdir()
+    log = tmp_path / "calls.log"
+    (stubs / "cmake").write_text(
+        f'#!/bin/bash\necho "cmake $*" >> "{log}"\n',
+    )
+    (stubs / "sudo").write_text(
+        f'#!/bin/bash\necho "sudo $*" >> "{log}"\nexec "$@"\n',
+    )
+    for stub in stubs.iterdir():
+        stub.chmod(0o755)
+    subprocess.run(  # noqa: S603 — bash and the repository's script
+        [
+            "/bin/bash", "-c",
+            f'source "{SCRIPT}"; install_library /the/build "{prefix}"',
+        ],
+        env={"PATH": f"{stubs}:/usr/bin:/bin"},
+        capture_output=True, text=True, check=True,
+    )
+    return log.read_text().splitlines()
+
+
+# The sudo decision asks the file system, and root can write anywhere:
+# these tests would pass on a bug, so only they are skipped, and only
+# for root. The tests that expect no sudo run for every user.
+needs_non_root = pytest.mark.skipif(
+    os.geteuid() == 0, reason="root can write a read-only directory",
+)
 
 
 def test_the_script_is_valid_shell_and_executable():
@@ -116,3 +154,28 @@ def test_the_librarys_own_install_name_is_not_a_dependency():
     )
 
     assert _guard(own_name).returncode == 0
+
+
+def test_a_prefix_the_user_can_write_installs_without_sudo(tmp_path):
+    prefix = tmp_path / "prefix"
+    (prefix / "lib").mkdir(parents=True)
+
+    assert _install(tmp_path, prefix) == ["cmake --install /the/build"]
+
+
+@needs_non_root
+def test_a_prefix_the_user_cannot_write_installs_through_sudo(tmp_path):
+    # /usr/local/lib on a Mac whose Homebrew belongs to another user.
+    prefix = tmp_path / "prefix"
+    lib = prefix / "lib"
+    lib.mkdir(parents=True)
+    lib.chmod(0o555)
+    try:
+        calls = _install(tmp_path, prefix)
+    finally:
+        lib.chmod(0o755)
+
+    assert calls == [
+        "sudo cmake --install /the/build",
+        "cmake --install /the/build",
+    ]
