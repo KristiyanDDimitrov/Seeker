@@ -27,6 +27,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **CI runs the suite on an Intel Mac too:** a blocking `check-intel` job
   on `macos-15-intel` beside `check`; both fail, not skip, the
   real-chromaprint tests when the library is missing.
+- **CI builds and smoke-tests both apps:** a `Build` workflow (on
+  dispatch, `v*` tags and changes to the build inputs) builds
+  `Seeker.dmg` on `macos-26` and `Seeker-Intel.dmg` on `macos-15-intel`,
+  runs each frozen app's `--smoke-test` and uploads the image and report
+  for a week. It never publishes. The Intel job builds libchromaprint
+  from a pinned source with `packaging/build_chromaprint.sh`, since
+  Homebrew no longer builds Intel bottles.
 
 - **Spotify Premium is named up front.** Spotify runs an app in
   Development Mode, which every Seeker user's own Spotify app is, only
