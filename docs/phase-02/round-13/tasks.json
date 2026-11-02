@@ -1,0 +1,282 @@
+{
+  "plan": "docs/phase-02/round-13/SESSION-PLAN.md",
+  "brief": "docs/phase-02/round-13/BRIEF.md",
+  "execution": "SESSION-PLAN.md, Execution: a lead and parallel workers",
+  "baseline_k": 62,
+  "baseline_note": "Measured 2026-11-02: median 57 K over 20 sessions, 59-63 K since 2026-10-17. S0 aims for ~54 K; est_peak_k assumes 54 from S1 on. S1 replaces this with the measured value.",
+  "worker_baseline_est_k": 30,
+  "budget": {"target_k": 120, "soft_ceiling_k": 150, "hard_ceiling_k": 180, "row_cap_work_k": 65},
+  "rules": "Edit only your own row. Never delete or rewrite another row. Status: todo | doing | done | split | blocked. S3 may re-estimate S3b and add S3c.",
+  "common_reading": [
+    {"path": "docs/HANDOFF.md", "range": null, "est_k": 2.0},
+    {"path": "docs/phase-02/round-13/SESSION-PLAN.md", "range": "your row, reading list and protocol", "est_k": 1.5},
+    {"path": "docs/phase-02/round-13/BRIEF.md", "range": "28-91", "est_k": 1.1},
+    {"path": "docs/phase-01/round-11/BRIEF.md", "range": "19-83", "est_k": 0.9}
+  ],
+  "rows": [
+    {
+      "id": "S0", "title": "Baseline cut: CLAUDE.md core plus path-scoped topic files; marketing and product plugins off in this folder",
+      "type": "refactor", "executes": "SESSION-PLAN.md -> S0", "depends_on": [], "ask": false,
+      "gate": "Kris runs /context at the start; S1 measures the yield", "model": null, "executor": "solo", "wave": 0,
+      "est_work_k": 45, "est_peak_k": 107, "actual_peak_k": null,
+      "split_point": "After the split is committed, before the pointer sweep",
+      "reading_list": [
+        {"path": "CLAUDE.md", "range": "headings only (grep -n '^##'); text already in context", "est_k": 0.3},
+        {"path": ".claude/settings.local.json", "range": null, "est_k": 0.1},
+        {"path": "docs/README.md", "range": null, "est_k": 1.4},
+        {"path": "src/seeker/ui/CLAUDE.md", "range": "1-10", "est_k": 0.3},
+        {"path": "docs/history/241-270.md", "range": "148-222", "est_k": 1.2}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S1", "title": "Help -> Build names the architecture, and Rosetta (PF-05)",
+      "type": "behaviour", "executes": "BRIEF.md §1.2", "depends_on": ["S0"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 1,
+      "est_work_k": 65, "est_peak_k": 119, "actual_peak_k": null,
+      "split_point": "After the Qt-free function and its tests",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "126-148", "est_k": 0.4},
+        {"path": "docs/phase-02/AUDIT.md", "range": "167-181", "est_k": 0.2},
+        {"path": "src/seeker/_build_info.py", "range": null, "est_k": 0.4},
+        {"path": "src/seeker/ui/dialogs.py", "range": "40-110", "est_k": 0.8},
+        {"path": "src/seeker/ui/pages/static_pages.py", "range": "120-150", "est_k": 0.4},
+        {"path": "tests/pages/test_static_pages.py", "range": "60-100", "est_k": 0.5},
+        {"path": "docs/architecture.md", "range": "Module map: grep -n the ui/ rows, then ~20 lines", "est_k": 0.4},
+        {"path": "src/seeker/ui/CLAUDE.md", "range": null, "est_k": 4.8}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S1b", "title": "v0.1.1's record; Dependabot #5 mypy, #7 ruff, #8 platformdirs, #9 python-dotenv",
+      "type": "behaviour", "executes": "BRIEF.md §1b", "depends_on": ["S0"], "ask": true,
+      "gate": "Kris approves each merge", "model": null, "executor": "lead", "wave": 1,
+      "est_work_k": 60, "est_peak_k": 114, "actual_peak_k": null,
+      "split_point": "After v0.1.1's record and two PRs",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "150-202", "est_k": 0.8},
+        {"path": "gh pr view <n> --json title,files,statusCheckRollup", "range": "per PR", "est_k": 2.0},
+        {"path": "CHANGELOG.md", "range": "1-30", "est_k": 0.3},
+        {"path": "pyproject.toml", "range": "1-56", "est_k": 0.4},
+        {"path": "docs/history/241-270.md", "range": "148-222", "est_k": 1.2}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S1c", "title": "Dependabot #1 checkout, #6 uv_build, #12 setup-uv, #13 slskd; the dependabot.yml comment",
+      "type": "behaviour", "executes": "BRIEF.md §1b", "depends_on": ["S1b"], "ask": true,
+      "gate": "Kris approves each merge", "model": null, "executor": "lead", "wave": 1,
+      "est_work_k": 65, "est_peak_k": 119, "actual_peak_k": null,
+      "split_point": "After #1 and #12 (the actions)",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "150-202", "est_k": 0.8},
+        {"path": ".github/workflows/ci.yml", "range": null, "est_k": 0.7},
+        {"path": ".github/dependabot.yml", "range": null, "est_k": 0.2},
+        {"path": "pyproject.toml", "range": "30-38", "est_k": 0.1},
+        {"path": "docs/history/README.md", "range": "grep -n '§204\\|§238', then each entry's range", "est_k": 3.0},
+        {"path": "gh pr view <n> --json title,files,statusCheckRollup", "range": "per PR", "est_k": 2.0}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S1d", "title": "Spotify Premium in the README and the wizard",
+      "type": "behaviour", "executes": "BRIEF.md §1d", "depends_on": ["S0"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 1,
+      "est_work_k": 60, "est_peak_k": 114, "actual_peak_k": null,
+      "split_point": "After the wizard step and its test",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "204-232", "est_k": 0.5},
+        {"path": "src/seeker/ui/wizard.py", "range": "180-260", "est_k": 1.0},
+        {"path": "README.md", "range": "60-97", "est_k": 0.4},
+        {"path": "tests/test_wizard.py", "range": "80-110", "est_k": 0.4},
+        {"path": "tools/screenshots.py", "range": "695-715", "est_k": 0.2},
+        {"path": "CHANGELOG.md", "range": "1-30", "est_k": 0.3},
+        {"path": "src/seeker/ui/CLAUDE.md", "range": null, "est_k": 4.8}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S2", "title": "The Intel pins and the forked lock; native set unchanged; audit (PF-01)",
+      "type": "behaviour", "executes": "BRIEF.md §2 steps 1-3", "depends_on": ["S1b", "S1c"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 2,
+      "est_work_k": 60, "est_peak_k": 114, "actual_peak_k": null,
+      "split_point": "After the lock commit, before the audit",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "234-299", "est_k": 0.9},
+        {"path": "docs/phase-02/AUDIT.md", "range": "84-116", "est_k": 0.6},
+        {"path": "pyproject.toml", "range": "1-56", "est_k": 0.4},
+        {"path": "tools/audit_dependencies.py", "range": null, "est_k": 1.3},
+        {"path": "uv documentation: constraint-dependencies, required-environments", "range": null, "est_k": 3.0}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S2b", "title": "tests/test_lock_platforms.py",
+      "type": "behaviour", "executes": "BRIEF.md §2 step 4", "depends_on": ["S2"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 2,
+      "est_work_k": 50, "est_peak_k": 104, "actual_peak_k": null,
+      "split_point": null,
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "263-299", "est_k": 0.5},
+        {"path": "uv.lock", "range": "grep -n only: resolution-markers, numba's entries, one sdist-only or pure entry", "est_k": 2.0}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S3", "title": ".venv-x86_64 under Rosetta; the whole suite on x86_64; the failure list; re-plans S3b",
+      "type": "investigation", "executes": "BRIEF.md §3 steps 1-3", "depends_on": ["S2"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 2,
+      "est_work_k": 65, "est_peak_k": 119, "actual_peak_k": null,
+      "split_point": "After the environment's versions are pasted",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "301-346", "est_k": 0.6},
+        {"path": ".gitignore", "range": null, "est_k": 0.1}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S3b", "title": "Rosetta triage: each Intel bug test-first, test fixes, timings, commands and platform facts",
+      "type": "investigation", "executes": "BRIEF.md §3 steps 4-6", "depends_on": ["S3"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 3,
+      "est_work_k": 60, "est_peak_k": 114, "actual_peak_k": null,
+      "split_point": "After any cause's commit",
+      "reading_list": [
+        {"path": "docs/history/241-270.md", "range": "S3's entry (its failure list)", "est_k": 1.0},
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "322-346", "est_k": 0.4},
+        {"path": "each failing test", "range": "by range", "est_k": null}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S4", "title": "CI: a blocking macos-15-intel job (PF-03)",
+      "type": "behaviour", "executes": "BRIEF.md §4", "depends_on": ["S3b", "S1c"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 3,
+      "est_work_k": 45, "est_peak_k": 99, "actual_peak_k": null,
+      "split_point": "After the first run is recorded; a runner-only failure becomes its own row",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "348-376", "est_k": 0.4},
+        {"path": "docs/phase-02/AUDIT.md", "range": "140-149", "est_k": 0.2},
+        {"path": ".github/workflows/ci.yml", "range": null, "est_k": 0.7}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S5", "title": "seeker-ui --smoke-test, passing unfrozen (PF-06)",
+      "type": "feature", "executes": "BRIEF.md §5 steps 1-2", "depends_on": ["S1"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 2,
+      "est_work_k": 80, "est_peak_k": 134, "actual_peak_k": null,
+      "split_point": "After the import, theme and resource checks pass with the report written; analysis and chromaprint then move to S5b",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "378-422", "est_k": 0.6},
+        {"path": "docs/phase-02/AUDIT.md", "range": "187-201", "est_k": 0.3},
+        {"path": "src/seeker/main_ui.py", "range": null, "est_k": 1.6},
+        {"path": "src/seeker/audio/analysis.py", "range": "52-128", "est_k": 0.9},
+        {"path": "packaging/seeker.spec", "range": "95-171", "est_k": 0.7},
+        {"path": "src/seeker/ui/theme.py", "range": "grep -n font, icon and template lookups", "est_k": 1.0},
+        {"path": "docs/architecture.md", "range": "Module map: grep -n the ui/ rows, then ~20 lines", "est_k": 0.4},
+        {"path": "src/seeker/ui/CLAUDE.md", "range": null, "est_k": 4.8}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S5b", "title": "The smoke test on the frozen Apple silicon app",
+      "type": "behaviour", "executes": "BRIEF.md §5 step 3", "depends_on": ["S5"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 2,
+      "est_work_k": 45, "est_peak_k": 99, "actual_peak_k": null,
+      "split_point": "After the first frozen report",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "386-422", "est_k": 0.5},
+        {"path": "packaging/build_dmg.py", "range": null, "est_k": 1.0},
+        {"path": "packaging/seeker.spec", "range": "95-171", "est_k": 0.7},
+        {"path": "RELEASING.md", "range": "27-76", "est_k": 0.5}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S6", "title": "target_arch explicit; per-architecture names; the post-build lipo/minos check (PF-02, PF-04)",
+      "type": "feature", "executes": "BRIEF.md §6 steps 1-2", "depends_on": ["S5b"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 3,
+      "est_work_k": 65, "est_peak_k": 119, "actual_peak_k": null,
+      "split_point": "After step 1, with both bundle sizes",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "424-469", "est_k": 0.6},
+        {"path": "docs/phase-02/AUDIT.md", "range": "118-138, 151-165", "est_k": 0.7},
+        {"path": "packaging/seeker.spec", "range": null, "est_k": 2.0},
+        {"path": "packaging/build_dmg.py", "range": null, "est_k": 1.0},
+        {"path": "packaging/bundle_info.py", "range": "1-60", "est_k": 0.6},
+        {"path": "docs/history/README.md", "range": "grep -n '§214', then the entry's range", "est_k": 1.0}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S6b", "title": "The Intel app built under Rosetta: post-build check, smoke test, timings",
+      "type": "behaviour", "executes": "BRIEF.md §6 steps 3-4", "depends_on": ["S6", "S3"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 3,
+      "est_work_k": 40, "est_peak_k": 94, "actual_peak_k": null,
+      "split_point": null,
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "444-469", "est_k": 0.4},
+        {"path": "packaging/bundle_info.py", "range": "100-176", "est_k": 1.0},
+        {"path": "docs/history/README.md", "range": "grep -n '§215', then the entry's range", "est_k": 1.0}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S7", "title": "build.yml: both apps built and smoke-tested in CI",
+      "type": "feature", "executes": "BRIEF.md §7", "depends_on": ["S6b", "S4"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 4,
+      "est_work_k": 50, "est_peak_k": 104, "actual_peak_k": null,
+      "split_point": "After the first dispatched run is recorded",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "471-492", "est_k": 0.3},
+        {"path": ".github/workflows/ci.yml", "range": null, "est_k": 0.7},
+        {"path": "packaging/build_dmg.py", "range": null, "est_k": 1.0}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S8", "title": "Documents for two Macs (PF-04, PF-07)",
+      "type": "docs", "executes": "BRIEF.md §8", "depends_on": ["S6b", "S1d"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 4,
+      "est_work_k": 50, "est_peak_k": 104, "actual_peak_k": null,
+      "split_point": "After README and RELEASING",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "494-517", "est_k": 0.3},
+        {"path": "docs/phase-02/AUDIT.md", "range": "151-165, 203-211", "est_k": 0.6},
+        {"path": "README.md", "range": "55-100", "est_k": 0.5},
+        {"path": "docs/packaging.md", "range": null, "est_k": 2.5},
+        {"path": "RELEASING.md", "range": null, "est_k": 1.3},
+        {"path": "CHANGELOG.md", "range": "1-30", "est_k": 0.3},
+        {"path": "packaging/Read Me First.txt", "range": null, "est_k": 0.3}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S9", "title": "Release-candidate acceptance: Code's half, then Kris's checklist",
+      "type": "release", "executes": "BRIEF.md §9", "depends_on": ["S7", "S8"], "ask": false,
+      "gate": "Kris runs BRIEF §9's checklist in the test account before S10", "model": null, "executor": "lead", "wave": 4,
+      "est_work_k": 35, "est_peak_k": 89, "actual_peak_k": null,
+      "split_point": "At the gate",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "519-546", "est_k": 0.5},
+        {"path": "RELEASING.md", "range": "27-76", "est_k": 0.5},
+        {"path": "docs/phase-01/round-12/ACCEPTANCE.md", "range": "headings only (the format)", "est_k": 0.3}
+      ],
+      "status": "todo", "commits": [], "history": null
+    },
+    {
+      "id": "S10", "title": "Publish v0.2.0; close round 13",
+      "type": "release", "executes": "BRIEF.md §10", "depends_on": ["S9"], "ask": true,
+      "gate": "Kris approves each outward step (tag, push, release, notes)", "model": null, "executor": "solo", "wave": 5,
+      "est_work_k": 45, "est_peak_k": 99, "actual_peak_k": null,
+      "split_point": "At each approval",
+      "reading_list": [
+        {"path": "docs/phase-02/round-13/BRIEF.md", "range": "548-556", "est_k": 0.2},
+        {"path": "RELEASING.md", "range": null, "est_k": 1.3},
+        {"path": "docs/phase-02/round-13/SESSION-PLAN.md", "range": "Exit criteria", "est_k": 0.5},
+        {"path": "docs/history/241-270.md", "range": "148-222", "est_k": 1.2}
+      ],
+      "status": "todo", "commits": [], "history": null
+    }
+  ]
+}

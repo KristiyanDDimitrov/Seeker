@@ -13,7 +13,9 @@ wizard detects and starts.
 | Linux | **Written, never verified on real hardware.** The same `seeker.spec`; no installer format (AppImage, `.deb`) is scoped. |
 
 Treat the Windows and Linux rows as unverified until someone runs the
-build on those platforms.
+build on those platforms. Phase 02 ([`phase-02/README.md`](phase-02/README.md))
+adds an Intel Mac build (round 13) and verifies Windows (rounds 14
+and 15); this table changes as each lands.
 
 ## The app
 
@@ -153,7 +155,7 @@ accepted):** open against libsndfile 1.2.2 on 2026-10-09 are
 CVE-2026-37555 (IMA ADPCM), CVE-2025-56226 (an mpeg_l3 leak) and
 CVE-2024-50612 (ogg_vorbis, encoder-side). At each release, take the
 first soundfile wheel or ffmpeg that fixes one, and update this list. The bundled four match the security audit's reading of
-the `dist/Seeker.app` built on 2026-10-08 (`docs/rounds/round-12/
+the `dist/Seeker.app` built on 2026-10-08 (`docs/phase-01/round-12/
 AUDIT.md` §9).
 [HISTORY §199](history/181-210.md#199)
 

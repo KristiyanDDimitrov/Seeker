@@ -1,69 +1,97 @@
 # Seeker — session handoff
 
 **Entry point for every new Claude Code session on this project. Read it
-first. Overwrite it last.** Keep it under about 120 lines: a baton, not a
-log. The log is `docs/history/` (index: `docs/history/README.md`). The
-nine fields below follow the contract in
-`docs/rounds/round-11/SESSION-PLAN.md`. Every document: `docs/README.md`.
-**No round is open:** round 12 (and round 11 with it) closed with the
-v0.1.0 release; its plan is `docs/rounds/round-12/SESSION-PLAN.md`.
+first. Overwrite it last.** Keep it under about 2 K tokens: a baton, not
+a log. The log is `docs/history/` (short tier: `docs/history/README.md`,
+grep it, never read it whole). **The plan is
+`docs/phase-02/round-13/SESSION-PLAN.md`**, with status in `tasks.json`
+beside it. Every document: `docs/README.md`.
 
 ---
 
 ## 1. Current state
 
-- **Released: v0.1.0** (2026-10-14),
-  https://github.com/KristiyanDDimitrov/Seeker/releases/tag/v0.1.0.
-  Tag `v0.1.0` on `35f6ba7`; `Seeker.dmg` 111,788,167 bytes, SHA-256
-  `5691a25609cc9d054cd95f1f1ddfab44f362ac33fa4c9d7784ee312dab2a2943`.
-- **HEAD:** S18's close-out (HISTORY §245). Tree clean.
-- **Local (Cocoa):** pytest `2418 passed, 1 skipped`, 0 failed (the
-  X9 Pro mounted; CI skips 29). `mypy --strict src/` clean, 146
-  files; `ruff check src tests tools` 0; radon D 0.
-- **CI:** run `38570802975` green on `35f6ba7`, the release commit
-  (`2390 passed, 29 skipped`, coverage 94.68 %); run `38573348542`
-  green on the close-out (`189a918`).
+- **Released: v0.1.1** (2026-10-26), tag `v0.1.1` on `e470d1c`: a
+  security release (`e4ff751` bumped certifi and setuptools for two
+  advisories). It has no HISTORY entry yet; S1b writes it. v0.1.0:
+  HISTORY §245.
+- **HEAD:** the round-13 re-plan's commit on top of `e470d1c`. Tree
+  clean.
+- **The three numbers:** last quoted at S18 (`2b7e8d9`): pytest
+  `2418 passed, 1 skipped` locally with the X9 Pro (CI skips 29);
+  `mypy --strict src/` clean, 146 files; `ruff check src tests tools`
+  0. S0's check quotes them again.
+- **CI:** run `40348515619` green on `e470d1c`. The weekly scheduled
+  run `40326963931` (2026-10-26) failed on the two advisories v0.1.1
+  fixed.
 
 ## 2. Where we are
 
-**Rounds 11 and 12 are complete.** No round 13 is planned. A new
-round starts with a new BRIEF and SESSION-PLAN under `docs/rounds/`.
+Phase 01 is closed. Phase 02 was planned on 2026-10-17; **round 13
+(Intel Macs → v0.2.0) was re-planned on 2026-11-02** into 18 rows
+with the session-plan method. **Next row: S0**, the baseline cut, a
+solo session; Kris runs `/context` at its start. After S0 the rows run
+in waves, a lead session each (the plan's Execution section), starting
+with "Read docs/HANDOFF.md and lead wave 1".
 
-## 3. Session report (S18, with §243–§244)
+## 3. Session report (round 13 re-plan, 2026-11-02)
 
-Evidence in HISTORY §243–§245.
-- Committed the stress test's `docker inspect` opt-in (§243).
-- The ten failing X9 Pro tests now read files that are still on the
-  drive: Lux moved, and §38's pairs were replaced by pairs measured on
-  scratch copies (§244).
-- Dated `[0.1.0]` in the changelog and gave Confirm all a line.
-  Recorded Kris's acceptance, with the unticked boxes waived.
-- CI broke on Python 3.15.0, which the runner now offers and numba
-  refuses. `.python-version` pins 3.13 (`35f6ba7`).
-- RELEASING.md steps 1–5: tag, build, verify, checksum, the notes.
-  Kris approved, then push and release. Code verified the release:
-  the downloaded assets pass `shasum -c`, and the update check
-  returns `UP_TO_DATE`.
-- Skills: none loaded; RELEASING.md is the runbook, as in §222/§242.
+- Measured B: median 57 K over 20 sessions, 59–63 K since 2026-10-17.
+- `SESSION-PLAN.md` rewritten: 18 rows, each ≤ 65 K of work except S5
+  (~80 K); new `tasks.json`. BRIEF: base `e470d1c`, §1.1 marked done,
+  §1b's PR table refreshed and split into S1b and S1c, a new §1d
+  (Spotify Premium).
+- Committed the phase-02 planning documents with the re-plan, after a
+  link check (19 files, 257 links, 0 broken). No code changed except
+  one comment path in `tests/test_stress_e2e.py`.
 
 ## 4. Key context for the next session
 
-- **A release:** RELEASING.md end to end; §245 is the worked example.
-  Bump `pyproject.toml`'s version and `uv lock`, then move
-  `[Unreleased]` in the changelog.
-- **Never move a published tag** (RELEASING.md → Roll back): a bad
-  build is withdrawn and released as `0.1.1`.
-- **`.python-version` pins 3.13.** Moving to 3.14/3.15 waits for numba
-  (and librosa) to support it. A bump is a reviewed commit.
-- Never touch slskd or real data, and never launch the built app.
+- **Intel's blocker is wheels, not code** (PF-01): numba 0.62.1 and
+  llvmlite 0.45.1 are the last with Intel macOS wheels; numba 0.62.1
+  needs numpy < 2.4. The lock still holds 0.67.0, 0.49.0 and 2.5.3
+  (read 2026-11-02); uv is 0.12.5.
+- **Intel's floor is macOS 15** (PF-04). **Rosetta runs here**
+  (`arch -x86_64`, observed 2026-11-02).
+- **The test account shares this Mac's Docker**: no slskd bring-up in
+  round 13's Rosetta acceptance (BRIEF §9).
+- **Dependabot:** #12 and #13 replaced #10 and #11 (setup-uv 10.3.2,
+  slskd 0.26.2). Eight are open: #1, #5–#9, #12, #13.
+- **The website's Download button** points at
+  `releases/latest/download/Seeker.dmg` (read 2026-10-30), which the
+  planned asset names keep working.
+- **Spotify Premium:** neither the README nor the wizard mentions it
+  (grep, 2026-11-02). S1d adds it.
+- **S0:** whether Claude Code loads a subfolder's `CLAUDE.md` on demand
+  is UNVERIFIED here. S0 records what it sees; S1 confirms it from a
+  fresh session.
+- **Subagents, UNVERIFIED until wave 1 records them:** custom agents
+  load at session start; subagents get `CLAUDE.md`; none can spawn
+  another; `isolation: "worktree"`'s branch, location and cleanup; a
+  worker's baseline and transcript location. The plan → Execution.
+- HISTORY continues at §246 in `docs/history/241-270.md`.
 
 ## 5. Decisions made
 
-- **Release with the acceptance partly waived** (Kris, 2026-10-14):
-  the important checks were done, and the rest stay open as
-  post-release checks, not passes.
-- **The notes are the changelog section plus RELEASING.md step 4's
-  parts, unwrapped** for GitHub's line breaks.
+- **Kris (2026-10-17):** Intel first as v0.2.0, Windows later as its
+  own release; Windows runs slskd through Docker Desktop; no code
+  signing in phase 02; rounds continue at 13.
+- **Kris (2026-11-02):** S0 splits `CLAUDE.md` into a core plus
+  path-scoped topic files and turns marketing-skills and
+  product-skills off for this folder (`.claude/settings.local.json`);
+  Spotify Premium gets its own row (S1d).
+- **Kris (2026-11-02):** rows run in parallel waves, a lead session
+  plus row-worker subagents in git worktrees; token limits are not a
+  concern, context rot and speed are.
+- **Planning (Code's; reasons in the phase README; Kris can veto):**
+  one DMG per architecture (`Seeker.dmg` stays Apple silicon, beside
+  `Seeker-Intel.dmg`); Intel-only pins; macOS 15 on Intel; a per-user
+  Windows installer; Windows fixes built on the Mac first.
+- **Re-plan (Code's, 2026-11-02):** rows are capped at 65 K of work
+  because B is 54–62 K; the brief's § numbers stay, and splits take a
+  suffix (S1b–S1d, S2b, S3b, S5b, S6b).
+- HISTORY entries and archived briefs keep their `docs/rounds/…`
+  paths as written; `docs/rounds/README.md` resolves them.
 
 ## 6. Blockers
 
@@ -75,66 +103,46 @@ None.
 
 ## 8. Waiting on Kris
 
-- RELEASING.md step 5.2–5.3: download the DMG in a browser, install
-  it, and Help → "Check for updates…" says up to date.
-- The waived ACCEPTANCE.md boxes, as post-release checks: the fresh
-  account, the first live Retry/Cancel/Clean up, start at login again,
-  the sweep, window paths, the X9 Pro Fix… (CLAUDE.md → Open issues),
-  and S17d on the packaged build.
-- Item 125 is narrowed, not closed (§245 → Exit criteria).
+**Round 13:** Each wave: Kris starts the lead session; questions
+arrive through it. S0: `/context` at the start. S1b, S1c: each merge. S9:
+the Intel image in the test account (BRIEF §9); an Intel Mac if one
+turns up. S10: each outward step. After S10: an Intel download on the
+website.
+
+**Later rounds:** R14 S10 **[ASK]**: fingerprinting on Windows, (a) a
+bundled `chromaprint.dll` or (b) none in v0.3.0; an optional VM (S13).
+R15: an x64 Windows 11 machine with Claude Code, Docker Desktop and
+uv; a Spotify test account; a Soulseek test username.
+
+**Carried from phase 01:** RELEASING.md step 5.2–5.3 for v0.1.0; the
+waived boxes in `docs/phase-01/round-12/ACCEPTANCE.md`, as
+post-release checks; item 125 is narrowed, not closed.
 
 ## 9. Open questions
 
-- S17l (§238 → "Not done"): when a playlist download's or sweep's
-  settled enqueue stays busy, should the pick be recorded for a later
-  poll rather than failing the track after its search? Should a busy
-  slskd end Review's Confirm all, as an outage does?
-
-- S17m (§239 → "Not done"): Resolve all still opens its dialog
-  when every group is on "Keep all" (it says 0 groups; its button
-  stays disabled). Return before it instead?
-- S17o (§241): in dark mode the system's question icon on the quit
-  confirmation (shell and wizard alike) is barely visible. Leave it,
-  or draw our own?
-
-- "Match tracks" stays enabled while a scan runs, so a match can start
-  beside `scan_and_match`'s own (§223). Disable it during a scan?
-- Should a CLI command start slskd (`restart_slskd` has none)? Not in
-  the BRIEF; left out.
-- Should Sharing hide or disable "Add to share" for a location whose
-  folder isn't there? Should `start_slskd` itself refuse a share not
-  on disk (only the form guards it; the wizard passes a location it
-  has just registered)?
-- Should the wizard's share checkbox start ticked? (Unticked, to
-  match Settings; Kris's call.)
-- Should Search list files a playlist download would take (scored)
-  above unscored ones, or say what "—" means?
-- Should "Queued as backup" rows count in the Downloads header's
-  "queued (no estimate)"?
-- Should a superseded row's transfer be cancelled in slskd, so its
-  file never becomes a leftover?
-- Should the cleanup also offer slskd's own "remove finished
-  transfers"?
-- How long may a settled file sit in a remote queue before Seeker
-  gives up or falls back?
-- Should an activated backup's row say it is a backup? Should a
-  downloading row get Cancel too? Should Downloads get "Retry all"?
-- Should the sweep skip a track whose needs-review candidate is still
-  waiting on a person? Should a GUI sweep and a cron sweep guard
-  against running at once? (UNVERIFIED how they interleave.)
-- Does slskd 0.26.0 share anything by default on a fresh container?
-  (AUDIT §8, UNVERIFIED.) Does Dependabot bump a `tag@digest` pair?
-- Should the callback handler get a socket timeout?
-
-- `measure_signal()` (clipping, loudness) has no caller now. Show it
-  on the Duplicates page, on demand, or delete it with pyloudnorm?
-- Should a template bump (a new slskd digest) reach an existing
-  install's per-user Compose copy? It is never re-seeded, so Kris's
-  copy still names the unpinned tag (§222).
+Carried from phase 01, unanswered; detail in S18's handoff
+(`git show 2b7e8d9:docs/HANDOFF.md`, field 9) and HISTORY §223,
+§238–§241:
+- Review: should a busy slskd end Confirm all (S17l)? Resolve all
+  opens its dialog when every group is on "Keep all" (S17m).
+- The dark-mode question icon on the quit confirmation (S17o).
+- Downloads: record a busy pick for a later poll; "Queued as backup"
+  in the header; cancel a superseded row's transfer; slskd's "remove
+  finished transfers"; how long a settled file may queue; Cancel on a
+  downloading row, "Retry all", marking an activated backup;
+  Search's unscored "—".
+- Setup: "Match tracks" during a scan; a CLI command that starts
+  slskd; a share folder that's missing; the wizard's share checkbox
+  default; does a fresh slskd share anything by default?
+- Sweep: skip a needs-review candidate still waiting; a GUI and a
+  cron sweep at once (UNVERIFIED how they interleave).
+- Code: a socket timeout for the OAuth callback; `measure_signal()`
+  has no caller (show it on Duplicates, or delete it with pyloudnorm).
+- Should a template bump reach an existing install's Compose copy
+  (never re-seeded, §222)? Dependabot #13 bumps slskd.
 
 ---
 
 **Read discipline:** never read a whole `docs/history/*.md` or
 `main_window.py`; `grep -n`, then a range. pytest: summary line plus
-named failures. BRIEF: §0 plus your row.
-**Ending:** `SESSION-PLAN.md` → "Session protocol" → "Ending".
+named failures. **Ending:** the plan's "Session protocol".

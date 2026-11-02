@@ -52,53 +52,42 @@ Every document in the repository, then where to start.
 - [`../packaging/icons/lucide/SOURCE.txt`](../packaging/icons/lucide/SOURCE.txt)
   — where the vendored Lucide icons come from.
 
-## Round archive (`rounds/`)
+## Phases
 
-Each round's brief is the task text a session executed; a session plan
-is its budgeted row-by-row map.
+Development is grouped into phases of rounds. Each round's brief is
+the task text a session executed; a session plan is its budgeted
+row-by-row map.
 
-- [`round-01`](rounds/round-01/BRIEF.md) — six user-reported bugs, four
-  of them previously closed unfixed.
-- [`round-02`](rounds/round-02/BRIEF.md) — what manual testing found
-  after round 1; corrects a misdiagnosed root cause.
-- [`round-03`](rounds/round-03/BRIEF.md) — AIFF support, bulk actions,
-  table chrome, background tray mode.
-- [`round-04`](rounds/round-04/BRIEF.md) — eleven items diagnosed
-  against the real library.
-- [`round-05`](rounds/round-05/BRIEF.md) — round-4 regressions, a
-  palette feature, a refactor;
-  [`TASKS.md`](rounds/round-05/TASKS.md) is its working ledger.
-- [`round-06`](rounds/round-06/BRIEF.md) — five defects, three from round 5.
-- [`round-07`](rounds/round-07/BRIEF.md) — four defects on a current build.
-- [`round-08`](rounds/round-08/BRIEF.md) — the codebase-wide refactor
-  and `MainWindow` decomposition;
-  [security brief](rounds/round-08/SECURITY-BRIEF.md),
-  [session plan](rounds/round-08/SESSION-PLAN.md).
-- [`round-09`](rounds/round-09/BRIEF.md) — CI, quit safety, window
-  lifecycle; [session plan](rounds/round-09/SESSION-PLAN.md).
-- [`round-10`](rounds/round-10/BRIEF.md) — Review Confirm, fullscreen
-  reopen, stress test, CI races;
-  [session plan](rounds/round-10/SESSION-PLAN.md).
-- [`round-11`](rounds/round-11/BRIEF.md) — the final polish round and
-  v0.1.0 release; [audit](rounds/round-11/AUDIT.md) (findings `A-NN`),
-  [session plan](rounds/round-11/SESSION-PLAN.md). Stopped after S38;
-  its release rows carried to round 12, which closed it.
-- [`round-12`](rounds/round-12/BRIEF.md) — Kris's pre-release
-  walkthrough, a security re-audit, the daily sweep, Retry/Cancel and
-  leftover cleanup, then the v0.1.0 release (published 2026-10-14);
-  [session plan](rounds/round-12/SESSION-PLAN.md), [security audit](rounds/round-12/AUDIT.md),
-  [acceptance checklist](rounds/round-12/ACCEPTANCE.md).
+- [`phase-01/`](phase-01/README.md) — rounds 01–12, from the first
+  build to the v0.1.0 release (macOS on Apple silicon). Closed
+  2026-10-14; its README lists every round.
+- [`phase-02/`](phase-02/README.md) — rounds 13–15: Intel Macs
+  (v0.2.0), then Windows (v0.3.0). Planned 2026-10-17; its
+  [platform audit](phase-02/AUDIT.md) holds the findings (`PF-NN`).
+  - [`round-13`](phase-02/round-13/BRIEF.md) — Intel Macs, released
+    as v0.2.0; [session plan](phase-02/round-13/SESSION-PLAN.md).
+  - [`round-14`](phase-02/round-14/BRIEF.md) — Windows readiness from
+    the Mac and CI; [session plan](phase-02/round-14/SESSION-PLAN.md).
+  - [`round-15`](phase-02/round-15/BRIEF.md) — Windows on real
+    hardware, released as v0.3.0 (provisional);
+    [session plan](phase-02/round-15/SESSION-PLAN.md).
+
+[`rounds/README.md`](rounds/README.md) resolves the old
+`docs/rounds/…` paths that HISTORY entries and commits still name.
 
 ## Reading orders
 
 - **A Claude Code session:** `HANDOFF.md` → your row in the current
-  round's `SESSION-PLAN.md` → that brief's §0 plus your row's § →
-  `../CLAUDE.md`. Nothing else until the task needs it.
+  round's `SESSION-PLAN.md` → that brief's §0 plus your row's § (and,
+  in phase 02, each `AUDIT.md` finding it names) → `../CLAUDE.md`.
+  Nothing else until the task needs it.
 - **A new contributor:** `../README.md` → `architecture.md` →
-  `../CLAUDE.md` (Conventions, Standing facts) → the current round's
-  `AUDIT.md` for known weak spots → `history/` entries as `CLAUDE.md`
-  links them.
+  `../CLAUDE.md` (Conventions, Standing facts) → the current phase's
+  [`AUDIT.md`](phase-02/AUDIT.md) for known weak spots → `history/`
+  entries as `CLAUDE.md` links them.
 - **A portfolio reviewer:** `../README.md` → `architecture.md` →
-  `../CLAUDE.md` → the round-11 `AUDIT.md` (an honest whole-repo
+  `../CLAUDE.md` → the round-11
+  [`AUDIT.md`](phase-01/round-11/AUDIT.md) (an honest whole-repo
   audit) → any one round's brief next to its `history/` entries, to
-  see diagnosis turn into a fix.
+  see diagnosis turn into a fix → [`phase-02/`](phase-02/README.md),
+  to see a platform port planned from evidence.

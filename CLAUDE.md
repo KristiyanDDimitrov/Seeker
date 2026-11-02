@@ -534,7 +534,7 @@ Code documents loading it when a session reads files in `ui/`
 ### Accepted risks
 
 Each accepted in round 12's audit, with Kris's decision and the full
-reason under its finding in `docs/rounds/round-12/AUDIT.md`
+reason under its finding in `docs/phase-01/round-12/AUDIT.md`
 ([§200](docs/history/181-210.md#200)). Revisit any of them if Seeker
 stops being a single-user desktop app.
 
@@ -596,12 +596,18 @@ Genuinely open only, checked against every CI run on record (187, to
 Forward-looking only; everything shipped is in `docs/history/`.
 
 - **v0.1.0 is released** (2026-10-14, [§245](docs/history/241-270.md#245));
-  rounds 11 and 12 are closed. No round 13 is planned. Kris's waived
+  phase 01 (rounds 01–12, `docs/phase-01/`) is closed. Kris's waived
   acceptance checks stay open as post-release checks
-  (`docs/rounds/round-12/ACCEPTANCE.md`); every document:
+  (`docs/phase-01/round-12/ACCEPTANCE.md`); every document:
   `docs/README.md`.
+- **Phase 02 is planned (2026-10-17): Intel Macs, then Windows**
+  ([docs/phase-02/README.md](docs/phase-02/README.md), findings
+  `PF-NN` in its `AUDIT.md`). Round 13 (Intel, v0.2.0) is next; round
+  14 makes Windows ready from the Mac and CI; round 15 (provisional)
+  tests on real Windows hardware and releases v0.3.0.
 - **Windows and Linux packaging: written, never run on real
-  hardware**; no Linux installer format is scoped
+  hardware** until rounds 14–15; Linux stays out of scope, and no
+  Linux installer format is scoped
   ([docs/packaging.md](docs/packaging.md)).
 - **SoundCloud: deferred.** Its API needs a paid Artist Pro account
   and a confidential `client_secret`, which a `.dmg` cannot hold. If
