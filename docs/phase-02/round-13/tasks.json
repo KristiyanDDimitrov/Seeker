@@ -225,20 +225,20 @@
       "id": "S7", "title": "build.yml: both apps built and smoke-tested in CI",
       "type": "feature", "executes": "BRIEF.md §7", "depends_on": ["S6b", "S4"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 4,
-      "est_work_k": 50, "est_peak_k": 104, "actual_peak_k": null,
+      "est_work_k": 50, "est_peak_k": 104, "actual_peak_k": 95,
       "split_point": "After the first dispatched run is recorded",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "471-492", "est_k": 0.3},
         {"path": ".github/workflows/ci.yml", "range": null, "est_k": 0.7},
         {"path": "packaging/build_dmg.py", "range": null, "est_k": 1.0}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["d11abd7", "aaca17d", "05ab826", "14d533e", "fa2a4be", "c5ecaa2", "7a47b71", "d5fe7a8", "2ca3fe8"], "history": 262
     },
     {
       "id": "S8", "title": "Documents for two Macs (PF-04, PF-07)",
       "type": "docs", "executes": "BRIEF.md §8", "depends_on": ["S6b", "S1d"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 4,
-      "est_work_k": 50, "est_peak_k": 104, "actual_peak_k": null,
+      "est_work_k": 50, "est_peak_k": 104, "actual_peak_k": 105,
       "split_point": "After README and RELEASING",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "494-517", "est_k": 0.3},
@@ -249,7 +249,7 @@
         {"path": "CHANGELOG.md", "range": "1-30", "est_k": 0.3},
         {"path": "packaging/Read Me First.txt", "range": null, "est_k": 0.3}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["26e4e84", "45a06ff"], "history": 263
     },
     {
       "id": "S9", "title": "Release-candidate acceptance: Code's half, then Kris's checklist",

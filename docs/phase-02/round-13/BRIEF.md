@@ -519,7 +519,9 @@ Intel Mac can pick the right image from the README alone.
 ## §9 — Release-candidate acceptance (S9) — Kris and Code
 
 **Code's half.** Both candidates built untagged from the same commit
-(§6's two builds); `RELEASING.md` step 3 for each (codesign, `spctl`
+(§6's two builds; the Intel one needs a libchromaprint from
+`packaging/build_chromaprint.sh "$PWD/.chromaprint"` and
+`SEEKER_CHROMAPRINT_DIR`, RELEASING.md step 1); `RELEASING.md` step 3 for each (codesign, `spctl`
 rejects, `Info.plist` version, clean tree); the smoke test for each;
 checksums. Write `docs/phase-02/round-13/ACCEPTANCE.md`: the
 candidates' SHA-256s, then Kris's checklist.
@@ -528,18 +530,19 @@ candidates' SHA-256s, then Kris's checklist.
 image (it runs under Rosetta): download it in a browser, first launch
 through Privacy & Security → Open Anyway, the wizard (a test Spotify
 account), a scan of a test folder, BPM and key on a few files beside
-the Apple silicon app's values, Duplicates (fingerprinting will say
-chromaprint is missing: expected under Rosetta with an Apple silicon
-Homebrew), the tray, quit with a task running, Help → Build saying
-"Intel build on Apple silicon (Rosetta)".
+the Apple silicon app's values, Duplicates (the Intel image fingerprints with its
+bundled libchromaprint and no Homebrew; only the ffmpeg decode fallback
+needs the user's own ffmpeg), the tray, quit with a task running, Help's Architecture row
+starting "Intel build on Apple silicon (Rosetta)".
 
 **No slskd bring-up in the test account:** the container name
 `slskd` is global to this Mac's Docker, so a bring-up there recreates
 Kris's real container. slskd's REST and `docker` calls do not depend
 on the app's architecture.
 
-**On a real Intel Mac, if Kris finds one:** the same list, plus Intel
-Homebrew's chromaprint and ffmpeg, and a slskd bring-up with a test
+**On a real Intel Mac, if Kris finds one:** the same list, plus an ffmpeg
+of its own (Homebrew builds no Intel bottles, so it is the user's own
+build) for the decode fallback, and a slskd bring-up with a test
 Soulseek account (one login per username: Kris's own would kick his
 Mac's session off).
 

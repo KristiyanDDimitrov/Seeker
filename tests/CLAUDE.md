@@ -59,3 +59,10 @@ linked to the HISTORY entry holding its investigation;
   fixtures, so its undo runs after their teardown. A fixture that
   restores state through a function a test may patch captures that
   function at setup. [§256](../docs/history/241-270.md#256)
+- **A test never depends on a machine's ffmpeg.** `compute_fingerprint`
+  gives a different error with and without one on PATH, and
+  `check-intel` has none (Homebrew builds no Intel bottles, so no
+  transitive install): a test of that path puts a failing `ffmpeg` on
+  PATH or an empty PATH, as `test_duplicate_service.py` does. The
+  `requires_ffmpeg` tests run in the arm64 `check` job only.
+  [§262](../docs/history/241-270.md#262)

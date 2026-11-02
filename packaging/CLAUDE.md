@@ -85,3 +85,10 @@ investigation; `docs/history/README.md` resolves any `§N`.
   `sysctl.proc_translated` 1; natively 0 (ctypes `sysctlbyname`,
   observed 2026-11-02; a real Intel Mac UNVERIFIED).
   [§250](../docs/history/241-270.md#250)
+- **`build.yml` builds and smoke-tests both apps and never publishes**
+  (`macos-26` arm64, `macos-15-intel` x86_64; dispatch, `v*` tags,
+  pushes touching `pyproject.toml`, `uv.lock`, `packaging/**`). Its Intel
+  job deletes the system libchromaprint before the smoke test, so
+  only the bundled copy can pass. A `push` filter naming `tags` but not
+  `branches` skips branch pushes; path filters are not evaluated for
+  tag pushes. [§262](../docs/history/241-270.md#262)

@@ -356,3 +356,5 @@ under their entry and live in the same file, after it.
 - §259 — Round 13 S6: explicit `target_arch`, per-architecture DMG names, post-build lipo/minos check; arm64 bundle unchanged at 310 MB → [241-270.md#259](241-270.md#259)
 - §260 — Round 13 S6b: the Intel app builds under Rosetta, check and smoke test pass; cold analysis 37.5 s then 1.5 s; no chromaprint in the Intel bundle → [241-270.md#260](241-270.md#260)
 - §261 — Round 13 S4: blocking `check-intel` job on macos-15-intel (19.5 min, 2500 passed); the first real Intel run found one wrong test expectation (no proc_translated key) → [241-270.md#261](241-270.md#261)
+- §262 — Round 13 S7, S7c: `build.yml` builds and smoke-tests both apps in CI (first real Intel numbers: cold 23.3 s, warm 0.26 s); Homebrew builds no Intel bottles, so libchromaprint is built from a pinned source; `SEEKER_CHROMAPRINT_DIR`, `.chromaprint/` → [241-270.md#262](241-270.md#262)
+- §263 — Round 13 S8, S8b: README, RELEASING, packaging.md for two Macs (Seeker.dmg, Seeker-Intel.dmg); an adversarial review's ten defects fixed (library source, what a smoke test proves, honest Intel claims) → [241-270.md#263](241-270.md#263)
