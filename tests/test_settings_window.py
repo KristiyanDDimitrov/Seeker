@@ -2,6 +2,7 @@ import threading
 import time
 from dataclasses import replace
 
+import httpx
 import pytest
 from PySide6.QtCore import QLocale, Qt
 from PySide6.QtWidgets import (
@@ -1093,6 +1094,12 @@ def _fake_successful_bring_up(monkeypatch, tmp_path) -> list[dict]:
         "seeker.application.slskd_data_dir",
         lambda: tmp_path / "slskd-data",
     )
+    # A start saves a web login, and the page checks it against the
+    # base URL: a developer's own slskd answers there.
+    monkeypatch.setattr(
+        "seeker.ui.settings_window.check_slskd_web_login",
+        lambda *a, **k: SlskdWebLoginStatus.UNKNOWN,
+    )
     return bring_up_calls
 
 
@@ -1382,6 +1389,33 @@ def test_soulseek_password_return_pressed_starts_slskd(
 
     _wait_for_slskd_start(qtbot, window, bring_up_calls)
     assert bring_up_calls[0]["soulseek_username"] == "realuser"
+
+
+def test_starting_slskd_makes_no_request_to_a_real_slskd(
+        qtbot, tmp_path, monkeypatch,
+):
+    # A start saves the default base URL, 127.0.0.1:5030, where a
+    # developer's own slskd listens, and the page then checks its web
+    # login there with `POST /api/v0/session`.
+    _, window, bring_up_calls = _start_form_page(
+        qtbot, tmp_path, monkeypatch,
+        {"/shared/music": str(tmp_path / "Music")},
+    )
+    requests: list[str] = []
+
+    def refuse(url, **kwargs):
+        requests.append(url)
+        raise httpx.ConnectError("tests make no request")
+
+    monkeypatch.setattr("seeker.soulseek.docker_setup.httpx.post", refuse)
+    window.slskd_username_field.setText("realuser")
+    window.slskd_password_field.setText("realpass")
+
+    window.start_slskd_button.click()
+
+    _wait_for_slskd_start(qtbot, window, bring_up_calls)
+    settle_workers(window)
+    assert requests == []
 
 
 def test_start_slskd_without_username_or_password_makes_no_call(
