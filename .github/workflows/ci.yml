@@ -69,7 +69,7 @@ jobs:
     timeout-minutes: 45
     env:
       QT_QPA_PLATFORM: offscreen
-      # Intel Homebrew installs under /usr/local: a library the app
+      # The library lives under /usr/local on an Intel Mac: one the app
       # cannot find there must fail the tests, not skip them.
       SEEKER_REQUIRE_CHROMAPRINT: "1"
     steps:
@@ -80,7 +80,11 @@ jobs:
         with:
           version: "0.13.6"
           enable-cache: true
-      - run: brew install chromaprint
+      # Homebrew builds no bottles for Intel Macs any more: its copy
+      # would compile ffmpeg and ten more formulae. The script builds
+      # the one library the tests need, into /usr/local/lib, where the
+      # app looks (and the Intel bundle stages it from).
+      - run: packaging/build_chromaprint.sh
       - run: uv sync --locked --all-extras --dev
       - run: uv run pytest -q
 

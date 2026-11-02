@@ -29,11 +29,16 @@ def test_check_intel_runs_on_the_intel_image_with_a_timeout():
     assert re.search(r"timeout-minutes: \d+", job)
 
 
-def test_check_intel_requires_chromaprint_and_installs_it():
+def test_check_intel_requires_chromaprint_and_builds_it_from_source():
+    """Homebrew builds no bottles for Intel Macs any more, so
+    `brew install chromaprint` would compile ffmpeg and ten more
+    formulae; the build script installs the one library the tests need.
+    """
     job = _job("check-intel")
 
     assert 'SEEKER_REQUIRE_CHROMAPRINT: "1"' in job
-    assert "brew install chromaprint" in job
+    assert "run: packaging/build_chromaprint.sh" in job
+    assert "brew install" not in job
 
 
 def test_check_intel_runs_the_suite_without_the_coverage_gate():
