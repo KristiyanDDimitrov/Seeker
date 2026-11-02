@@ -82,7 +82,7 @@
       "id": "S1d", "title": "Spotify Premium in the README and the wizard",
       "type": "behaviour", "executes": "BRIEF.md §1d", "depends_on": ["S0"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 1,
-      "est_work_k": 60, "est_peak_k": 114, "actual_peak_k": null,
+      "est_work_k": 60, "est_peak_k": 114, "actual_peak_k": 60,
       "split_point": "After the wizard step and its test",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "204-232", "est_k": 0.5},
@@ -93,7 +93,7 @@
         {"path": "CHANGELOG.md", "range": "1-30", "est_k": 0.3},
         {"path": "src/seeker/ui/CLAUDE.md", "range": null, "est_k": 4.8}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["d0ebbc9", "9716c18"], "history": 249
     },
     {
       "id": "S2", "title": "The Intel pins and the forked lock; native set unchanged; audit (PF-01)",

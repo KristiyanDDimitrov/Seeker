@@ -11,145 +11,107 @@ beside it. Every document: `docs/README.md`.
 
 ## 1. Current state
 
-- **Released: v0.1.1** (2026-10-26), tag `v0.1.1` on `e470d1c`: a
-  security release. It has no HISTORY entry yet; S1b writes it.
-- **HEAD:** S0's close-out on top of `8997f5f` (the split). Tree clean
-  but for Kris's two untracked PDFs.
-- **The three numbers (S0, X9 Pro not mounted):** pytest `2390 passed, 29 skipped`;
-  mypy `--strict src/` clean, 146 files; ruff `check src tests tools` 0. With the drive: `2418 passed,
-  1 skipped` (§245).
-- **CI:** run `41435308234` green on `f3bd633` (S0's close-out): check and
-  audit both passed.
+- **Released: v0.1.1** (2026-10-26, §247).
+- **HEAD:** S1d's close-out on `main`, pushed. Untracked: Kris's two
+  PDFs and `docs/phase-02/round-13/wave1-reports.md` (below).
+- **The three numbers (`9716c18`, Cocoa, X9 Pro mounted):** pytest
+  `2419 passed, 1 skipped`; mypy `--strict src/` clean, 146 files; ruff 0.
+- **CI:** see the close-out commit's run (field 3).
 
 ## 2. Where we are
 
-Round 13 (Intel Macs → v0.2.0), 18 rows. **S0 is done** (§246).
-**Next: wave 1**, started with "Read docs/HANDOFF.md and lead wave 1"
-(the plan's Execution section). Its lead first measures the new B
-(`tokens.py measure --last 1`) into `tasks.json` and this file.
+Round 13, **wave 1, part done.** S1b ☑ (§248), S1d ☑ (§249). The first
+lead stopped at 149 K (the soft ceiling) with two finished worker
+branches not integrated. **Next: "Read docs/HANDOFF.md and continue
+wave 1"**: a fresh lead integrates S1, settles S1c, then writes wave
+2's handoff.
 
-**Wave 1's first attempt (2026-11-02) stopped before any row:** the
-process had started at 11:36, before S0 created `.claude/agents/`
-(12:48) and turned the plugins off (13:05). `/clear` reloaded neither:
-`row-worker` and `suite-runner` were "not found" and product-skills
-was still listed. Kris restarts Claude Code, runs `/context`, then
-relaunches wave 1. Measured then, B = 52 K (`tokens.py`, base of
-that session); the relaunch measures again.
+## 3. Session report (wave 1's first lead, 2026-11-02)
 
-## 3. Session report (S0, 2026-11-02)
-
-- `CLAUDE.md`: 37.1 KB → 15.4 KB core plus six topic files and
-  `docs/status.md`, moved by script by line range (`8997f5f`); 363
-  moved lines, each exactly once; link check 0 broken (two old false
-  positives).
-- Plugins off in `.claude/settings.local.json` (untracked).
-- `/context` was not captured at the start: **Kris runs it at wave
-  1's start**, and the split goes into wave 1's report.
-- Peak 120 K (base 61 K, work 58 K against 45 K est.).
+- B after S0: **50 K** (`tokens.py`, this session). Peak 149 K.
+- Eight `upstream-reader`s in parallel, one per Dependabot PR; Kris
+  answered once. #5, #7, #8, #9 landed as **local commits at the PRs'
+  exact locked versions** (Kris's choice; a bare `--upgrade-package`
+  picks newer ones).
+- Three `row-worker`s (S1, S1d, #13's fix) and four `suite-runner`
+  checks ran; none misbehaved. Close-out commit's CI: queued at
+  push, result not read (a fresh lead reads it with `gh run list
+  --commit <full SHA>`).
+- `/context` at wave start: asked; not captured in this session.
 
 ## 4. Key context for the next session
 
-
-- **Intel's blocker is wheels, not code** (PF-01): numba 0.62.1 and
-  llvmlite 0.45.1 are the last with Intel macOS wheels; numba 0.62.1
-  needs numpy < 2.4. The lock still holds 0.67.0, 0.49.0 and 2.5.3
-  (read 2026-11-02); uv is 0.12.5.
-- **Intel's floor is macOS 15** (PF-04). **Rosetta runs here**
-  (`arch -x86_64`, observed 2026-11-02).
-- **The test account shares this Mac's Docker**: no slskd bring-up in
-  round 13's Rosetta acceptance (BRIEF §9).
-- **Dependabot:** #12 and #13 replaced #10 and #11 (setup-uv 10.3.2,
-  slskd 0.26.2). Eight are open: #1, #5–#9, #12, #13.
-- **The website's Download button** points at
-  `releases/latest/download/Seeker.dmg` (read 2026-10-30), which the
-  planned asset names keep working.
-- **Spotify Premium:** neither the README nor the wizard mentions it
-  (grep, 2026-11-02). S1d adds it.
-- **Topic `CLAUDE.md` files load on a Read-tool read** in their folder
-  (observed in S0 for `soulseek/`, §246); through Bash, UNVERIFIED.
-  The core's index names each file; read one by hand when unsure.
-  Accepted risks, Open issues and the Roadmap are in `docs/status.md`.
-- **Plugins:** marketing-skills and product-skills are `false` in
-  `.claude/settings.local.json` from S0 on; the next session's skill
-  listing shows whether that took.
-- **Subagents, UNVERIFIED until wave 1 records them:** custom agents
-  load at session start; subagents get `CLAUDE.md`; none can spawn
-  another; `isolation: "worktree"`'s branch, location and cleanup; a
-  worker's baseline and transcript location. The plan → Execution.
-- HISTORY continues at §247 in `docs/history/241-270.md`.
+- **`wave1-reports.md`** holds S1's and #13-fix's reports (status,
+  branch, evidence, HISTORY draft, index line, standing facts).
+  Integrate each per the plan's lead protocol step 3, then delete it.
+  - **S1:** `r13/S1` @ `9afe80f`, worktree `agent-a5bb0af5f528e31b9`;
+    2435 passed offscreen; 147 mypy files (new `cpu_architecture.py`).
+  - **#13's fix:** `r13/S1c-slskd-logs` @ `89c5109`, worktree
+    `agent-a2e4fbc5f462bd131`: the health check reads
+    `/api/v0/logs/live`, falling back to `/logs` on a 404. Safe on 0.26.0.
+- **Worktrees branch from `origin/main`, not local `main`** (§249):
+  push before spawning, or the worker starts behind. Each leaves a
+  `worktree-agent-<id>` branch to delete with the worktree. S1d's
+  worktree is removed.
+- **A worker can't spawn or load skills**, gets the core `CLAUDE.md`
+  at start, a topic file on a Read in its folder; its transcript is
+  `~/.claude/projects/…/<lead session>/subagents/agent-<id>.jsonl`;
+  baseline ~14 K (S1, measured). Workers share the lead's scratchpad:
+  give each a row subfolder.
+- **uv mismatch:** CI installs the latest uv (0.13.6, unpinned);
+  this Mac has 0.12.5; `uv_build<0.13.0` excludes CI's. Kris chose
+  one pinned uv (S1c): close #6; pin `version:` in setup-uv,
+  `required-version` and the `uv_build` range together; Kris runs
+  `uv self update` (give him the exact command). Before S2's lock.
+- **mypy 2.4 has no mypyc macOS x86_64 wheel** (§248): slower on Intel.
+- Intel's blocker is wheels (PF-01): numba 0.62.1 / llvmlite 0.45.1
+  last with Intel wheels; numba 0.62.1 needs numpy < 2.4.
+- HISTORY continues at §250.
 
 ## 5. Decisions made
 
-- **Kris (2026-10-17):** Intel first as v0.2.0, Windows later as its
-  own release; Windows runs slskd through Docker Desktop; no code
-  signing in phase 02; rounds continue at 13.
-- **Kris (2026-11-02):** S0 splits `CLAUDE.md` into a core plus
-  path-scoped topic files and turns marketing-skills and
-  product-skills off for this folder (`.claude/settings.local.json`);
-  Spotify Premium gets its own row (S1d).
-- **Kris (2026-11-02):** rows run in parallel waves, a lead session
-  plus row-worker subagents in git worktrees; token limits are not a
-  concern, context rot and speed are.
-- **Planning (Code's; reasons in the phase README; Kris can veto):**
-  one DMG per architecture (`Seeker.dmg` stays Apple silicon, beside
-  `Seeker-Intel.dmg`); Intel-only pins; macOS 15 on Intel; a per-user
-  Windows installer; Windows fixes built on the Mac first.
-- **Kris (2026-11-02, wave 1):** yes to S1b and S1c, the [ASK]
-  rows; each merge still needs his approval.
-- **Re-plan (Code's, 2026-11-02):** rows are capped at 65 K of work
-  because B is 54–62 K; the brief's § numbers stay, and splits take a
-  suffix (S1b–S1d, S2b, S3b, S5b, S6b).
-- HISTORY entries and archived briefs keep their `docs/rounds/…`
-  paths as written; `docs/rounds/README.md` resolves them.
+- **Kris (2026-11-02, wave 1):** #5, #7, #8, #9 approved and landed.
+  **#1 and #12 not approved** (read: both safe; #1 needs a rebase):
+  ask again. #6: close, in favour of one pinned uv. #13: fix first,
+  then the bump.
+- Earlier decisions (Intel first as v0.2.0, no signing, waves with
+  workers, S1b/S1c [ASK] per merge, rows ≤ 65 K): the plan and
+  `git show d507065:docs/HANDOFF.md` field 5.
 
 ## 6. Blockers
 
-None.
+- **#13 needs Kris:** slskd's source makes a bare `SLSKD_API_KEY`
+  ReadOnly, and 0.26.2's `/logs/live` is AdministratorOnly, so new
+  installs would get 403 and still lose bad-credential and kick
+  detection. Options in `wave1-reports.md`: (a) the template's
+  `SLSKD_API_KEY=role=Administrator;${SLSKD_API_KEY}` (verify on a
+  disposable container, never Kris's), (b) accept, (c) another source,
+  (d) close #13.
 
 ## 7. Files in progress
 
-None.
+`wave1-reports.md` (untracked); branches `r13/S1`,
+`r13/S1c-slskd-logs` and their worktrees.
 
 ## 8. Waiting on Kris
 
-**Round 13:** Each wave: Kris starts the lead session; questions
-arrive through it. Wave 1: `/context` at the start. S1b, S1c: each
-merge. S9:
-the Intel image in the test account (BRIEF §9); an Intel Mac if one
-turns up. S10: each outward step. After S10: an Intel download on the
-website.
-
-**Later rounds:** R14 S10 **[ASK]**: fingerprinting on Windows, (a) a
-bundled `chromaprint.dll` or (b) none in v0.3.0; an optional VM (S13).
-R15: an x64 Windows 11 machine with Claude Code, Docker Desktop and
-uv; a Spotify test account; a Soulseek test username.
-
-**Carried from phase 01:** RELEASING.md step 5.2–5.3 for v0.1.0; the
-waived boxes in `docs/phase-01/round-12/ACCEPTANCE.md`, as
-post-release checks; item 125 is narrowed, not closed.
+- #1 and #12 approval; #13's option; `uv self update` when S1c pins uv.
+- `/context` at the next lead's start.
+- Later, unchanged: S9 the Intel image in the test account (BRIEF
+  §9); S10 each outward step; after S10 the website's Intel download.
+  R14/R15 and phase 01's carried items: `git show
+  d507065:docs/HANDOFF.md` field 8.
 
 ## 9. Open questions
 
-Carried from phase 01, unanswered; detail in S18's handoff
-(`git show 2b7e8d9:docs/HANDOFF.md`, field 9) and HISTORY §223,
-§238–§241:
-- Review: should a busy slskd end Confirm all (S17l)? Resolve all
-  opens its dialog when every group is on "Keep all" (S17m).
-- The dark-mode question icon on the quit confirmation (S17o).
-- Downloads: record a busy pick for a later poll; "Queued as backup"
-  in the header; cancel a superseded row's transfer; slskd's "remove
-  finished transfers"; how long a settled file may queue; Cancel on a
-  downloading row, "Retry all", marking an activated backup;
-  Search's unscored "—".
-- Setup: "Match tracks" during a scan; a CLI command that starts
-  slskd; a share folder that's missing; the wizard's share checkbox
-  default; does a fresh slskd share anything by default?
-- Sweep: skip a needs-review candidate still waiting; a GUI and a
-  cron sweep at once (UNVERIFIED how they interleave).
-- Code: a socket timeout for the OAuth callback; `measure_signal()`
-  has no caller (show it on Duplicates, or delete it with pyloudnorm).
-- Should a template bump reach an existing install's Compose copy
-  (never re-seeded, §222)? Dependabot #13 bumps slskd.
+- `docs/cli.md:30` and `help_text.py` could mention Premium (S1d
+  left them; outside §1d).
+- Five README images change byte-wise on `--readme` with no UI change
+  (cause UNVERIFIED, §249).
+- 0.26.2 slskd's disk logger is on by default: does `LeftoverService`
+  ignore `logs/`? UNVERIFIED.
+- Phase 01's carried questions: `git show 2b7e8d9:docs/HANDOFF.md`
+  field 9.
 
 ---
 

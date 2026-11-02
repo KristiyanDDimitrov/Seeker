@@ -38,7 +38,7 @@ Est. work includes the type's risk factor; est. peak is B + work.
 | ☐ S1 | Help → Build names the architecture, and Rosetta (PF-05) | Behaviour | §1.2 | ~65 K | After the Qt-free function and its tests |
 | ☑ S1b | **[ASK]** v0.1.1's record; Dependabot #5 mypy, #7 ruff, #8 platformdirs, #9 python-dotenv | Behaviour | §1b | ~60 K | After v0.1.1's record and two PRs |
 | ☐ S1c | **[ASK]** Dependabot #1 checkout, #6 uv_build, #12 setup-uv, #13 slskd; the `dependabot.yml` comment | Behaviour | §1b | ~65 K | After #1 and #12 (the actions) |
-| ☐ S1d | Spotify Premium in the README and the wizard | Behaviour | §1d | ~60 K | After the wizard step and its test |
+| ☑ S1d | Spotify Premium in the README and the wizard | Behaviour | §1d | ~60 K | After the wizard step and its test |
 | **B — Intel installs and passes the suite** | | | | | |
 | ☐ S2 | The Intel pins and the forked lock; native set unchanged; audit (PF-01) | Behaviour | §2 steps 1–3 | ~60 K | After the lock commit, before the audit |
 | ☐ S2b | `tests/test_lock_platforms.py` | Behaviour | §2 step 4 | ~50 K | — |
