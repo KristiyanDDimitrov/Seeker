@@ -508,7 +508,7 @@ and warm analysis times: the first numbers from real Intel hardware.
   needs a different first launch (it shouldn't; check).
 - `CHANGELOG.md` → `[Unreleased]`: the Intel build, the smoke test,
   Help → Build's architecture line.
-- `CLAUDE.md`: Packaging facts for both architectures and the asset
+- `packaging/CLAUDE.md`: Packaging facts for both architectures and the asset
   names; `docs/architecture.md` → Module map for any new module.
 
 **Done when:** every link resolves (§1.1's script); a person with an
@@ -553,4 +553,4 @@ commands and the notes, shown first). Then: the four assets download
 and pass `shasum -c`; Help → "Check for updates…" says up to date
 in both apps. Measure the round's exit criteria
 (`SESSION-PLAN.md`), record them in the HISTORY entry, and update
-`CLAUDE.md`'s Roadmap.
+`docs/status.md`'s Roadmap.

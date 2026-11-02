@@ -549,7 +549,7 @@ real Windows machine can answer (PF-14 to PF-18).
 - **Evidence.** `login_item.py:43-44`
   `is_supported() = darwin and frozen`; Settings shows the option
   unavailable elsewhere (`settings_window.py:1582-1650`). The module's
-  rule: its status is read live, never stored (CLAUDE.md).
+  rule: its status is read live, never stored (`packaging/CLAUDE.md`).
 - **Fix sketch.** A Windows backend over `winreg`: the
   `HKCU\…\CurrentVersion\Run` value names the installed
   `Seeker.exe`; the live status also reads Task Manager's
@@ -576,7 +576,7 @@ real Windows machine can answer (PF-14 to PF-18).
 
 ### PF-30 — The quit seam is unmeasured on Windows · Medium · LOW
 
-- **Evidence.** CLAUDE.md: every quit passes `QEvent.Type.Quit` to
+- **Evidence.** `src/seeker/ui/CLAUDE.md`: every quit passes `QEvent.Type.Quit` to
   the `QApplication`, and an `eventFilter` may ask the person first
   (the quit confirmation) — observed on Cocoa only. Windows' shutdown
   and sign-out (`WM_QUERYENDSESSION`/`WM_ENDSESSION`), and an

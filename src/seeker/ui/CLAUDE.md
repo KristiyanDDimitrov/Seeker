@@ -1,12 +1,43 @@
 # seeker — `ui/` rules
 
 Standing facts for work under `src/seeker/ui/`, kept here so the root
-`CLAUDE.md` stays short; Claude Code documents loading it when a
-session reads files here (UNVERIFIED in this repo). The root file's Conventions (pages, feedback
-channels, plain text), its quit seam and thread pool facts, and its
-Testing section apply here too. Same rules as the root: present
-tense, each fact linked to the HISTORY entry holding its
-investigation.
+`CLAUDE.md` stays short. Claude Code loads it as a system reminder
+when a session reads a file in this folder with the Read tool
+(observed 2026-11-02 for `soulseek/`'s file; a read through Bash,
+UNVERIFIED). The root file's Conventions (pages, feedback
+channels, plain text) and `tests/CLAUDE.md` apply here too. Same
+rules as the root: present tense, each fact linked to the HISTORY
+entry holding its investigation.
+
+## Qt and threading
+
+- **Every real quit passes one seam: `QEvent.Type.Quit` delivered to
+  the `QApplication` itself, before `aboutToQuit`** (the tray's
+  `app.quit()` and macOS ⌘Q/Dock alike, observed). An `eventFilter`
+  there decides synchronously: `False` lets it proceed, `True`
+  cancels; `aboutToQuit` cleanup is too late for either. Never
+  re-post `app.quit()` from the filter: the process exits without
+  `aboutToQuit` (observed). Reference: `MainWindow.eventFilter`
+  through `WindowLifecycleController`. [§124](../../../docs/history/121-150.md#124)
+- **`MainWindow.thread_pool` is passed to every `run_worker`, never
+  `globalInstance()`** (Settings' too; only the wizard, which runs
+  before any shell exists, has its own). Its destructor waits for in-flight runnables
+  (observed in isolation, then in a quit-hang `sample`): the process
+  lives as long as the slowest task. So long work takes a `stop`
+  event checked between items, never inside one (`PageContext.
+  quitting`, set on quit; the sweep its own), and
+  `cleanup_before_quit` waits `QUIT_WAIT_MS` (5 s), then logs any
+  task still running; no hard exit after it. A stopped item ends in
+  ≤ 2.7 s (a fingerprint; BPM/key 2.3 s). `tests/test_quit_stop_sweep.py`
+  fails the build when ui/ drops a `stop` or a pool task reaches a
+  service with none that `TAKES_NO_STOP` does not list with its
+  measured reason. [§125](../../../docs/history/121-150.md#125),
+  [§226](../../../docs/history/211-240.md#226), [§233](../../../docs/history/211-240.md#233)
+- `get_config` on `TrackMatcher`/`DownloadService`/`MetadataService`
+  is a callable, not a snapshot: a Settings change applies at once
+  ([§28](../../../docs/history/025-031.md#28)). Match thresholds resolve
+  through `matching.resolve_thresholds` (`is None`, never `or`: 0 is
+  valid). [§179](../../../docs/history/151-180.md#179)
 
 ## Threads and the window
 

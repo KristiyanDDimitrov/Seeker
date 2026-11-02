@@ -20,8 +20,10 @@ Every document in the repository, then where to start.
 - [`../RELEASING.md`](../RELEASING.md) — cutting a release: build,
   verify, tag, publish, check for updates, roll back.
 - [`../SECURITY.md`](../SECURITY.md) — reporting a vulnerability.
-- [`../CLAUDE.md`](../CLAUDE.md) — architecture, conventions, standing
-  facts and gotchas, open issues. Present tense only.
+- [`../CLAUDE.md`](../CLAUDE.md) — architecture, conventions, and an
+  index of the topic `CLAUDE.md` files beside the code that hold the
+  standing facts and gotchas. Present tense only.
+- [`status.md`](status.md) — accepted risks, open issues, roadmap.
 - [`HANDOFF.md`](HANDOFF.md) — the baton between Claude Code sessions:
   state, next row, blockers. Overwritten every session.
 - [`history/`](history/README.md) — the full investigation log,
@@ -82,7 +84,7 @@ row-by-row map.
   in phase 02, each `AUDIT.md` finding it names) → `../CLAUDE.md`.
   Nothing else until the task needs it.
 - **A new contributor:** `../README.md` → `architecture.md` →
-  `../CLAUDE.md` (Conventions, Standing facts) → the current phase's
+  `../CLAUDE.md` (Conventions, then its topic files) → the current phase's
   [`AUDIT.md`](phase-02/AUDIT.md) for known weak spots → `history/`
   entries as `CLAUDE.md` links them.
 - **A portfolio reviewer:** `../README.md` → `architecture.md` →

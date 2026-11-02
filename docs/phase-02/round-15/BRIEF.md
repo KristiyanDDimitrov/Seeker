@@ -37,7 +37,7 @@ outside those folders, and remove Seeker, its data
 (`%LOCALAPPDATA%\Seeker`), the slskd container and Docker Desktop
 (if installed for this) when the round ends, with the owner's say.
 
-**§0.4 Accounts.** A **Spotify test account**: CLAUDE.md records that
+**§0.4 Accounts.** A **Spotify test account**: `src/seeker/spotify/CLAUDE.md` records that
 two installs sharing a client ID can invalidate each other's rotating
 refresh tokens (§92), so Kris's own account stays on his Mac. A
 **Soulseek test username**: the network allows one session per
@@ -47,7 +47,7 @@ username, so Kris's would sign his Mac's slskd out.
 instance made for this round. Code may start, stop and recreate it,
 and only it (`docker ps` shows which), with Kris at the keyboard for
 the first bring-up. This permission does not extend to Kris's Mac,
-where CLAUDE.md's rule stands. The suite still never runs `docker`
+where `tests/CLAUDE.md`'s rule stands. The suite still never runs `docker`
 (`conftest.py`).
 
 **§0.6 Evidence replaces UNVERIFIED.** Every Windows behaviour
@@ -197,4 +197,4 @@ the Macs run too (the subprocess helper, encodings, the single
 instance, Sharing's YAML), and every installed copy's update check
 will see v0.3.0 as the latest release, so it must have a build for
 each. The update check from all three builds. Measure the phase's exit criteria (phase README) and record
-them. `CLAUDE.md`'s Roadmap and `docs/README.md` close phase 02.
+them. `docs/status.md`'s Roadmap and `docs/README.md` close phase 02.

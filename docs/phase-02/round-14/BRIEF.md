@@ -282,7 +282,7 @@ UI row: read `src/seeker/ui/CLAUDE.md` first.
 
 **Established.** PF-23. `main_ui.main()` builds `Application`
 (opening and migrating the database) before any window. The quit seam
-and `cleanup_before_quit` are CLAUDE.md's.
+and `cleanup_before_quit` are `src/seeker/ui/CLAUDE.md`'s.
 
 **Do, one commit each, a failing test first.**
 1. `ui/single_instance.py` over `QLocalServer`/`QLocalSocket`. The
