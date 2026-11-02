@@ -41,7 +41,7 @@ Est. work includes the type's risk factor; est. peak is B + work.
 | ☑ S1d | Spotify Premium in the README and the wizard | Behaviour | §1d | ~60 K | After the wizard step and its test |
 | **B — Intel installs and passes the suite** | | | | | |
 | ☑ S2 | The Intel pins and the forked lock; native set unchanged; audit (PF-01) | Behaviour | §2 steps 1–3 | ~60 K | After the lock commit, before the audit |
-| ☐ S2b | `tests/test_lock_platforms.py` | Behaviour | §2 step 4 | ~50 K | — |
+| ☑ S2b | `tests/test_lock_platforms.py` | Behaviour | §2 step 4 | ~50 K | — |
 | ☐ S3 | `.venv-x86_64` under Rosetta; the whole suite on x86_64; the failure list; re-plans S3b | Investigation | §3 steps 1–3 | ~65 K | After the environment's versions are pasted |
 | ☐ S3b | Rosetta triage: each Intel bug test-first, test fixes, timings, commands and platform facts | Investigation | §3 steps 4–6 | ~60 K (S3 re-estimates) | After any cause's commit |
 | ☐ S4 | CI: a blocking `macos-15-intel` job (PF-03) | Behaviour | §4 | ~45 K | After the first run is recorded; a runner-only failure becomes its own row |

@@ -114,13 +114,13 @@
       "id": "S2b", "title": "tests/test_lock_platforms.py",
       "type": "behaviour", "executes": "BRIEF.md §2 step 4", "depends_on": ["S2"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 2,
-      "est_work_k": 50, "est_peak_k": 104, "actual_peak_k": null,
+      "est_work_k": 50, "est_peak_k": 104, "actual_peak_k": 60,
       "split_point": null,
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "263-299", "est_k": 0.5},
         {"path": "uv.lock", "range": "grep -n only: resolution-markers, numba's entries, one sdist-only or pure entry", "est_k": 2.0}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["ea95e1f"], "history": 254
     },
     {
       "id": "S3", "title": ".venv-x86_64 under Rosetta; the whole suite on x86_64; the failure list; re-plans S3b",

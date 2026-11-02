@@ -41,8 +41,12 @@ investigation; `docs/history/README.md` resolves any `§N`.
   2.4** (the last x86_64 wheels) by marker-scoped `[tool.uv]
   constraint-dependencies`, which fork `uv.lock`; permanent.
   `required-environments` does not guard a package with an sdist
-  (numba, llvmlite, numpy all ship one): the lock test does.
-  [§253](../docs/history/241-270.md#253)
+  (numba, llvmlite, numpy all ship one): `tests/test_lock_platforms.py`
+  does, failing when a package the lock installs on darwin/arm64,
+  darwin/x86_64 or win32/AMD64 has no cp313, abi3 or pure wheel there.
+  A new shipped platform joins its `PLATFORMS` and
+  `required-environments` together.
+  [§253](../docs/history/241-270.md#253), [§254](../docs/history/241-270.md#254)
 - **Architecture text has one source:**
   `cpu_architecture.describe_architecture()`. Under Rosetta an x86_64
   process reports `platform.machine()` x86_64 and
