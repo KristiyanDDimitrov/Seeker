@@ -129,3 +129,15 @@ call:
 Only the GUI has the app-wide default destination's editor, the match
 thresholds' editor (the CLI reads the saved values), and the slskd
 bring-up.
+
+## `seeker-ui`'s one option
+
+`seeker-ui --smoke-test [REPORT]` checks a build and exits, without
+showing a window or touching settings, the database or the library: it
+imports every module, loads the bundled fonts, icons and Compose
+template, applies both themes, times two analyses of a generated click
+track and prints a JSON report (also written to `REPORT`, an absolute
+path). The exit code is 0 when every check passed, 1 when one failed
+or the report could not be written, 2 for an empty path. It is how a
+frozen app is checked; [packaging.md](packaging.md#the-smoke-test) has
+the details and [`RELEASING.md`](../RELEASING.md) runs it on each image.
