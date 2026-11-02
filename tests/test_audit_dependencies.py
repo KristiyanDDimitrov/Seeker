@@ -196,6 +196,11 @@ def test_a_package_pinned_twice_is_audited_in_two_files(audit):
     ]
 
 
+def test_a_hash_line_with_no_requirement_above_is_refused(audit):
+    with pytest.raises(ValueError, match="No requirement above"):
+        audit.audit_layers("    --hash=sha256:aa\n")
+
+
 class _ExportingRunner:
     """Writes `export` where `uv export` was told to, and answers each
     pip-audit run with the next return code."""
