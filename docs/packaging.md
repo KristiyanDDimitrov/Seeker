@@ -8,14 +8,21 @@ wizard detects and starts.
 
 | Platform | Status |
 |---|---|
-| macOS | Built and verified on real hardware: the `.app`, the `.dmg`, and the app launched after being copied to `/Applications`. |
+| macOS 15+, Apple silicon | Built and verified on real hardware: the `.app`, the `.dmg`, and the app launched after being copied to `/Applications`. The frozen app also passes its own `--smoke-test` (2026-11-02, [HISTORY §257](history/241-270.md#257)). Image: `Seeker.dmg`. |
+| macOS 15+, Intel (x86_64) | **Built and smoke-tested under Rosetta 2 on Apple silicon; never run on an Intel Mac.** On 2026-11-02 the app built from an x86_64 interpreter, passed the post-build check and `--smoke-test` under Rosetta ([HISTORY §260](history/241-270.md#260)), and the test suite passed on a real Intel Mac, GitHub's `macos-15-intel` runner ([HISTORY §261](history/241-270.md#261)). That Intel build did not yet bundle libchromaprint, and the build that does has not run. Image: `Seeker-Intel.dmg`. <!-- S7-PENDING: the first dispatched build.yml run (id, date, both smoke reports, the Intel runner's cold and warm analysis times) and whether the bundled libchromaprint passed bundle_check; then reword "never run on an Intel Mac" here and in the paragraph below --> |
 | Windows | **Written, never verified on real hardware.** `seeker.spec` is cross-platform and `packaging/seeker.iss` is a complete Inno Setup script, but neither has run on a Windows machine. |
 | Linux | **Written, never verified on real hardware.** The same `seeker.spec`; no installer format (AppImage, `.deb`) is scoped. |
 
 Treat the Windows and Linux rows as unverified until someone runs the
-build on those platforms. Phase 02 ([`phase-02/README.md`](phase-02/README.md))
-adds an Intel Mac build (round 13) and verifies Windows (rounds 14
-and 15); this table changes as each lands.
+build on those platforms, and the Intel row's "never run on an Intel
+Mac" as open until someone launches the app on one: the runner and
+Rosetta cover the suite, the build and the smoke test, not a person
+double-clicking the app, Gatekeeper's first-launch block on an Intel
+Mac, or Docker Desktop for Intel. Both macOS images need macOS 15, the
+highest `minos` among their binaries (the Info.plist bullet below). Phase 02
+([`phase-02/README.md`](phase-02/README.md)) adds the Intel build in
+round 13 and verifies Windows in rounds 14 and 15; this table changes
+as each lands.
 
 ## The app
 
@@ -58,8 +65,11 @@ platform, plus `dist/Seeker.app` on macOS.
 - **Info.plist** comes from `packaging/bundle_info.py`: the version is
   `pyproject.toml`'s, the copyright `LICENSE`'s line, the category
   Music, and the minimum macOS 15.0, the highest `minos` among the
-  bundled binaries (PySide6's own; re-measure after an upgrade).
-  [HISTORY §214](history/211-240.md#214)
+  bundled binaries (PySide6's own, on both architectures). Every build
+  checks it (`bundle_check`, below), so an upgrade that raises a
+  `minos` fails the build instead of waiting for a re-measure.
+  [HISTORY §214](history/211-240.md#214),
+  [§259](history/241-270.md#259)
 
 ## The macOS `.dmg`
 
@@ -92,6 +102,88 @@ on both the `.app` (`seeker.spec`'s `BUNDLE()`) and the volume
 (`dmg_settings.py`), and was confirmed to render on both.
 [HISTORY §31](history/025-031.md#31), [§42](history/032-046.md#42)
 
+### The Intel app
+
+An Intel Mac needs its own app. Its dependency set differs (numba
+0.62.1, llvmlite 0.45.1 and numpy 2.3.5, the last Intel wheels; the lock
+forks them, [HISTORY §253](history/241-270.md#253)) and a PyInstaller
+app is one architecture. The spec builds the architecture of the
+interpreter that runs it, so the Intel app comes from an x86_64
+interpreter: on an Intel Mac the ordinary `uv run`, on an Apple silicon
+Mac an x86_64 environment under Rosetta 2, beside `.venv`:
+
+```
+uv python install cpython-3.13.15-macos-x86_64-none
+UV_PROJECT_ENVIRONMENT=.venv-x86_64 uv sync --locked --python cpython-3.13.15-macos-x86_64-none
+.venv-x86_64/bin/python packaging/build_dmg.py      # dist/Seeker-Intel.dmg
+```
+
+That environment shares the real data folders, so it only builds: never
+start the app from it ([CLAUDE.md](../CLAUDE.md#platforms)).
+
+- **libchromaprint ships in the Intel app, not the Apple silicon one.**
+  `bundle_info.chromaprint_binaries` copies
+  `/usr/local/lib/libchromaprint.1.dylib` (Homebrew's prefix on Intel,
+  from `brew install chromaprint`) to the bundle's resource root, which
+  `audio/fingerprint.py` searches before the Homebrew prefixes, and the
+  spec adds its licence texts under `licenses/chromaprint/`. A missing
+  library fails the build, so the app never silently loses
+  fingerprinting. The Apple silicon app still finds the user's own
+  Homebrew copy. On an Apple silicon Mac, Homebrew lives in
+  `/opt/homebrew`, so the Intel build machine needs a second, x86_64
+  Homebrew in `/usr/local` (run under `arch -x86_64`). Homebrew treats
+  Intel Macs as Tier 3 since September 2026 and no longer builds new
+  Intel bottles ([Homebrew's support
+  tiers](https://docs.brew.sh/Support-Tiers), read 2026-11-03), and
+  the current `chromaprint` and `ffmpeg` formulae list no Intel macOS
+  bottle (formulae.brew.sh, 2026-11-03), so the install may compile
+  from source (UNVERIFIED; `brew install chromaprint` did succeed on
+  the `macos-15-intel` runner on 2026-11-02, [HISTORY
+  §261](history/241-270.md#261), source or bottle not recorded).
+- **Both architectures write `dist/Seeker.app`.** Each build replaces
+  the last; the images are named apart (`Seeker.dmg`,
+  `Seeker-Intel.dmg`) and both stay. Check one app before building the
+  other architecture (RELEASING.md step 3).
+- **ffmpeg is not bundled in either app.** `audio/fingerprint.py`
+  decodes with soundfile and falls back to a Homebrew `ffmpeg` for a
+  file libsndfile rejects. On Intel that is a Homebrew install of
+  Tier 3 standing, so treat the fallback as best effort there.
+
+### The smoke test
+
+```
+Seeker.app/Contents/MacOS/Seeker --smoke-test /absolute/path/report.json
+```
+
+`seeker-ui --smoke-test [REPORT]` (`ui/smoke_test.py`) is how a build
+proves it can run, without a person launching it. It checks that the
+bundle carries its identity (not `"dev"`), imports every module and the
+macOS frameworks the spec bundles by hand, finds Qt's native platform
+plugin, applies both themes, loads the bundled fonts, icons and Compose
+template, and times two analyses of a generated click track (cold, then
+warm; it reads back 123.05 BPM). It prints one JSON report, also written to `REPORT`,
+and exits 0, or 1 naming what failed. It touches no settings, database
+or library, so it is safe on any Mac. On an Apple silicon Mac, prefix an
+Intel app with `arch -x86_64` (a real Intel Mac runs it as it is). Give
+the first cold analysis a generous timeout: numba compiles it (37 s under
+Rosetta). The report's `architecture` line is the one Help → Build
+shows, and `chromaprint_available` says whether fingerprinting loads: it
+must be true for the Intel app anywhere, and for the Apple silicon app
+only on a Mac with Homebrew's chromaprint.
+[HISTORY §256](history/241-270.md#256), [§257](history/241-270.md#257)
+
+### CI builds
+
+`.github/workflows/build.yml` is meant to build both apps on GitHub's
+runners, `macos-26` for Apple silicon and `macos-15-intel` for Intel,
+with `packaging/build_dmg.py`, run `--smoke-test` on each built app and
+upload each image as an artifact with a short retention. It runs on
+`workflow_dispatch`, on tags, and on pushes that change
+`pyproject.toml`, `uv.lock` or `packaging/**`, so a dependency bump that
+breaks the frozen app fails there rather than at a release. It never
+publishes a release: `RELEASING.md` builds the release's images
+locally. <!-- S7-PENDING: the workflow's state (written, dispatched, green on both runners), its first run id, and the HISTORY section that records the runner's smoke reports -->
+
 ### What was verified
 
 On 2026-08-29 the real `.app` was launched with `open dist/Seeker.app`
@@ -110,6 +202,41 @@ a different path from the build directory, and launched from there:
 `docker-compose.yml` relative to wherever the running binary lives.
 The copies were removed afterwards.
 [HISTORY §30](history/025-031.md#30), [§31](history/025-031.md#31)
+
+**The Apple silicon app's smoke test** passed on the frozen app on
+2026-11-02: cold analysis 3.7 s, warm 0.035 s, with libchromaprint
+found.
+[HISTORY §257](history/241-270.md#257)
+
+**The Intel app** was built on 2026-11-02 from an x86_64 environment
+under Rosetta 2 on an M4 Pro, in about 100 s, and was not launched as an
+app. `bundle_check` passed first time: every Mach-O is x86_64, no
+`minos` above 15.0, the main executable thin. `Seeker.app` was 333,304
+KB (the Apple silicon one, 317,844 KB) and `Seeker-Intel.dmg` 123.2 MB.
+`license_datas()` needed no vendored text. `arch -x86_64 Seeker
+--smoke-test` exited 0: nine checks, 147 modules, 123.05 BPM, cold
+analysis 37.5 s on the first launch and 1.53 s in a second process
+(numba's cache persists on disk), warm 0.05 s. That is Rosetta, not an
+Intel Mac. libchromaprint was not loadable in that build (the venv's is
+arm64-only); the bundling above came after it. PyInstaller warned about
+sklearn's `libomp.dylib` SDK version, Windows-only ctypes names and
+three hidden imports it could not find (`pycparser.lextab`,
+`pycparser.yacctab`, `scipy.special._cdflib`); none affected the run.
+[HISTORY §260](history/241-270.md#260)
+
+**The Intel suite on real Intel hardware** ran on 2026-11-02 on
+`macos-15-intel` (run `41506032138`): 2500 passed, 29 skipped in 19 min
+34 s, about twice the Apple silicon job, with the 25 real-chromaprint
+tests passing rather than skipping. The first Intel run found one wrong
+test expectation: a real Intel Mac has no `sysctl.proc_translated` key,
+which reads as not translated.
+[HISTORY §261](history/241-270.md#261)
+
+**Not yet verified for Intel:** a person double-clicking the app,
+Gatekeeper's first-launch block on an Intel Mac (it is assumed to read
+as `Read Me First.txt` says: UNVERIFIED), Docker Desktop for Intel, and
+analysis speed on a real, older Intel Mac. Round 13's acceptance
+checklist covers what Rosetta can show.
 
 ### Signing and Gatekeeper
 
