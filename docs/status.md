@@ -73,6 +73,8 @@ Forward-looking only; everything shipped is in `docs/history/`.
   acceptance checks stay open as post-release checks
   (`docs/phase-01/round-12/ACCEPTANCE.md`); every document:
   `docs/README.md`.
+- **v0.1.1 is released** (2026-10-26, [§247](history/241-270.md#247)):
+  a security release (certifi, setuptools), nothing else.
 - **Phase 02 is planned (2026-10-17): Intel Macs, then Windows**
   ([docs/phase-02/README.md](phase-02/README.md), findings
   `PF-NN` in its `AUDIT.md`). Round 13 (Intel, v0.2.0) is next; round

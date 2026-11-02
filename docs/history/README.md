@@ -341,3 +341,4 @@ under their entry and live in the same file, after it.
 - §244 — The X9 Pro tests follow the samples Kris moved: Lux under `Hard Shit/`, §38's gone fingerprint pairs replaced by two measured on scratch copies (1.0000, 0.9715) → [241-270.md#244](241-270.md#244)
 - §245 — Round 12 S18: v0.1.0 released (tag on `35f6ba7`, SHA-256 `5691a256…`) after a `.python-version` pin (CI's runner offered 3.15, which numba refuses); the update check returns up to date; exit criteria measured (item 125 narrowed, not closed); rounds 11 and 12 closed → [241-270.md#245](241-270.md#245)
 - §246 — Round 13 S0: CLAUDE.md split into a 15 KB core plus topic files beside the code and `docs/status.md`; Read-tool loading observed → [241-270.md#246](241-270.md#246)
+- §247 — v0.1.1 (2026-10-26, tag on `e470d1c`, SHA-256 `83c23ade…`): certifi and setuptools for two advisories the weekly audit caught; recorded in round 13 S1b → [241-270.md#247](241-270.md#247)
