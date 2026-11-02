@@ -33,7 +33,7 @@
       "id": "S1", "title": "Help -> Build names the architecture, and Rosetta (PF-05)",
       "type": "behaviour", "executes": "BRIEF.md §1.2", "depends_on": ["S0"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 1,
-      "est_work_k": 65, "est_peak_k": 119, "actual_peak_k": null,
+      "est_work_k": 65, "est_peak_k": 119, "actual_peak_k": 110,
       "split_point": "After the Qt-free function and its tests",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "126-148", "est_k": 0.4},
@@ -45,7 +45,7 @@
         {"path": "docs/architecture.md", "range": "Module map: grep -n the ui/ rows, then ~20 lines", "est_k": 0.4},
         {"path": "src/seeker/ui/CLAUDE.md", "range": null, "est_k": 4.8}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["2d107dc", "02da6e7", "5795685"], "history": 250
     },
     {
       "id": "S1b", "title": "v0.1.1's record; Dependabot #5 mypy, #7 ruff, #8 platformdirs, #9 python-dotenv",

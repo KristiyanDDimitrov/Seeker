@@ -35,7 +35,7 @@ Est. work includes the type's risk factor; est. peak is B + work.
 |---|---|---|---|---|---|
 | **A — Method and groundwork** | | | | | |
 | ☑ S0 | Baseline cut: a `CLAUDE.md` core plus path-scoped topic files; two plugins off in this folder (scope approved 2026-11-02) | Refactor | "S0" below | ~45 K | After the split is committed, before the pointer sweep |
-| ☐ S1 | Help → Build names the architecture, and Rosetta (PF-05) | Behaviour | §1.2 | ~65 K | After the Qt-free function and its tests |
+| ☑ S1 | Help → Build names the architecture, and Rosetta (PF-05) | Behaviour | §1.2 | ~65 K | After the Qt-free function and its tests |
 | ☑ S1b | **[ASK]** v0.1.1's record; Dependabot #5 mypy, #7 ruff, #8 platformdirs, #9 python-dotenv | Behaviour | §1b | ~60 K | After v0.1.1's record and two PRs |
 | ☐ S1c | **[ASK]** Dependabot #1 checkout, #6 uv_build, #12 setup-uv, #13 slskd; the `dependabot.yml` comment | Behaviour | §1b | ~65 K | After #1 and #12 (the actions) |
 | ☑ S1d | Spotify Premium in the README and the wizard | Behaviour | §1d | ~60 K | After the wizard step and its test |

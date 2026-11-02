@@ -37,3 +37,9 @@ investigation; `docs/history/README.md` resolves any `§N`.
   (no bundle identifier); its status is read live, never stored.
   Register/unregister on a packaged build is UNVERIFIED.
   [§131](../docs/history/121-150.md#131)
+- **Architecture text has one source:**
+  `cpu_architecture.describe_architecture()`. Under Rosetta an x86_64
+  process reports `platform.machine()` x86_64 and
+  `sysctl.proc_translated` 1; natively 0 (ctypes `sysctlbyname`,
+  observed 2026-11-02; a real Intel Mac UNVERIFIED).
+  [§250](../docs/history/241-270.md#250)

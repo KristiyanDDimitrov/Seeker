@@ -202,6 +202,10 @@ entry holding its investigation.
   background on a generic type, which bands every nested widget.
   Review a UI change in `tools/screenshots.py`'s images.
   [HISTORY §173](../../../docs/history/151-180.md#173)
+- **A screenshot `Screen`'s scroll position is an `after_resize` step,**
+  never a `steps` entry: `after_resize` steps run again at every
+  size, and a resize moves the scroll range (reproduced).
+  [§250](../../../docs/history/241-270.md#250)
 - **A button takes its size hint.** It goes in `theme.action_row()`
   (or a row ending in `addStretch()`), never alone in a vertical or
   form layout, where it stretches to the full width; a tall form

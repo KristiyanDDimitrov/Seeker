@@ -344,3 +344,4 @@ under their entry and live in the same file, after it.
 - §247 — v0.1.1 (2026-10-26, tag on `e470d1c`, SHA-256 `83c23ade…`): certifi and setuptools for two advisories the weekly audit caught; recorded in round 13 S1b → [241-270.md#247](241-270.md#247)
 - §248 — Round 13 S1b: Dependabot #5 mypy, #7 ruff, #8 platformdirs (folders unchanged), #9 python-dotenv landed as local commits; all eight PRs read; slskd 0.26.1 moved `/logs` → [241-270.md#248](241-270.md#248)
 - §249 — Round 13 S1d: the wizard's Spotify step and README → Install say the app's owner needs Premium; wave 1's worker facts (worktrees branch from `origin/main`) → [241-270.md#249](241-270.md#249)
+- §250 — Round 13 S1: Help and About name the architecture (Apple silicon, Intel, Rosetta via `sysctl.proc_translated`); a `help-build` screenshot screen → [241-270.md#250](241-270.md#250)
