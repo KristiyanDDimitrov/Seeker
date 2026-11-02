@@ -18,7 +18,8 @@ beside it. Every document: `docs/README.md`.
 - **The three numbers (S0, X9 Pro not mounted):** pytest `2390 passed, 29 skipped`;
   mypy `--strict src/` clean, 146 files; ruff `check src tests tools` 0. With the drive: `2418 passed,
   1 skipped` (§245).
-- **CI:** S0's push is recorded in the handoff commit after it.
+- **CI:** run `41435308234` green on `f3bd633` (S0's close-out): check and
+  audit both passed.
 
 ## 2. Where we are
 
