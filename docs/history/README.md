@@ -346,3 +346,4 @@ under their entry and live in the same file, after it.
 - §249 — Round 13 S1d: the wizard's Spotify step and README → Install say the app's owner needs Premium; wave 1's worker facts (worktrees branch from `origin/main`) → [241-270.md#249](241-270.md#249)
 - §250 — Round 13 S1: Help and About name the architecture (Apple silicon, Intel, Rosetta via `sysctl.proc_translated`); a `help-build` screenshot screen → [241-270.md#250](241-270.md#250)
 - §251 — Round 13 S1c: slskd 0.26.2 moved logs to `/logs/live` (bare API key still reads it: observed); #1, #12, #13 landed; one pinned uv (0.13.6), #6 closed → [241-270.md#251](241-270.md#251)
+- §252 — A CI-only 'already deleted' setup error: `test_quit_stops_the_wait_for_a_new_share` ended before its worker's handler ran; it now waits for the registry to drain → [241-270.md#252](241-270.md#252)

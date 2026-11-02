@@ -17,8 +17,11 @@ beside it. Every document: `docs/README.md`.
 - **The three numbers (Cocoa, X9 Pro mounted):** pytest
   `2440 passed, 1 skipped`; mypy `--strict src/` clean, 147 files;
   ruff 0.
-- **CI:** see the last line of this field for the run on the close-out
-  commit (`gh run list --commit <full SHA>`).
+- **CI:** run `41466003716` on `50a6833` failed on one flaky setup
+  error (§252: a test ended before its worker's handler; fixed in the
+  next commit). The audit job was green. The run on the fix: see
+  `gh run list --commit <full SHA>`, the run named `CI` (the others
+  are Dependabot's).
 
 ## 2. Where we are
 
@@ -57,7 +60,7 @@ and S5b as their dependencies land (SESSION-PLAN → Execution → Waves).
 - S5's smoke report can call `cpu_architecture.describe_architecture()`
   (Qt-free; imports `update_check`, so httpx). S9's checklist: Help →
   "Architecture:" under "Build:".
-- HISTORY continues at §252.
+- HISTORY continues at §253.
 
 ## 5. Decisions made
 
