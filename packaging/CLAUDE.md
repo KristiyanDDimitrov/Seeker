@@ -64,9 +64,11 @@ investigation; `docs/history/README.md` resolves any `§N`.
   the user's Homebrew copy.** `packaging/build_chromaprint.sh` builds
   the pinned 1.6.2 source (Homebrew has no Intel bottles);
   `bundle_info.chromaprint_binaries` stages it from
-  `SEEKER_CHROMAPRINT_DIR` (default `/usr/local/lib`), failing the build
-  without it. `chromaprint_available` proves the bundle only where no
-  other copy loads. [§262](../docs/history/241-270.md#262)
+  `SEEKER_CHROMAPRINT_DIR` (default `/usr/local/lib`; locally
+  `.chromaprint/lib`, never under `build/`, which `--clean` empties),
+  failing the build without it. `chromaprint_available` proves the
+  bundle only where no other copy loads.
+  [§262](../docs/history/241-270.md#262)
 - **Intel Macs are pinned to numba < 0.63, llvmlite < 0.46, numpy <
   2.4** (the last x86_64 wheels) by marker-scoped `[tool.uv]
   constraint-dependencies`, which fork `uv.lock`; permanent.
