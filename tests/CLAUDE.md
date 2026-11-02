@@ -50,3 +50,7 @@ linked to the HISTORY entry holding its investigation;
   deliberately after worker, timer or connection lifecycle changes. CI
   skips 29: that one plus 28 `@requires_x9_pro`.
   [§32](../docs/history/032-046.md#32)
+- conftest's autouse fixture sets `monkeypatch` up before a test's own
+  fixtures, so its undo runs after their teardown. A fixture that
+  restores state through a function a test may patch captures that
+  function at setup. [§256](../docs/history/241-270.md#256)

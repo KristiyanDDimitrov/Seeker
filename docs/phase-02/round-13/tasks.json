@@ -164,7 +164,7 @@
       "id": "S5", "title": "seeker-ui --smoke-test, passing unfrozen (PF-06)",
       "type": "feature", "executes": "BRIEF.md §5 steps 1-2", "depends_on": ["S1"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 2,
-      "est_work_k": 80, "est_peak_k": 134, "actual_peak_k": null,
+      "est_work_k": 80, "est_peak_k": 134, "actual_peak_k": 135,
       "split_point": "After the import, theme and resource checks pass with the report written; analysis and chromaprint then move to S5b",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "378-422", "est_k": 0.6},
@@ -176,7 +176,7 @@
         {"path": "docs/architecture.md", "range": "Module map: grep -n the ui/ rows, then ~20 lines", "est_k": 0.4},
         {"path": "src/seeker/ui/CLAUDE.md", "range": null, "est_k": 4.8}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["1bc5028", "1f87e0d", "5a18f86", "920dd27", "be74597", "e42328a", "1cb8bda", "10e90fa", "4667c2d", "03a5ee3", "8bacc85", "ae0dd42", "50e28bd", "817dcc9", "0d17da0", "5dc1f30", "0f500f1"], "history": 256
     },
     {
       "id": "S5b", "title": "The smoke test on the frozen Apple silicon app",

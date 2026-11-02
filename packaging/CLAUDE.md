@@ -37,6 +37,14 @@ investigation; `docs/history/README.md` resolves any `§N`.
   (no bundle identifier); its status is read live, never stored.
   Register/unregister on a packaged build is UNVERIFIED.
   [§131](../docs/history/121-150.md#131)
+- **`seeker-ui --smoke-test [REPORT]` checks a build** (`ui/smoke_test.py`),
+  before logging or `Application`: identity, imports, hidden imports,
+  the native Qt plugin, both themes, bundled fonts and icons, the
+  Compose template, two click-track analyses; JSON to stdout and
+  REPORT; exit 0/1. A new bundled resource joins its check. The spec's
+  `hiddenimports` come from `seeker/frozen_imports.py`, which the smoke
+  test imports on macOS: a deferred import of a new framework goes
+  there. [§256](../docs/history/241-270.md#256)
 - **Intel Macs are pinned to numba < 0.63, llvmlite < 0.46, numpy <
   2.4** (the last x86_64 wheels) by marker-scoped `[tool.uv]
   constraint-dependencies`, which fork `uv.lock`; permanent.

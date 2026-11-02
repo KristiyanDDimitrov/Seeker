@@ -162,6 +162,10 @@ entry holding its investigation.
 
 ## Theme, tables and layout
 
+- Qt reports an application-stylesheet parse error only when it
+  polishes a widget; setting the sheet warns nothing (observed
+  offscreen). `seeker-ui --smoke-test`'s theme check polishes widgets
+  for that reason. [§256](../../../docs/history/241-270.md#256)
 - `QHeaderView::section:horizontal:last-child` is invalid Qt QSS (valid
   CSS, not Qt's dialect) and silently poisons the **entire**
   `::section` rule — use `:last` alone.
