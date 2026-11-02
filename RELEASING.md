@@ -42,12 +42,15 @@ the same commit, the Intel one in an x86_64 environment under Rosetta 2
    Intel Homebrew:
 
    ```
-   packaging/build_chromaprint.sh "$PWD/build/chromaprint-x86_64"
+   packaging/build_chromaprint.sh "$PWD/.chromaprint"
    ```
 
-   The script fails if the result links anything outside macOS. On an
-   Intel Mac it needs no argument: it installs into `/usr/local/lib`,
-   where the build looks by default.
+   The library lands in `.chromaprint/lib` (gitignored, so the tree stays
+   clean), not under `build/`: `build_dmg.py` runs PyInstaller with
+   `--clean`, which empties `build/` first. The script fails if the
+   result links anything outside macOS. On an Intel Mac it needs no
+   argument: it installs into `/usr/local/lib`, where the build looks by
+   default.
 
 ## 2. Tag locally, then build both
 
@@ -65,13 +68,15 @@ This writes `dist/Seeker.app` and `dist/Seeker.dmg`. **Check this app
 different names and both stay).
 
 ```
-SEEKER_CHROMAPRINT_DIR="$PWD/build/chromaprint-x86_64/lib" \
+SEEKER_CHROMAPRINT_DIR="$PWD/.chromaprint/lib" \
     .venv-x86_64/bin/python packaging/build_dmg.py   # Intel, under Rosetta
 ```
 
 The variable names the folder the build stages libchromaprint from
 (default `/usr/local/lib`: leave it out on an Intel Mac that installed
-there). This writes `dist/Seeker.app` again, now the Intel app, and
+there). Set it on this command itself, as an absolute path: the spec
+reads it when it runs, and a relative one resolves against the
+repository root. This writes `dist/Seeker.app` again, now the Intel app, and
 `dist/Seeker-Intel.dmg`; check it too. Each build ends by checking its
 bundle: every Mach-O carries the build's architecture, the main
 executable is thin, and no binary needs a newer macOS than 15.0. A
@@ -116,7 +121,7 @@ Expected:
   library only if no other x86_64 copy can load on this Mac.**
   `audio/fingerprint.py` searches the bundle, then `/opt/homebrew/lib`,
   then `/usr/local/lib`. On an Apple silicon Mac with no Intel Homebrew
-  and the library built into `build/` as in step 1, there is none
+  and the library built into `.chromaprint/` as in step 1, there is none
   (Homebrew's arm64 copy cannot load into an x86_64 process), so `true`
   proves it. If `/usr/local/lib/libchromaprint*` exists (Intel Homebrew,
   or the script run with its default prefix), move it aside for the run
