@@ -9,7 +9,7 @@ dependencies = [
     "httpx>=0.28.1",
     "librosa>=1.0.0",
     "mutagen>=1.48.1",
-    "numpy>=2.5.2",
+    "numpy>=2.3",
     "packaging>=26.3",
     "platformdirs>=4.12.3",
     "pyloudnorm>=0.1.1",
@@ -36,6 +36,25 @@ build-backend = "uv_build"
 # `version:`) and on the developer's Mac, and a `uv_build` range that
 # contains it. Change all three together.
 required-version = "==0.13.6"
+# Intel Macs: numba 0.62.1 and llvmlite 0.45.1 are the last releases
+# with macOS x86_64 wheels, and numba 0.62.1 needs numpy < 2.4. These
+# pins are permanent: numba publishes no Intel macOS wheels any more.
+# The marker forks the lock, so the other platforms keep their own
+# versions (HISTORY §253).
+constraint-dependencies = [
+    "numba<0.63; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "llvmlite<0.46; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "numpy<2.4; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+]
+# The platforms Seeker ships for. `uv lock` fails if a package with
+# no sdist has no wheel for one of them. A package that has an sdist
+# (numba, llvmlite) passes regardless, and would build from source
+# there (HISTORY §253).
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
 
 [tool.uv.build-backend]
 # Agent instructions beside the code, not part of the package; and the
