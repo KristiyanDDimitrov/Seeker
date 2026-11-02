@@ -52,7 +52,31 @@ investigation; `docs/history/README.md` resolves any `§N`.
   `Seeker-Intel.dmg`) and fails the build through
   `bundle_check.check_bundle` when a Mach-O lacks the architecture, the
   main executable is not thin or a `minos` exceeds
-  `MINIMUM_SYSTEM_VERSION`. [§259](../docs/history/241-270.md#259)
+  `MINIMUM_SYSTEM_VERSION`.** [§259](../docs/history/241-270.md#259)
+- **A release is two images and four assets, one macOS floor.**
+  `Seeker.dmg` is Apple silicon (v0.1.0's name, so its links keep
+  working), `Seeker-Intel.dmg` Intel, each with a `.sha256`. Both need
+  macOS 15: PySide6's x86_64 slices say `minos` 15.0 as its arm64 ones
+  do, and the Intel app passed `bundle_check`. Both builds write
+  `dist/Seeker.app`, each replacing the last, so an app is checked
+  before the other architecture builds. The Intel app builds from
+  `.venv-x86_64` (Rosetta on Apple silicon), never started from it
+  (it shares the real data folders). `RELEASING.md` builds, checks and
+  uploads both. [§259](../docs/history/241-270.md#259),
+  [§260](../docs/history/241-270.md#260)
+- **The Intel app bundles libchromaprint; the Apple silicon app finds
+  the user's Homebrew copy.** `bundle_info.chromaprint_binaries` stages
+  `/usr/local/lib/libchromaprint.1.dylib` at the bundle's resource root,
+  where `audio/fingerprint.py` looks first, and a missing library fails
+  the Intel build; its licence texts (`packaging/licenses/`) land in
+  `licenses/chromaprint/`. Neither app bundles ffmpeg (the decode
+  fallback). Homebrew builds no new Intel bottles since September 2026
+  (docs.brew.sh/Support-Tiers, read 2026-11-03), so the Intel build
+  machine's `brew install chromaprint` may compile from source
+  (UNVERIFIED; it worked on `macos-15-intel` on 2026-11-02). The Intel
+  app built before the library shipped had no fingerprinting; the build
+  that stages it is not run yet.
+  [§260](../docs/history/241-270.md#260)
 - **Intel Macs are pinned to numba < 0.63, llvmlite < 0.46, numpy <
   2.4** (the last x86_64 wheels) by marker-scoped `[tool.uv]
   constraint-dependencies`, which fork `uv.lock`; permanent.
