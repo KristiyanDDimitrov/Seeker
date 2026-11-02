@@ -215,3 +215,19 @@ def test_the_usage_names_the_variable_that_points_the_spec_at_the_prefix():
     text = SCRIPT.read_text()
 
     assert f"{info.CHROMAPRINT_DIR_VARIABLE}=" in text
+
+
+def test_a_prefix_in_the_repository_leaves_the_tree_clean():
+    # RELEASING.md wants `git status` empty, and build/ is not an
+    # option: PyInstaller's --clean empties it before the spec runs.
+    prefix = ".chromaprint"
+
+    command = [
+        "git", "check-ignore", "-q", f"{prefix}/lib/libchromaprint.1.dylib",
+    ]
+    ignored = subprocess.run(  # noqa: S603 — fixed arguments
+        command, cwd=ROOT, check=False,
+    )
+
+    assert ignored.returncode == 0
+    assert prefix in SCRIPT.read_text()  # the usage names the same folder

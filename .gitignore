@@ -10,6 +10,9 @@ slskd-data/
 .coverage
 build/
 dist/
+# packaging/build_chromaprint.sh's prefix for an Intel build on a Mac
+# with no /usr/local/lib. Not under build/: PyInstaller's --clean empties it.
+.chromaprint/
 .DS_Store
 
 # Roadmap item 81 (0.1), split in the post-implementation review (R1):
