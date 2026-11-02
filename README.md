@@ -59,9 +59,9 @@ Every image is rendered from invented data by
 
 ## Install
 
-Seeker is built and tested on macOS. Windows and Linux builds are
-written but have never been verified on real hardware
-([packaging](docs/packaging.md)).
+Seeker is built and tested on macOS 15 or later, on Apple silicon and
+on Intel Macs. Windows and Linux builds are written but have never been
+verified on real hardware ([packaging](docs/packaging.md)).
 
 You need:
 
@@ -72,15 +72,47 @@ You need:
   [Premium](https://developer.spotify.com/documentation/web-api/concepts/quota-modes);
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/), for
   SoulSeek;
-- optionally, `brew install chromaprint`, for duplicate detection.
+- optionally, for duplicate detection, the chromaprint library: `brew
+  install chromaprint` on an Apple silicon Mac. The Intel download
+  carries its own copy.
 
-**The app.** Download `Seeker.dmg` from the
-[latest release](https://github.com/KristiyanDDimitrov/Seeker/releases/latest),
-check it against the release's SHA-256, and drag Seeker to
-Applications. Seeker needs macOS 15 or later on Apple silicon. The
-build is ad-hoc signed, not notarized, so macOS blocks the first
-launch: click Done, then System Settings → Privacy & Security → Open
-Anyway (Control-click → Open no longer works on macOS 15 and later).
+**The app.** The [latest
+release](https://github.com/KristiyanDDimitrov/Seeker/releases/latest)
+has one download for each kind of Mac. To pick yours, open the Apple
+menu → About This Mac. A **Chip** line (Apple M1, M2 and so on) means
+Apple silicon; a **Processor** line (an Intel Core or Xeon) means Intel
+([Apple's guide](https://support.apple.com/en-us/116943)).
+
+| About This Mac shows | Download |
+|---|---|
+| Chip: Apple M1 or later | `Seeker.dmg` |
+| Processor: Intel Core or Xeon | `Seeker-Intel.dmg` |
+
+Both need macOS 15 or later. A release before 0.2.0 has only
+`Seeker.dmg`, the Apple silicon one.
+
+- **The Intel floor is macOS 15 too.** An Intel Mac that cannot run
+  macOS 15 cannot run Seeker. Of the Macs on [Apple's
+  list](https://support.apple.com/en-us/120282) for macOS 15, these are
+  Intel: MacBook Pro (2018 to 2020), MacBook Air (2020), iMac (2019 and
+  2020), iMac Pro (2017), Mac mini (2018) and Mac Pro (2019).
+- **The wrong download.** `Seeker.dmg` is Apple silicon only and does
+  not run on an Intel Mac. `Seeker-Intel.dmg` does run on Apple
+  silicon, through Rosetta 2, but slower; Help → Build names the build
+  you have, and under Rosetta points at the faster download.
+- **How far the Intel build has been tested.** It has been built and
+  smoke-tested under Rosetta, and the test suite passes on GitHub's
+  Intel Macs; [docs/packaging.md](docs/packaging.md) says what has run
+  on a real Intel Mac. Intel support has a horizon (macOS 26 is the
+  last release for Intel Macs, and GitHub's Intel runners retire in
+  fall 2027): the last release that still builds and tests on Intel
+  will be Intel's final version, and this README will say which.
+
+Check the download against the release's SHA-256 (each image has its
+own `.sha256` beside it), and drag Seeker to Applications. The build is
+ad-hoc signed, not notarized, so macOS blocks the first launch: click
+Done, then System Settings → Privacy & Security → Open Anyway
+(Control-click → Open no longer works on macOS 15 and later).
 `Read Me First.txt` on the disk image has the steps, and the Terminal
 alternative.
 
