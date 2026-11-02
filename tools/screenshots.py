@@ -35,6 +35,7 @@ from PySide6.QtCore import QCoreApplication, QEvent, QTimer  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
     QPushButton,
+    QScrollArea,
     QWidget,
 )
 
@@ -96,6 +97,7 @@ from seeker.ui.pages.dashboard_page import DashboardPage  # noqa: E402
 from seeker.ui.pages.duplicates_page import DuplicatesPage  # noqa: E402
 from seeker.ui.pages.search_page import SearchPage  # noqa: E402
 from seeker.ui.pages.sharing_page import SharingPage  # noqa: E402
+from seeker.ui.pages.static_pages import HelpPage  # noqa: E402
 from seeker.ui.pages.tagging_panel import TaggingPanel  # noqa: E402
 from seeker.ui.settings_window import (  # noqa: E402
     SETTINGS_TAB_CONNECTIONS,
@@ -648,6 +650,14 @@ def _open_sharing_explainer(window: MainWindow) -> None:
     page.explainer.toggle.click()
 
 
+def _scroll_help_to_its_end(window: MainWindow) -> None:
+    # The data locations and the Build row end the page, below the fold.
+    scroll_area = child(child(window, HelpPage), QScrollArea)
+    assert isinstance(scroll_area, QScrollArea)
+    scroll_bar = scroll_area.verticalScrollBar()
+    scroll_bar.setValue(scroll_bar.maximum())
+
+
 def _settings_tab(tab_name: str) -> Step:
     def show(window: MainWindow) -> None:
         window.settings_page.select_tab(tab_name)
@@ -658,9 +668,12 @@ def _settings_tab(tab_name: str) -> Step:
 @dataclass(frozen=True)
 class Screen:
     """A named screen, reached by `steps`; the event loop settles after
-    each step, so a click lands on a page that has loaded."""
+    each step, so a click lands on a page that has loaded. `after_resize`
+    runs again at every size: a resize moves a scroll range, so a
+    scrolled position is set there, not in `steps`."""
     name: str
     steps: tuple[Step, ...]
+    after_resize: tuple[Step, ...] = ()
 
 
 SCREENS = [
@@ -681,6 +694,9 @@ SCREENS = [
     Screen("sharing-explained", (nav("Sharing"), _open_sharing_explainer)),
     Screen("history", (nav("History"),)),
     Screen("help", (nav("Help"),)),
+    Screen(
+        "help-build", (nav("Help"),), after_resize=(_scroll_help_to_its_end,),
+    ),
     Screen("support", (nav("Support"),)),
     *(
         Screen(f"settings-{tab_name.lower()}", (
@@ -732,6 +748,9 @@ def capture_window(
             for size in sizes:
                 window.resize(*size)
                 settle(app, window, 0.3)
+                for step in screen.after_resize:
+                    step(window)
+                    settle(app, window)
                 path = name_for(screen.name, size)
                 window.grab().save(str(path))
                 written.append(path)

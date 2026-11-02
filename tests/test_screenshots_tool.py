@@ -73,3 +73,40 @@ def test_every_readme_image_names_a_real_screen(screenshots):
     _file, step, wizard_theme = screenshots.README_WIZARD
     assert step in screenshots.WIZARD_STEPS
     assert wizard_theme in screenshots.THEMES
+
+
+@pytest.mark.usefixtures("_restore_theme")
+def test_help_build_screen_shows_the_build_row_at_every_size(
+        qapp, screenshots, tmp_path, monkeypatch,
+):
+    # The Build row sits below Help's fold at both sizes, so a review of
+    # what it says needs its own scrolled screen; and a resize moves the
+    # scroll range, so the row must still show after each one.
+    from seeker.ui import help_text
+    from seeker.ui.plain_text import PlainLabel
+
+    shown_at_grab: list[bool] = []
+
+    def build_row_shown(window) -> bool:
+        (build_label,) = [
+            label for label in window.findChildren(PlainLabel)
+            if label.text() == help_text.HELP_BUILD_IDENTITY_LABEL
+            and label.isVisible()
+        ]
+        return not build_label.visibleRegion().isEmpty()
+
+    real_grab = screenshots.MainWindow.grab
+
+    def recording_grab(window, *args):
+        shown_at_grab.append(build_row_shown(window))
+        return real_grab(window, *args)
+
+    monkeypatch.setattr(screenshots.MainWindow, "grab", recording_grab)
+
+    (screen,) = [s for s in screenshots.SCREENS if s.name == "help-build"]
+    screenshots.capture_window(
+        qapp, "light", [screen], [(1280, 820), (960, 640)],
+        lambda name, size: tmp_path / f"{name}-{size[0]}.png",
+    )
+
+    assert shown_at_grab == [True, True]
