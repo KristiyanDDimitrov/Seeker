@@ -244,6 +244,30 @@ def test_a_bundle_without_its_resources_fails_their_checks(
     assert "seeker_menubar_Template.png" in checked["detail"]
 
 
+def test_a_check_that_raises_fails_and_the_report_is_still_written(
+        run, monkeypatch, tmp_path,
+):
+    """Frozen by a bundler that sets no `_MEIPASS`: every bundled path
+    raises AttributeError. Each check that resolves one fails with it,
+    and the rest still run. Undone before `run` puts the theme back,
+    which resolves bundled icons too."""
+    report_path = tmp_path / "report.json"
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "frozen", True, raising=False)
+        patch.delattr(sys, "_MEIPASS", raising=False)
+
+        code, printed, err = run(report_path)
+
+    failed = ["theme", "fonts", "icons", "compose_template"]
+    assert code == 1
+    assert printed["failed"] == failed
+    assert json.loads(report_path.read_text()) == printed
+    for name in failed:
+        (checked,) = (c for c in printed["checks"] if c["name"] == name)
+        assert checked["detail"].startswith("AttributeError: ")
+    assert err == f"Smoke test failed: {', '.join(failed)}\n"
+
+
 def test_the_analysis_check_finds_the_click_tracks_tempo_twice(run):
     _code, printed, _err = run()
 

@@ -165,19 +165,19 @@ def run_smoke_test(request: SmokeTestRequest) -> int:
         python=platform.python_version(),
     )
 
-    imports, report.modules_imported = _check_imports()
-    report.checks.append(imports)
-    report.checks.append(_check_hidden_imports())
-    report.checks.append(_check_platform_plugin())
-
     app = _application()
     report.platform = app.platformName()
-    report.checks.append(_check_theme(app))
-    report.checks.append(_check_fonts())
-    report.checks.append(_check_icons())
-    report.checks.append(_check_compose_template())
-    analysis, report.analysis = _check_analysis()
-    report.checks.append(analysis)
+    checks: list[tuple[str, Callable[[], CheckResult]]] = [
+        ("imports", lambda: _check_imports(report)),
+        ("hidden_imports", _check_hidden_imports),
+        ("platform_plugin", _check_platform_plugin),
+        ("theme", lambda: _check_theme(app)),
+        ("fonts", _check_fonts),
+        ("icons", _check_icons),
+        ("compose_template", _check_compose_template),
+        ("analysis", lambda: _check_analysis(report)),
+    ]
+    report.checks.extend(_run_check(name, check) for name, check in checks)
     report.chromaprint_available = fingerprint.is_available()
 
     text = report.to_json()
@@ -188,6 +188,15 @@ def run_smoke_test(request: SmokeTestRequest) -> int:
         print(f"Smoke test failed: {', '.join(report.failed)}", file=sys.stderr)
         return 1
     return 0
+
+
+def _run_check(name: str, check: Callable[[], CheckResult]) -> CheckResult:
+    """The check's result, or a failure naming what it raised: one
+    broken check must not cost the report the others."""
+    try:
+        return check()
+    except Exception as error:  # whatever a check raises is its finding
+        return CheckResult(name, passed=False, detail=_describe(error))
 
 
 def _package_version() -> str:
@@ -208,10 +217,11 @@ def _application() -> QApplication:
     return existing
 
 
-def _check_imports() -> tuple[CheckResult, int]:
-    """Imports every module of the `seeker` package. The walk must find
-    this module: one that sees nothing inside a frozen archive would
-    otherwise pass with nothing imported."""
+def _check_imports(report: SmokeReport) -> CheckResult:
+    """Imports every module of the `seeker` package, counting them in
+    `report`. The walk must find this module: one that sees nothing
+    inside a frozen archive would otherwise pass with nothing
+    imported."""
     problems: list[str] = []
 
     def on_walk_error(name: str) -> None:
@@ -228,16 +238,17 @@ def _check_imports() -> tuple[CheckResult, int]:
             f"The package walk found {len(names)} modules, not including "
             f"{__name__}, so it cannot have seen the package.",
         )
-    imported = 0
     for name in names:
         try:
             importlib.import_module(name)
         except Exception as error:  # any failure to import is the finding
             problems.append(f"{name}: {_describe(error)}")
         else:
-            imported += 1
-    detail = "; ".join(problems) or f"Imported {imported} modules."
-    return CheckResult("imports", not problems, detail), imported
+            report.modules_imported += 1
+    detail = "; ".join(problems) or (
+        f"Imported {report.modules_imported} modules."
+    )
+    return CheckResult("imports", not problems, detail)
 
 
 def _check_hidden_imports() -> CheckResult:
@@ -434,9 +445,10 @@ def _timed_analysis(path: Path) -> tuple[float, float]:
     return bpm, time.perf_counter() - started
 
 
-def _check_analysis() -> tuple[CheckResult, AnalysisTiming | None]:
+def _check_analysis(report: SmokeReport) -> CheckResult:
     """Analyses a generated click track twice, as tagging does a file:
-    numba's JIT, inside a bundle too, and the tempo it finds."""
+    numba's JIT, inside a bundle too, and the tempo it finds, timed in
+    `report`."""
     with tempfile.TemporaryDirectory(prefix="seeker-smoke-test-") as directory:
         path = Path(directory) / "click.wav"
         try:
@@ -444,8 +456,8 @@ def _check_analysis() -> tuple[CheckResult, AnalysisTiming | None]:
             cold_bpm, cold_seconds = _timed_analysis(path)
             warm_bpm, warm_seconds = _timed_analysis(path)
         except Exception as error:  # any failure to analyse is the finding
-            return CheckResult("analysis", False, _describe(error)), None
-    timing = AnalysisTiming(
+            return CheckResult("analysis", False, _describe(error))
+    report.analysis = AnalysisTiming(
         expected_bpm=CLICK_BPM,
         cold_bpm=cold_bpm,
         warm_bpm=warm_bpm,
@@ -459,9 +471,9 @@ def _check_analysis() -> tuple[CheckResult, AnalysisTiming | None]:
     if wrong:
         found = " and ".join(f"{bpm:g}" for bpm in wrong)
         detail = f"Found {found} BPM in a {CLICK_BPM:.2f} BPM click track."
-        return CheckResult("analysis", False, detail), timing
+        return CheckResult("analysis", False, detail)
     detail = (
         f"Found {cold_bpm:.2f} BPM in {cold_seconds:.2f} s, "
         f"then in {warm_seconds:.2f} s."
     )
-    return CheckResult("analysis", True, detail), timing
+    return CheckResult("analysis", True, detail)
