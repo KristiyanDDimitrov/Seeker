@@ -125,12 +125,19 @@ datas = [
     (str(ICONS_DIR), "icons"),
     (str(SPEC_DIR / "fonts"), "fonts"),
     *bundle_info.license_datas(PROJECT_ROOT),
+    *bundle_info.chromaprint_license_datas(bundle_info.target_architecture()),
 ]
+
+# The Intel build ships libchromaprint at the bundle's resource root,
+# where audio/fingerprint.py looks first.
+binaries = bundle_info.chromaprint_binaries(
+    bundle_info.target_architecture(), PROJECT_ROOT / "build" / "chromaprint",
+)
 
 a = Analysis(
     [str(SPEC_DIR / "entrypoint.py")],
     pathex=[str(SRC_DIR)],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     # Imported only inside functions, which PyInstaller's scanner does
     # not follow; the smoke test imports the same list.

@@ -147,7 +147,7 @@ against its upstream security notes.
 | OpenSSL | 3.5.7 | Python 3.13.15 | no |
 | SQLite | 3.53.1 | Python 3.13.15 | no |
 | ffmpeg | 9.0.1 | Homebrew, not bundled | yes: fingerprints |
-| libchromaprint | 1.6.1 | Homebrew, not bundled | decoded audio only |
+| libchromaprint | 1.6.1 | Intel bundle: Homebrew's x86_64 copy, staged by the spec; arm64: Homebrew, not bundled | decoded audio only |
 
 The bundled four, from the environment the build uses:
 

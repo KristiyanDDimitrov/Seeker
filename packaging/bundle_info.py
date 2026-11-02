@@ -7,6 +7,7 @@ copyright LICENSE's own line, a licence text the wheel's own.
 
 import platform
 import re
+import shutil
 import sys
 import sysconfig
 import tomllib
@@ -192,3 +193,49 @@ def license_datas(project_root: Path) -> list[tuple[str, str]]:
             for text in vendored
         ]
     return datas
+
+
+# The Intel bundle ships libchromaprint; the arm64 one finds the user's
+# Homebrew copy (audio/fingerprint.py searches _MEIPASS first, then the
+# Homebrew prefixes). Intel Homebrew installs to /usr/local/lib, the
+# prefix the Intel build runs on.
+CHROMAPRINT_LIBRARY = "libchromaprint.1.dylib"
+INTEL_HOMEBREW_LIB = Path("/usr/local/lib")
+CHROMAPRINT_LICENSE_TEXTS = ("Chromaprint-LICENSE.md", "LGPL-2.1.txt")
+
+
+def chromaprint_binaries(
+    architecture: str,
+    staging_dir: Path,
+    library_dir: Path = INTEL_HOMEBREW_LIB,
+) -> list[tuple[str, str]]:
+    """PyInstaller `binaries` for libchromaprint: the Intel build's
+    copy, staged under the soname fingerprint.py loads (Homebrew keeps
+    the real file under a versioned name), or nothing for arm64.
+
+    Raises FileNotFoundError when the Intel build has no library to
+    ship, so a build never silently loses fingerprinting.
+    """
+    if architecture != "x86_64":
+        return []
+    source = library_dir / CHROMAPRINT_LIBRARY
+    if not source.is_file():
+        raise FileNotFoundError(
+            f"{source} is missing: run `brew install chromaprint` on the "
+            f"Intel build machine."
+        )
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    staged = staging_dir / CHROMAPRINT_LIBRARY
+    shutil.copyfile(source, staged)  # follows the symlink
+    return [(str(staged), ".")]
+
+
+def chromaprint_license_datas(architecture: str) -> list[tuple[str, str]]:
+    """PyInstaller `datas` for the texts that go with the library: its
+    own MIT-and-LGPL-2.1 notice and the LGPL-2.1 itself."""
+    if architecture != "x86_64":
+        return []
+    return [
+        (str(VENDORED_LICENSES_DIR / text), f"{LICENSES_DIR}/chromaprint")
+        for text in CHROMAPRINT_LICENSE_TEXTS
+    ]

@@ -5,6 +5,8 @@ import importlib.util
 import tomllib
 from pathlib import Path
 
+import pytest
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -121,6 +123,10 @@ def test_vendored_licence_texts_are_the_published_ones():
     }
 
     assert digests == {
+        "Chromaprint-LICENSE.md":
+            "562cfe59627e0c4e8e3b066f3ff2e9736f83811ffe4c6c2c7796595aa7595ebd",
+        "LGPL-2.1.txt":
+            "20e50fe7aae3e56378ebf0417d9de904f55a0e61e4df315333e632a4d3555d95",
         "GPL-3.0.txt":
             "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
         "LGPL-3.0.txt":
@@ -165,3 +171,55 @@ def test_spec_builds_for_the_architecture_explicitly():
 
     assert "target_arch=bundle_info.target_architecture()" in spec
     assert "target_arch=None" not in spec
+
+
+def test_the_intel_bundle_carries_a_staged_libchromaprint(tmp_path):
+    """The dylib a frozen app looks for is named for its soname, and
+    Homebrew keeps the real file under a versioned name."""
+    bundle_info = _load_bundle_info()
+    library_dir = tmp_path / "lib"
+    library_dir.mkdir()
+    real = library_dir / "libchromaprint.1.6.1.dylib"
+    real.write_bytes(b"x86_64 dylib")
+    (library_dir / "libchromaprint.1.dylib").symlink_to(real.name)
+
+    binaries = bundle_info.chromaprint_binaries(
+        "x86_64", tmp_path / "stage", library_dir,
+    )
+
+    staged = tmp_path / "stage" / "libchromaprint.1.dylib"
+    assert binaries == [(str(staged), ".")]
+    assert not staged.is_symlink()
+    assert staged.read_bytes() == b"x86_64 dylib"
+
+
+def test_the_arm64_bundle_stages_no_libchromaprint(tmp_path):
+    assert _load_bundle_info().chromaprint_binaries(
+        "arm64", tmp_path / "stage", tmp_path,
+    ) == []
+
+
+def test_an_intel_build_without_libchromaprint_fails(tmp_path):
+    with pytest.raises(FileNotFoundError, match="brew install chromaprint"):
+        _load_bundle_info().chromaprint_binaries(
+            "x86_64", tmp_path / "stage", tmp_path,
+        )
+
+
+def test_the_intel_bundle_ships_chromaprints_licence_texts():
+    bundle_info = _load_bundle_info()
+
+    datas = bundle_info.chromaprint_license_datas("x86_64")
+
+    assert sorted(Path(source).name for source, _ in datas) == [
+        "Chromaprint-LICENSE.md", "LGPL-2.1.txt",
+    ]
+    assert {folder for _, folder in datas} == {"licenses/chromaprint"}
+    assert bundle_info.chromaprint_license_datas("arm64") == []
+
+
+def test_spec_bundles_libchromaprint_through_bundle_info():
+    spec = (PROJECT_ROOT / "packaging" / "seeker.spec").read_text()
+
+    assert "bundle_info.chromaprint_binaries(" in spec
+    assert "bundle_info.chromaprint_license_datas(" in spec
