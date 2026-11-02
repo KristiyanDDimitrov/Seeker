@@ -1,4 +1,5 @@
 import threading
+import time
 from dataclasses import replace
 
 import pytest
@@ -13,7 +14,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
 )
 
-from fakes import FakeApplication, wait_for_workers
+from fakes import FakeApplication, settle_workers, wait_for_workers
 from seeker.application import Application
 from seeker.login_item import LoginItemStatus
 from seeker.models.library_location import LibraryLocation
@@ -2007,6 +2008,7 @@ def _show_short_page(
     window.show()
     qtbot.waitExposed(window)
     window.select_tab(tab_name)
+    settle_workers(window)
 
 
 def _scroll_to_the_bottom(window: SettingsPage) -> None:
@@ -2153,6 +2155,29 @@ def test_a_tab_with_no_notice_showing_keeps_no_gap_above_its_body(
         == top_before,
         timeout=2000,
     )
+
+
+def test_a_page_shown_on_the_connections_tab_is_settled_when_the_helper_returns(
+        qtbot, tmp_path, monkeypatch,
+):
+    # The tab's Docker read runs on a worker. A test that ended before
+    # it returned left it to run in a later test, past this test's fake
+    # (or before that test's own), and the guard failed the later test.
+    application = make_application(tmp_path, monkeypatch)
+    real_defaults = application.slskd_start_defaults
+
+    def slow_defaults():
+        time.sleep(0.3)
+        return real_defaults()
+
+    monkeypatch.setattr(application, "slskd_start_defaults", slow_defaults)
+    _fake_live_mounts(monkeypatch, {})
+    window = SettingsPage(application)
+    qtbot.addWidget(window)
+
+    _show_short_page(qtbot, window, settings_window.SETTINGS_TAB_CONNECTIONS)
+
+    assert window.slskd_data_dir_field.text() != ""
 
 
 @pytest.mark.parametrize(

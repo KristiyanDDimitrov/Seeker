@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
+from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import (
     QMessageBox,
     QSystemTrayIcon,
@@ -1176,3 +1177,29 @@ def wait_for_workers(window) -> None:
     dialog a wrongly started worker would open cannot block the test.
     """
     assert window.thread_pool.waitForDone(2000)
+
+
+def settle_workers(window) -> None:
+    """Blocks until every worker the window started has returned and
+    its result has been handled, on the window while it is alive.
+
+    For a test that ends without a click or a wait of its own: a worker
+    still running then outlives the test, and its Docker read lands in
+    the next test, past this one's fake (the guard fails that test, not
+    this one). A handler that starts a worker of its own is followed:
+    it ends on the second round in a row that finds the pool idle after
+    its events. Unlike `wait_for_workers`, this processes events, so
+    use it where no worker can open a dialog.
+    """
+    idle_rounds = 0
+
+    for _ in range(20):
+        wait_for_workers(window)
+        QCoreApplication.processEvents()
+        idle = window.thread_pool.activeThreadCount() == 0
+        idle_rounds = idle_rounds + 1 if idle else 0
+
+        if idle_rounds == 2:
+            return
+
+    raise AssertionError("a window's workers keep starting workers")
