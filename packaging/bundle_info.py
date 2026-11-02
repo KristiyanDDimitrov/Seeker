@@ -197,8 +197,8 @@ def license_datas(project_root: Path) -> list[tuple[str, str]]:
 
 # The Intel bundle ships libchromaprint; the arm64 one finds the user's
 # Homebrew copy (audio/fingerprint.py searches _MEIPASS first, then the
-# Homebrew prefixes). Intel Homebrew installs to /usr/local/lib, the
-# prefix the Intel build runs on.
+# Homebrew prefixes). packaging/build_chromaprint.sh installs the Intel
+# copy to /usr/local/lib, the prefix Intel Homebrew used.
 CHROMAPRINT_LIBRARY = "libchromaprint.1.dylib"
 INTEL_HOMEBREW_LIB = Path("/usr/local/lib")
 CHROMAPRINT_LICENSE_TEXTS = ("Chromaprint-LICENSE.md", "LGPL-2.1.txt")
@@ -221,8 +221,8 @@ def chromaprint_binaries(
     source = library_dir / CHROMAPRINT_LIBRARY
     if not source.is_file():
         raise FileNotFoundError(
-            f"{source} is missing: run `brew install chromaprint` on the "
-            f"Intel build machine."
+            f"{source} is missing: run packaging/build_chromaprint.sh on "
+            f"the Intel build machine."
         )
     staging_dir.mkdir(parents=True, exist_ok=True)
     staged = staging_dir / CHROMAPRINT_LIBRARY

@@ -200,7 +200,7 @@ def test_the_arm64_bundle_stages_no_libchromaprint(tmp_path):
 
 
 def test_an_intel_build_without_libchromaprint_fails(tmp_path):
-    with pytest.raises(FileNotFoundError, match="brew install chromaprint"):
+    with pytest.raises(FileNotFoundError, match=r"build_chromaprint\.sh"):
         _load_bundle_info().chromaprint_binaries(
             "x86_64", tmp_path / "stage", tmp_path,
         )
