@@ -158,7 +158,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch=None,
+    target_arch=bundle_info.target_architecture(),
     icon=EXE_ICON,
     # Signing hook point (out of scope here, see module docstring):
     codesign_identity=None,

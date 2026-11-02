@@ -5,6 +5,7 @@ Each value has one source: the version is pyproject.toml's, the
 copyright LICENSE's own line, a licence text the wheel's own.
 """
 
+import platform
 import re
 import sys
 import sysconfig
@@ -26,6 +27,23 @@ BUNDLE_IDENTIFIER = "io.github.kristiyanddimitrov.seeker"
 # anyway is UNVERIFIED; this makes Launch Services refuse it plainly.
 # Re-measure after a PySide6, scipy or Python upgrade (HISTORY §214).
 MINIMUM_SYSTEM_VERSION = "15.0"
+
+SUPPORTED_ARCHITECTURES = ("arm64", "x86_64")
+
+
+def target_architecture(machine: str | None = None) -> str:
+    """The architecture this build targets: the building interpreter's,
+    passed to PyInstaller's `target_arch` so each bundle is one
+    architecture on purpose, never by default. `machine` is
+    `platform.machine()`'s value (macOS says `arm64` or `x86_64`).
+    """
+    machine = platform.machine() if machine is None else machine
+    if machine not in SUPPORTED_ARCHITECTURES:
+        raise ValueError(
+            f"Cannot build for {machine!r}: the macOS app is built for "
+            f"{' or '.join(SUPPORTED_ARCHITECTURES)}."
+        )
+    return machine
 
 
 def project_version(project_root: Path) -> str:

@@ -144,3 +144,24 @@ def test_bundled_licence_files_never_overwrite_each_other():
     datas = _license_datas()
 
     assert len(_bundled_files(datas)) == len(datas)
+
+
+def test_target_architecture_follows_the_building_interpreter():
+    bundle_info = _load_bundle_info()
+
+    assert bundle_info.target_architecture("arm64") == "arm64"
+    assert bundle_info.target_architecture("x86_64") == "x86_64"
+
+
+def test_target_architecture_refuses_anything_else():
+    import pytest
+
+    with pytest.raises(ValueError, match="AMD64"):
+        _load_bundle_info().target_architecture("AMD64")
+
+
+def test_spec_builds_for_the_architecture_explicitly():
+    spec = (PROJECT_ROOT / "packaging" / "seeker.spec").read_text()
+
+    assert "target_arch=bundle_info.target_architecture()" in spec
+    assert "target_arch=None" not in spec
