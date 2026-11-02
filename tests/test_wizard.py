@@ -16,7 +16,7 @@ from seeker.soulseek.docker_setup import (
 )
 from seeker.spotify.callback_server import AuthorizationCancelledError
 from seeker.ui import status_lamp
-from seeker.ui.plain_text import plain_tooltip
+from seeker.ui.plain_text import PlainLabel, plain_tooltip
 from seeker.ui.wizard import OnboardingWizard
 
 
@@ -103,6 +103,25 @@ def test_wizard_starts_at_spotify_step_when_nothing_configured(
     qtbot.addWidget(wizard)
 
     assert wizard.stack.currentIndex() == 0
+
+
+def test_spotify_step_says_the_app_owner_needs_premium(
+        qtbot, tmp_path, monkeypatch,
+):
+    # Spotify's Development Mode works only while the app's owner has
+    # Premium, and every Seeker user owns the app they register, so the
+    # step that asks them to create it says so, in the instruction that
+    # sends them to the Developer Dashboard.
+    application = make_application(tmp_path, monkeypatch)
+    wizard = OnboardingWizard(application, on_complete=lambda: None)
+    qtbot.addWidget(wizard)
+
+    spotify_page = wizard.stack.widget(0)
+    texts = [label.text() for label in spotify_page.findChildren(PlainLabel)]
+    premium = [text for text in texts if "Premium" in text]
+
+    assert len(premium) == 1
+    assert "Spotify Developer Dashboard" in premium[0]
 
 
 def test_wizard_resumes_at_library_step_when_spotify_already_configured(

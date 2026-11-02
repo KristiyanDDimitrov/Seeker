@@ -238,7 +238,9 @@ class OnboardingWizard(QMainWindow):
         steps.setColumnStretch(1, 1)
         instructions: tuple[tuple[str, QWidget | QLayout], ...] = (
             (
-                "Create an app on the Spotify Developer Dashboard.",
+                "Create an app on the Spotify Developer Dashboard. "
+                "Spotify requires the account that owns it to have "
+                "Premium.",
                 theme.action_row(dashboard_button),
             ),
             (
