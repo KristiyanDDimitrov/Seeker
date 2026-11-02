@@ -65,9 +65,12 @@ jobs:
         if: matrix.architecture == 'arm64'
         run: brew install chromaprint
       # The Intel app ships it: the build stages /usr/local/lib's copy.
-      - name: Install libchromaprint (bundled into the Intel app)
+      # Built from a pinned source, not installed by Homebrew, which no
+      # longer builds Intel bottles (the script says what that costs).
+      - name: Build libchromaprint (bundled into the Intel app)
         if: matrix.architecture == 'x86_64'
-        run: brew install chromaprint
+        timeout-minutes: 15
+        run: packaging/build_chromaprint.sh
       - run: uv sync --locked
       # Fails when a Mach-O lacks the architecture or needs a newer macOS
       # than the bundle declares (bundle_check.py), before the image.

@@ -32,7 +32,10 @@ BUNDLE_INFO = _packaging_module("bundle_info")
 
 
 def _steps() -> list[str]:
+    """The steps without their comment lines, which sit above the step
+    they describe and would otherwise land in the one before."""
     body = BUILD.split("\n    steps:\n", 1)[1]
+    body = re.sub(r"^ *#.*\n", "", body, flags=re.MULTILINE)
     return re.split(r"^      - ", body, flags=re.MULTILINE)[1:]
 
 
@@ -102,7 +105,7 @@ def test_image_names_come_from_the_build_not_the_workflow():
 
 def test_the_job_and_its_long_steps_have_timeouts():
     assert re.search(r"^    timeout-minutes: \d+$", _header(), re.MULTILINE)
-    for fragment in ("build_dmg.py", "--smoke-test"):
+    for fragment in ("build_chromaprint.sh", "build_dmg.py", "--smoke-test"):
         assert re.search(r"timeout-minutes: \d+", _step(fragment)), fragment
 
 
@@ -173,6 +176,8 @@ def test_the_intel_app_gets_a_libchromaprint_before_it_is_built():
     step = _step("libchromaprint (bundled")
 
     assert "if: matrix.architecture == 'x86_64'" in step
+    assert "run: packaging/build_chromaprint.sh" in step
+    assert "brew" not in step
     assert _index("libchromaprint (bundled") < _index("build_dmg.py")
 
 
