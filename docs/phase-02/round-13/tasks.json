@@ -196,7 +196,7 @@
       "id": "S6", "title": "target_arch explicit; per-architecture names; the post-build lipo/minos check (PF-02, PF-04)",
       "type": "feature", "executes": "BRIEF.md §6 steps 1-2", "depends_on": ["S5b"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 3,
-      "est_work_k": 65, "est_peak_k": 119, "actual_peak_k": null,
+      "est_work_k": 65, "est_peak_k": 119, "actual_peak_k": 75,
       "split_point": "After step 1, with both bundle sizes",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "424-469", "est_k": 0.6},
@@ -206,7 +206,7 @@
         {"path": "packaging/bundle_info.py", "range": "1-60", "est_k": 0.6},
         {"path": "docs/history/README.md", "range": "grep -n '§214', then the entry's range", "est_k": 1.0}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["9193c22", "1350269", "cb487bd", "4f6e528", "55e9696"], "history": 259
     },
     {
       "id": "S6b", "title": "The Intel app built under Rosetta: post-build check, smoke test, timings",

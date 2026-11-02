@@ -47,6 +47,12 @@ investigation; `docs/history/README.md` resolves any `§N`.
   there. The spec also writes `module_manifest.txt` (the source tree's
   modules less the CLI's) into the bundle; frozen, the import check
   fails a module the walk lacks. [§256](../docs/history/241-270.md#256), [§257](../docs/history/241-270.md#257)
+- **The spec sets `target_arch` from `bundle_info.target_architecture()`;
+  `build_dmg.py` names the image by architecture (`Seeker.dmg`,
+  `Seeker-Intel.dmg`) and fails the build through
+  `bundle_check.check_bundle` when a Mach-O lacks the architecture, the
+  main executable is not thin or a `minos` exceeds
+  `MINIMUM_SYSTEM_VERSION`. [§259](../docs/history/241-270.md#259)
 - **Intel Macs are pinned to numba < 0.63, llvmlite < 0.46, numpy <
   2.4** (the last x86_64 wheels) by marker-scoped `[tool.uv]
   constraint-dependencies`, which fork `uv.lock`; permanent.
