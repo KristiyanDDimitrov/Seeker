@@ -67,10 +67,18 @@ platform, plus `dist/Seeker.app` on macOS.
 uv run python packaging/build_dmg.py
 ```
 
-This runs the PyInstaller build, then
+This runs the PyInstaller build, checks the bundle, then
 [`dmgbuild`](https://dmgbuild.readthedocs.io/) with
-`packaging/dmg_settings.py`, producing `dist/Seeker.dmg`. The two steps
-can also run on their own:
+`packaging/dmg_settings.py`, producing `dist/Seeker.dmg` on Apple
+silicon and `dist/Seeker-Intel.dmg` on Intel (`bundle_check.dmg_name`).
+The spec builds the interpreter's architecture on purpose
+(`bundle_info.target_architecture()` as PyInstaller's `target_arch`).
+The check, `bundle_check.check_bundle`, runs `lipo` and `otool` over
+every Mach-O in the app: each must carry that architecture, the main
+executable must be thin, and no `minos` may exceed
+`MINIMUM_SYSTEM_VERSION`; a failure stops the build before `dmgbuild`.
+The two steps can also run on their own (the DMG name below is the
+Apple silicon one):
 
 ```
 uv run pyinstaller --noconfirm --clean packaging/seeker.spec

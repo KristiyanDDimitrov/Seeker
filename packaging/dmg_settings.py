@@ -10,7 +10,9 @@ top-level name assigned here becomes (or overrides) one of those
 options; `defines` is injected by dmgbuild itself from `-D key=value`
 CLI flags, not something this file defines.
 
-Usage (see packaging/build_dmg.py for the one-command version):
+Usage (see packaging/build_dmg.py for the one-command version; the
+image is Seeker.dmg on arm64 and Seeker-Intel.dmg on x86_64, named by
+bundle_check.dmg_name):
 
     uv run pyinstaller --noconfirm --clean packaging/seeker.spec
     uv run dmgbuild -s packaging/dmg_settings.py -Dapp=dist/Seeker.app \
