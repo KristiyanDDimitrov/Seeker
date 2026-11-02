@@ -306,9 +306,11 @@ libc++.1. PyInstaller warned, on Intel only, that
 `sklearn/.dylibs/libomp.dylib` has an invalid macOS SDK version (a
 warning, not a failure). This verifies the build and the headless smoke
 test on GitHub's Intel runner, not an app launched by a person on a
-user's Mac. A branch push triggered the run, and `workflow_dispatch`
-needs the file on `main`, so a dispatched run follows the merge.
-<!-- S7-PENDING: dispatched run id and date -->
+user's Mac. A branch push triggered that run. A `workflow_dispatch` run
+on `main` (`41547216451`, 2026-11-02 23:40 UTC) was green too: Intel
+6 m 44 s, cold analysis 14.30 s, warm 0.297 s; Apple silicon 4 m 00 s,
+cold 9.51 s, warm 0.084 s. The Intel runner's cold analysis ranged from
+10.9 s to 23.3 s over four runs: quote no single figure.
 [HISTORY §262](history/241-270.md#262)
 
 **The Intel suite on real Intel hardware** ran on 2026-11-02 on
