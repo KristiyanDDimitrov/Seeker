@@ -18,7 +18,7 @@ from fakes import (
     confirm_yes,
     make_location,
 )
-from seeker.ui import help_text, plain_text, status_lamp
+from seeker.ui import help_text, plain_text, status_lamp, workers
 from seeker.ui.elided_text import SECONDARY_ROLE
 from seeker.ui.main_window import MainWindow
 from seeker.ui.pages.sharing_page import _upload_state
@@ -625,9 +625,16 @@ def test_quit_stops_the_wait_for_a_new_share(qtbot, monkeypatch):
     locations_table = window._sharing_page.sharing_locations_table
     qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=2000)
 
+    in_flight_before = len(workers._callbacks)
     locations_table.cellWidget(0, 4).findChild(QPushButton).click()
     assert sharing_service.started.wait(2)
     window.cleanup_before_quit()
 
     assert window.thread_pool.waitForDone(2000)
     assert sharing_service.stopped
+    # The flow ends when the worker's finished handler has run, not when
+    # the thread returns: a handler still queued fires in the next
+    # test's setup, after this window is deleted.
+    qtbot.waitUntil(
+        lambda: len(workers._callbacks) == in_flight_before, timeout=2000,
+    )
