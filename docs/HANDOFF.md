@@ -55,6 +55,9 @@ S9's Code half (the lead), then Kris's gate; wave 5 is S10 (solo).
 
 ## 5. Decisions made
 
+- Kris (2026-11-02): numpy split `>=2.5.2` off Intel, `>=2.3` on it
+  (`07157c4`); the lead merged Dependabot #14 (setup-uv 10.3.3, green
+  on its rebase, `0b7497a`): S7 copies the new pin.
 - S5 click track at 123.05 BPM (§256). S6's check reports a failing
   lipo/otool as a problem rather than skipping it (§259).
 
@@ -71,10 +74,6 @@ None.
 - **Intel app has no fingerprinting** (§260): the bundle holds no
   libchromaprint (the arm64 app has it). Bundle an x86_64 build of it,
   or ship Intel without? S7 and the release notes depend on it.
-- **numpy's floor** (§253 Open): global `>=2.3`, or `>=2.5.2` off Intel
-  and `>=2.3` on it. The lead recommends the split.
-- **Dependabot #14** (setup-uv 10.3.2 -> 10.3.3, green): approve? It
-  touches `ci.yml`.
 - #1, #5, #7, #8 are still open though their changes are on `main`.
 - `/context` at the next lead's start.
 - Later: S9's Intel image test (BRIEF §9); S10's outward steps.
