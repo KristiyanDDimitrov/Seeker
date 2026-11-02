@@ -82,20 +82,21 @@ You need:
   41537431447](https://github.com/KristiyanDDimitrov/Seeker/actions/runs/41537431447)),
   though not yet on an Intel Mac of anyone's own.
 
-**The app.** The [latest
+**The app.** From 0.2.0, the [latest
 release](https://github.com/KristiyanDDimitrov/Seeker/releases/latest)
 has one download for each kind of Mac. To pick yours, open the Apple
 menu → About This Mac. A **Chip** line (Apple M1, M2 and so on) means
 Apple silicon; a **Processor** line (an Intel Core or Xeon) means Intel
 ([Apple's guide](https://support.apple.com/en-us/116943)).
 
-| About This Mac shows | Download |
+| About This Mac shows | Download (from 0.2.0) |
 |---|---|
 | Chip: Apple M1 or later | `Seeker.dmg` |
 | Processor: Intel Core or Xeon | `Seeker-Intel.dmg` |
 
-Both need macOS 15 or later. A release before 0.2.0 has only
-`Seeker.dmg`, the Apple silicon one.
+Both need macOS 15 or later. Until 0.2.0 is published, the latest
+release (0.1.1) has only `Seeker.dmg`, the Apple silicon image, so an
+Intel Mac has no download yet.
 
 - **The Intel floor is macOS 15 too.** An Intel Mac that cannot run
   macOS 15 cannot run Seeker. Of the Macs on [Apple's
