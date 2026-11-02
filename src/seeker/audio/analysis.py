@@ -5,6 +5,10 @@ from typing import Any
 import librosa
 import numpy as np
 
+# The rate every file is resampled to before analysis. librosa's tempo
+# estimate steps in whole lags of its 512-sample hop at this rate.
+SAMPLE_RATE = 22_050
+
 # Krumhansl-Schmuckler key profiles — standard, well-established empirical
 # pitch-class weightings for major/minor tonality perception. Index 0 is
 # C, matching librosa's chroma bin convention (chroma bin 0 is always C —
@@ -57,7 +61,7 @@ def analyze_audio(
     # format (wav/mp3/flac/m4a all go through the same path via
     # soundfile/audioread), so this needs no per-format branching, unlike
     # audio/tags.py's tag writers.
-    y, sr = librosa.load(str(file_path), sr=22050, mono=True)
+    y, sr = librosa.load(str(file_path), sr=SAMPLE_RATE, mono=True)
 
     # beat_track's `prior` biases its internal tempo search — confirmed
     # live, a uniform prior over 70-90 BPM changed a real 161.5 BPM

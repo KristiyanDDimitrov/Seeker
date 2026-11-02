@@ -37,7 +37,7 @@ from PySide6.QtWidgets import QApplication
 import seeker
 from seeker import _build_info, cpu_architecture
 from seeker.audio import fingerprint
-from seeker.audio.analysis import analyze_audio
+from seeker.audio.analysis import SAMPLE_RATE, analyze_audio
 from seeker.soulseek import docker_setup
 from seeker.ui import icons, theme, tray
 
@@ -47,13 +47,13 @@ SMOKE_TEST_FLAG = "--smoke-test"
 # sets (theme.WEIGHT_MEDIUM, theme.WEIGHT_SEMIBOLD).
 _DISPLAY_STYLES = ("Medium", "SemiBold")
 
-# analyze_audio loads at 22,050 Hz, and librosa's tempo estimate steps
-# in whole lags of its 512-sample hop: it can report only
-# 60 * 22050 / (512 * lag) BPM. 120 BPM falls between lags 22 and 21
-# (117.45 and 123.05; a 120 BPM click measured 117.45), so the click
-# runs at lag 21's tempo, which the estimate reaches exactly.
-_SAMPLE_RATE = 22_050
-CLICK_BPM = 60 * _SAMPLE_RATE / (512 * 21)
+# librosa's tempo estimate steps in whole lags of its 512-sample hop at
+# analyze_audio's SAMPLE_RATE: it can report only
+# 60 * SAMPLE_RATE / (512 * lag) BPM. At 22,050 Hz 120 BPM falls between
+# lags 22 and 21 (117.45 and 123.05; a 120 BPM click measured 117.45),
+# so the click runs at lag 21's tempo, which the estimate reaches
+# exactly.
+CLICK_BPM = 60 * SAMPLE_RATE / (512 * 21)
 _CLICK_SECONDS = 10.0
 _BPM_TOLERANCE = 2.0
 
@@ -331,17 +331,17 @@ def _check_compose_template() -> CheckResult:
 
 def _write_click_track(path: Path) -> None:
     """A 16-bit mono WAV of 10 ms 1 kHz clicks at `CLICK_BPM`."""
-    samples = np.zeros(round(_CLICK_SECONDS * _SAMPLE_RATE))
-    times = np.arange(round(0.01 * _SAMPLE_RATE)) / _SAMPLE_RATE
+    samples = np.zeros(round(_CLICK_SECONDS * SAMPLE_RATE))
+    times = np.arange(round(0.01 * SAMPLE_RATE)) / SAMPLE_RATE
     click = np.sin(2 * np.pi * 1000 * times) * np.exp(-400 * times)
-    period = 60 / CLICK_BPM * _SAMPLE_RATE
+    period = 60 / CLICK_BPM * SAMPLE_RATE
     for start in np.arange(0, len(samples) - len(click), period).round():
         samples[int(start):int(start) + len(click)] = click
     pcm = (samples * 0.8 * np.iinfo(np.int16).max).astype("<i2")
     with wave.open(str(path), "wb") as output:
         output.setnchannels(1)
         output.setsampwidth(2)
-        output.setframerate(_SAMPLE_RATE)
+        output.setframerate(SAMPLE_RATE)
         output.writeframes(pcm.tobytes())
 
 
