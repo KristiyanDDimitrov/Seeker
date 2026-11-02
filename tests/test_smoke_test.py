@@ -19,10 +19,29 @@ from seeker.ui import icons, smoke_test, theme
 
 SRC_SEEKER = Path(smoke_test.__file__).resolve().parents[1]
 SPEC = SRC_SEEKER.parents[1] / "packaging" / "seeker.spec"
+# A frozen build's identity, as build_dmg.py generates it.
+BUILT = "v0.1.0-3-gabc1234"
 CHECKS = [
-    "imports", "hidden_imports", "platform_plugin", "theme", "fonts",
+    "build_identity", "imports", "hidden_imports", "platform_plugin", "theme", "fonts",
     "icons", "compose_template", "analysis",
 ]
+
+
+@pytest.fixture
+def frozen_bundle(monkeypatch, tmp_path):
+    """Frozen, with `_MEIPASS` holding what the spec bundles (linked
+    from the source tree), so only what a test changes can fail."""
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    packaging = SRC_SEEKER.parents[1] / "packaging"
+    for name in ("fonts", "icons"):
+        (bundle / name).symlink_to(packaging / name)
+    (bundle / "docker-compose.yml").symlink_to(
+        SRC_SEEKER.parents[1] / "docker-compose.yml",
+    )
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
+    return bundle
 
 
 @pytest.fixture
@@ -119,6 +138,27 @@ def test_the_import_check_imports_every_module_in_the_source_tree(run):
     # itself is imported to be walked.
     assert printed["modules_imported"] == len(_source_modules() - {"seeker"})
     assert set(sys.modules) >= _source_modules()
+
+
+def test_a_frozen_build_without_its_identity_fails_the_build_identity_check(
+        run, frozen_bundle,
+):
+    """`_build_info` falls back to "dev" when the generated module is
+    missing (HISTORY §83); a frozen build must carry its own."""
+    code, printed, err = run()
+
+    assert code == 1
+    assert printed["failed"] == ["build_identity"]
+    assert err == "Smoke test failed: build_identity\n"
+
+
+def test_a_frozen_build_with_its_identity_passes(run, frozen_bundle, monkeypatch):
+    monkeypatch.setattr(smoke_test._build_info, "GIT_DESCRIBE", BUILT)
+
+    code, printed, _err = run()
+
+    assert code == 0
+    assert printed["build"] == BUILT
 
 
 def test_a_walk_that_finds_no_modules_fails_the_import_check(
@@ -279,6 +319,7 @@ def test_a_bundle_without_its_resources_fails_their_checks(
     fail."""
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+    monkeypatch.setattr(smoke_test._build_info, "GIT_DESCRIBE", BUILT)
     monkeypatch.setattr(icons, "LUCIDE_DIR", tmp_path / "icons" / "lucide")
 
     code, printed, err = run()
@@ -301,6 +342,7 @@ def test_a_check_that_raises_fails_and_the_report_is_still_written(
     with monkeypatch.context() as patch:
         patch.setattr(sys, "frozen", True, raising=False)
         patch.delattr(sys, "_MEIPASS", raising=False)
+        patch.setattr(smoke_test._build_info, "GIT_DESCRIBE", BUILT)
 
         code, printed, err = run(report_path)
 

@@ -186,6 +186,7 @@ def run_smoke_test(request: SmokeTestRequest) -> int:
     app = _application()
     report.platform = app.platformName()
     checks: list[tuple[str, Callable[[], CheckResult]]] = [
+        ("build_identity", lambda: _check_build_identity(report)),
         ("imports", lambda: _check_imports(report)),
         ("hidden_imports", _check_hidden_imports),
         ("platform_plugin", _check_platform_plugin),
@@ -221,6 +222,23 @@ def _write_report(path: Path, text: str) -> bool:
         )
         return False
     return True
+
+
+def _check_build_identity(report: SmokeReport) -> CheckResult:
+    """A frozen build carries the identity `build_dmg.py` generated:
+    without that module `_build_info` falls back to "dev", and no
+    report could tell two builds apart (HISTORY §83)."""
+    if not report.frozen:
+        return CheckResult(
+            "build_identity", passed=True, detail="Not frozen: dev, from source.",
+        )
+    if report.build == "dev":
+        return CheckResult(
+            "build_identity", passed=False,
+            detail="Frozen without seeker._build_info_generated: the build "
+                   "identity is dev.",
+        )
+    return CheckResult("build_identity", passed=True, detail=f"Built {report.build}.")
 
 
 def _run_check(name: str, check: Callable[[], CheckResult]) -> CheckResult:
