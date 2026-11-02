@@ -1,5 +1,7 @@
 .env
 .venv/
+# The x86_64 environment run under Rosetta (CLAUDE.md -> Commands).
+.venv-x86_64/
 __pycache__/
 *.py[cod]
 .idea/
