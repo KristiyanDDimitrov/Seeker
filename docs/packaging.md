@@ -177,13 +177,36 @@ plugin, applies both themes, loads the bundled fonts, icons and Compose
 template, and times two analyses of a generated click track (cold, then
 warm; it reads back 123.05 BPM). It prints one JSON report, also
 written to `REPORT`, and exits 0, or 1 naming what failed. It touches no
-settings, database or library, so it is safe on any Mac. On an Apple silicon Mac, prefix an
-Intel app with `arch -x86_64` (a real Intel Mac runs it as it is). Give
-the first cold analysis a generous timeout: numba compiles it (37 s under
-Rosetta). The report's `architecture` line is the one Help → Build
-shows, and `chromaprint_available` says whether fingerprinting loads: it
-must be true for the Intel app anywhere, and for the Apple silicon app
-only on a Mac with Homebrew's chromaprint.
+settings, database or library, so it is safe on any Mac. On an Apple
+silicon Mac, prefix an Intel app with `arch -x86_64` (a real Intel Mac
+runs it as it is). Give the first cold analysis a generous timeout:
+numba compiles it (37 s under Rosetta, 23 s on GitHub's Intel runner).
+The report's `architecture` is the text of the Architecture line on
+Help's page, under its Build line (which holds the version and date);
+under Rosetta it begins "Intel build on Apple silicon (Rosetta)".
+
+`chromaprint_available` says whether fingerprinting loads, not which
+copy loaded. `audio/fingerprint.py` looks in the bundle, then
+`/opt/homebrew/lib`, then `/usr/local/lib`, so `true` proves the bundled
+library only where no other copy can load there:
+
+- **Intel app, built on an Apple silicon Mac with no Intel Homebrew**
+  (the library built into `build/chromaprint-x86_64`): no other x86_64
+  copy is on the search path, and Homebrew's arm64 copy cannot load into
+  an x86_64 process (observed under Rosetta,
+  [HISTORY §258](history/241-270.md#258)), so `true` proves the bundled
+  copy.
+- **Intel app, built where an x86_64 copy is installed** (an Intel Mac
+  with Homebrew's, or `packaging/build_chromaprint.sh` run with its
+  default prefix, as CI's Intel job does): that copy answers the smoke
+  test too. Move it aside for the run and put it back after; CI deletes
+  it. `find dist/Seeker.app -name 'libchromaprint*'` lists the file the
+  Intel bundle holds, whichever copy answers.
+- **Apple silicon app:** `true` needs Homebrew's chromaprint on that Mac
+  and says nothing about the bundle, which holds none.
+
+None of this shows that the library loads after Gatekeeper's first launch
+of a downloaded image: the smoke test runs the app from `dist/`.
 [HISTORY §256](history/241-270.md#256), [§257](history/241-270.md#257)
 
 ### CI builds
