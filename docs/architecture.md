@@ -107,6 +107,7 @@ src/seeker/
 ├── update_check.py          # one GitHub Releases request; Help, or opt-in at startup
 ├── login_item.py            # macOS "start at login" (SMAppService)
 ├── _build_info.py           # build identity; "dev" outside a packaged build
+├── cpu_architecture.py      # Apple silicon, Intel or Rosetta, for Help and About
 │
 ├── database/
 │   ├── connection.py        # Database, transaction(), migrations (_migrate)
