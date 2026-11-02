@@ -20,8 +20,10 @@ beside it. Every document: `docs/README.md`.
 - **x86_64 (Rosetta, offscreen):** `17 failed, 2424 passed, 9 skipped`
   at S3 (§255), one cause: arm64-only libchromaprint. The main
   checkout's `.venv-x86_64` exists (CLAUDE.md → Commands).
-- **CI:** `41477482836` (S2) and `41480581499` (S2b, S3) green. The run
-  on `4caa58d` (S5): `gh run list --commit <full SHA>`, named `CI`.
+- **CI:** `41477482836` (S2), `41480581499` (S2b, S3) and `41485315126`
+  (S5 and the handoff, `a00b88e`, 12 m 27 s) green. `ci.yml` has
+  `cancel-in-progress: true`: a push before a run ends cancels it (S5's
+  `41485193721` was), so watch the run on the last push.
 
 ## 2. Where we are
 
