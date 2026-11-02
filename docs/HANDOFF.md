@@ -12,66 +12,67 @@ beside it. Every document: `docs/README.md`.
 ## 1. Current state
 
 - **Released: v0.1.1** (2026-10-26, §247).
-- **HEAD:** wave 1's last close-out (S1c, §251) on `main`, pushed.
-  Untracked: Kris's two PDFs only.
+- **HEAD:** S5's close-out (§256) on `main`, pushed. Untracked: Kris's
+  PDF only. No worktrees, no `r13/*` branches left.
 - **The three numbers (Cocoa, X9 Pro mounted):** pytest
-  `2440 passed, 1 skipped`; mypy `--strict src/` clean, 147 files;
-  ruff 0.
-- **CI:** run `41466003716` on `50a6833` failed on one flaky setup
-  error (§252: a test ended before its worker's handler; fixed in the
-  next commit). The audit job was green. The run on the fix: see
-  `gh run list --commit <full SHA>`, the run named `CI` (the others
-  are Dependabot's).
+  `2496 passed, 1 skipped`; mypy `--strict src/` clean, 149 files;
+  ruff 0. Native `seeker-ui --smoke-test`: exit 0.
+- **x86_64 (Rosetta, offscreen):** `17 failed, 2424 passed, 9 skipped`
+  at S3 (§255), one cause: arm64-only libchromaprint. The main
+  checkout's `.venv-x86_64` exists (CLAUDE.md → Commands).
+- **CI:** `41477482836` (S2) and `41480581499` (S2b, S3) green. The run
+  on `4caa58d` (S5): `gh run list --commit <full SHA>`, named `CI`.
 
 ## 2. Where we are
 
-Round 13, **wave 1 done**: S0, S1b, S1, S1d, S1c all ☑ (§246 to §251).
-All eight Dependabot PRs are settled. **Next: "Read docs/HANDOFF.md and
-continue wave 2"**: workers **S2** and **S5** in parallel, then S2b, S3
-and S5b as their dependencies land (SESSION-PLAN → Execution → Waves).
+Round 13, **wave 2: S2, S2b, S3, S5 ☑** (§253 to §256). **Left in
+wave 2: S5b** (frozen arm64 smoke test). **Next: "Read
+docs/HANDOFF.md and continue wave 2, then wave 3"**: workers **S5b**,
+**S3b** (re-planned ~35 K, §255) and **S6** in parallel (≤ 3), then S4
+and S6b (SESSION-PLAN → Execution → Waves).
 
-## 3. Session report (wave 1's second lead, 2026-11-02)
+## 3. Session report (wave 2's lead, 2026-11-02)
 
-- Base 50 K; peak ~135 K, work ~85 K (`tokens.py measure --last 1`).
-- Integrated S1 (§250) and the #13-fix worker's branch; landed #1, #12,
-  #13; pinned uv 0.13.6; S1c close-out (§251). Two `suite-runner`
-  checks, one CI run (`41457871688`, green on the actions bump).
-- `/context` at wave start: not asked this session.
+- Base 50 K; peak ~160 K, work ~109 K (`tokens.py measure --last 1`):
+  past the soft ceiling, so S5b wasn't started. Integrating five
+  reports and their close-outs costs a lead ~20 K a row.
+- Six workers (S2, S2b, S3, S5, two fix rounds), two `diff-reviewer`s,
+  five `suite-runner` checks. S5's first worker peaked ~135 K: its
+  review found 10 gaps; a fresh worker fixed 9 on the same branch.
+- `/context` at wave start: not asked.
 
 ## 4. Key context for the next session
 
-- **Push `main` before spawning a worker**: worktrees branch from
-  `origin/main` (§249). Each leaves a `worktree-agent-<id>` branch;
-  `git worktree unlock` (a locked one) then `remove --force`, then
-  `git branch -D` it and `r13/S<n>`.
-- **A worker can't spawn or load skills**, gets the core `CLAUDE.md` at
-  start, a topic file on a Read in its folder; baseline ~14 K. Workers
-  share the lead's scratchpad: give each a row subfolder.
-- **uv is pinned to 0.13.6** in three places, kept in step by
-  `tests/test_uv_pin.py` (§251). S2 rewrites `uv.lock`: a `uv`-version
-  mismatch now errors ("Update uv by running `uv self update`").
-- **slskd is 0.26.2** in the template. A bare `SLSKD_API_KEY` reads
-  `/api/v0/logs/live` (observed, §251); the source suggested a 403.
-  Verify a runtime claim, not only the source.
-- **zsh: never name a loop variable `path`** (it is tied to `PATH`).
-- **mypy 2.4 has no mypyc macOS x86_64 wheel** (§248). Intel's blocker
-  is wheels (PF-01): numba 0.62.1 / llvmlite 0.45.1 last with Intel
-  wheels; numba 0.62.1 needs numpy < 2.4.
-- S5's smoke report can call `cpu_architecture.describe_architecture()`
-  (Qt-free; imports `update_check`, so httpx). S9's checklist: Help →
-  "Architecture:" under "Build:".
-- HISTORY continues at §253.
+- **Push `main` before spawning**; worktree cleanup: `git worktree
+  unlock`, `remove --force`, `git branch -D worktree-agent-<id>
+  r13/S<n>`. To hand a branch to a fresh worker: remove its worktree,
+  keep the branch, tell the worker `git checkout r13/S<n>`.
+- **diff-reviewer pays off** on feature rows (S5: two checks that
+  passed vacuously). Run it before every merge of new code.
+- **S5b** (handoff notes in §256): build with `uv run python
+  packaging/build_dmg.py`, run `dist/Seeker.app/Contents/MacOS/Seeker
+  --smoke-test /abs/report.json` (absolute path). Open: review finding
+  3 (frozen `walk_packages` sees only what was bundled; the fallback is
+  `build_dmg.py` writing the module list into the bundle); qt.conf vs
+  PluginsPath and libqoffscreen bundled, both UNVERIFIED. The spec now
+  imports `seeker.frozen_imports` via `sys.path`: not yet run by a real
+  build.
+- **S3b**: the skip for test_duplicate_service's 17 must not hide an
+  Intel lookup bug (working agreement 5); timings with cleared numba
+  caches; the "Platforms" facts. **S4** needs `brew install
+  chromaprint` on the Intel runner.
+- Rosetta exposes no AVX (llvmlite: `westmere`): no `NUMBA_CPU_NAME`.
+- `required-environments` does not guard sdist packages; the lock test
+  (§254) does. A plain relock keeps versions; `-P`/`--upgrade` is
+  where Intel's pins would break.
+- HISTORY continues at §257.
 
 ## 5. Decisions made
 
-- **Kris (2026-11-02, wave 1):** #5, #7, #8, #9 landed (S1b). #1, #12
-  approved and landed; #13 landed as the image bump alone (Kris chose
-  option (a), `role=Administrator;` in the template; the disposable
-  container showed it unnecessary and, with an empty key, breaking, so
-  it was not made: tell him). #6 closed for one pinned uv.
-- Earlier decisions (Intel first as v0.2.0, no signing, waves with
-  workers, rows ≤ 65 K): the plan and `git show d507065:docs/HANDOFF.md`
-  field 5.
+- **Lead (wave 2):** S2 review findings 2–4 and S5 findings 1, 2, 4–10
+  fixed before merge; S5 finding 3 deferred to S5b. S5's click track
+  runs at 123.05 BPM, not BRIEF §5's 120 (librosa's lag grid, §256).
+- Earlier: `git show 50a6833:docs/HANDOFF.md` field 5.
 
 ## 6. Blockers
 
@@ -83,24 +84,27 @@ None.
 
 ## 8. Waiting on Kris
 
-- Close PR #6 (done by the lead if it has not been: `gh pr close 6`).
-  #1, #12, #13 close themselves once Dependabot sees `main` current.
+- **numpy's floor** (§253 Open): global `>=2.3` as the brief says, or
+  `>=2.5.2` off Intel and `>=2.3` on it (same lock today; guards the
+  native set against a future cap). The lead recommends the split.
+- **Dependabot #14** (setup-uv 10.3.2 → 10.3.3, green): approve? It
+  touches `ci.yml`, which S4 copies.
+- #1, #5, #7, #8 are still open though their changes are on `main`;
+  PR #6 unchecked (`gh pr close 6` if open).
 - `/context` at the next lead's start.
-- Later, unchanged: S9 the Intel image in the test account (BRIEF §9);
-  S10 each outward step; after S10 the website's Intel download.
-  R14/R15 and phase 01's carried items: `git show d507065:docs/HANDOFF.md`
+- Later, unchanged: S9's Intel image test (BRIEF §9); S10's outward
+  steps; R14/R15 and phase 01's items: `git show d507065:docs/HANDOFF.md`
   field 8.
 
 ## 9. Open questions
 
-- `docs/cli.md:30` and `help_text.py` could mention Premium (S1d left
-  them; outside §1d).
-- Five README images change byte-wise on `--readme` with no UI change
-  (cause UNVERIFIED, §249).
-- slskd 0.26.2's disk logger is on by default: does `LeftoverService`
-  ignore `logs/`? UNVERIFIED (§251).
-- Phase 01's carried questions: `git show 2b7e8d9:docs/HANDOFF.md`
-  field 9.
+- `docs/cli.md`/`docs/packaging.md` don't mention `--smoke-test` (S5b
+  or S8). `docs/cli.md:30` and `help_text.py` could mention Premium.
+- The Linux audit's pyobjc coverage is inferred from the layering, not
+  printed (§253).
+- Five README images change byte-wise on `--readme` (§249); slskd's
+  disk logger vs `LeftoverService` (§251); phase 01's: `git show
+  2b7e8d9:docs/HANDOFF.md` field 9.
 
 ---
 
