@@ -115,34 +115,45 @@ Mac an x86_64 environment under Rosetta 2, beside `.venv`:
 ```
 uv python install cpython-3.13.15-macos-x86_64-none
 UV_PROJECT_ENVIRONMENT=.venv-x86_64 uv sync --locked --python cpython-3.13.15-macos-x86_64-none
-.venv-x86_64/bin/python packaging/build_dmg.py      # dist/Seeker-Intel.dmg
+packaging/build_chromaprint.sh "$PWD/build/chromaprint-x86_64"
+SEEKER_CHROMAPRINT_DIR="$PWD/build/chromaprint-x86_64/lib" \
+    .venv-x86_64/bin/python packaging/build_dmg.py      # dist/Seeker-Intel.dmg
 ```
 
 That environment shares the real data folders, so it only builds: never
-start the app from it ([CLAUDE.md](../CLAUDE.md#platforms)).
+start the app from it ([CLAUDE.md](../CLAUDE.md#platforms)). On an
+Intel Mac, or CI's Intel runner, `packaging/build_chromaprint.sh` with
+no argument installs into `/usr/local/lib`, which is where
+`SEEKER_CHROMAPRINT_DIR` defaults, so the folder and the variable can
+be left out.
 
-- **libchromaprint ships in the Intel app, not the Apple silicon one.**
-  `bundle_info.chromaprint_binaries` copies
-  `/usr/local/lib/libchromaprint.1.dylib` (Homebrew's prefix on Intel,
-  from `brew install chromaprint`) to the bundle's resource root, which
+- **libchromaprint ships in the Intel app, not the Apple silicon one,
+  and Seeker builds it.** `packaging/build_chromaprint.sh [PREFIX]`
+  takes the upstream source tarball for chromaprint 1.6.2 (its `VERSION`),
+  checks its SHA-256, and builds x86_64 only, for a deployment target of
+  15.0 (the bundle's floor), with the vDSP FFT and without FFmpeg. The
+  result links Accelerate, libc++ and libSystem alone (`otool -L` in the
+  CI build, [Build run
+  41537431447](https://github.com/KristiyanDDimitrov/Seeker/actions/runs/41537431447));
+  the script fails on a dependency outside macOS's own folders, since one
+  loads on the machine that built it and not on a user's Mac. PREFIX
+  defaults to `/usr/local` and the script uses `sudo` there only when it
+  cannot write; given a folder of the checkout it needs neither, and it
+  cross-compiles x86_64 with Xcode's tools, so an Apple silicon Mac with
+  no Intel Homebrew builds it. Homebrew is not the source: it treats
+  Intel Macs as Tier 3 since September 2026 and builds no new Intel
+  bottles ([Homebrew's support
+  tiers](https://docs.brew.sh/Support-Tiers), read 2026-11-03; its API
+  lists none for `chromaprint` 1.6.2, `ffmpeg` or `mpg123`), so `brew
+  install chromaprint` there compiles ffmpeg and ten more formulae for a
+  library that needs none of them. `bundle_info.chromaprint_binaries`
+  copies `libchromaprint.1.dylib` from `SEEKER_CHROMAPRINT_DIR` (default
+  `/usr/local/lib`) to the bundle's resource root, which
   `audio/fingerprint.py` searches before the Homebrew prefixes, and the
   spec adds its licence texts under `licenses/chromaprint/`. A missing
   library fails the build, so the app never silently loses
-  fingerprinting. Homebrew's arm64 copy links only system libraries
-  (Accelerate, libSystem, libc++: `otool -L`, 2026-11-03), so a lone
-  copy loads; the Intel copy's links are for the first Intel build to
-  show. The Apple silicon app still finds the user's own Homebrew
-  copy. On an Apple silicon Mac, Homebrew lives in
-  `/opt/homebrew`, so the Intel build machine needs a second, x86_64
-  Homebrew in `/usr/local` (run under `arch -x86_64`). Homebrew treats
-  Intel Macs as Tier 3 since September 2026 and no longer builds new
-  Intel bottles ([Homebrew's support
-  tiers](https://docs.brew.sh/Support-Tiers), read 2026-11-03), and
-  the current `chromaprint` and `ffmpeg` formulae list no Intel macOS
-  bottle (formulae.brew.sh, 2026-11-03), so the install may compile
-  from source (UNVERIFIED; `brew install chromaprint` did succeed on
-  the `macos-15-intel` runner on 2026-11-02, [HISTORY
-  §261](history/241-270.md#261), source or bottle not recorded).
+  fingerprinting. The Apple silicon app still finds the user's own
+  Homebrew copy.
 - **Both architectures write `dist/Seeker.app`.** Each build replaces
   the last; the images are named apart (`Seeker.dmg`,
   `Seeker-Intel.dmg`) and both stay. Check one app before building the
@@ -284,20 +295,18 @@ against its upstream security notes.
 | OpenSSL | 3.5.7 | 3.5.9 | the build's own Python 3.13.15 | no |
 | SQLite | 3.53.1 | 3.53.1 | the build's own Python 3.13.15 | no |
 | ffmpeg | 9.0.1 | the user's | Homebrew, not bundled in either app | yes: fingerprints |
-| libchromaprint | 1.6.1 | the build machine's | Intel app: Homebrew's x86_64 copy, staged by the spec; Apple silicon app: Homebrew, not bundled | decoded audio only |
+| libchromaprint | 1.6.1 | 1.6.2 | Intel app: built from the pinned source by `packaging/build_chromaprint.sh` and staged by the spec; Apple silicon app: the user's Homebrew copy, not bundled | decoded audio only |
 
 The Intel column was read in `.venv-x86_64` under Rosetta on
 2026-11-03 (the Apple silicon column, re-read the same day in `.venv`,
-still matches). OpenSSL and SQLite belong to the interpreter that
-builds the app, a uv-managed Python 3.13.15 for each architecture, so
-the two builds can differ there (they do for OpenSSL) and a CI runner's
-may differ again; read both from the environment that builds. The
-Intel app's libchromaprint is whatever Homebrew copy is in
-`/usr/local/lib` at build time, so its version is read then
-(`brew list --versions chromaprint`) and recorded with the release; no
-Intel app with the bundled library has been built yet. Homebrew's
-current formula is chromaprint 1.6.2 and ffmpeg 9.0.2 (formulae.brew.sh,
-2026-11-03), ahead of the 1.6.1 and 9.0.1 installed here.
+still matches), except libchromaprint, whose Intel version is the
+script's own pin and whose Apple silicon version is the maintainer's
+Homebrew copy (a user's may differ). OpenSSL and SQLite belong to the
+interpreter that builds the app, a uv-managed Python 3.13.15 for each
+architecture, so the two builds can differ there (they do for OpenSSL)
+and a CI runner's may differ again; read both from the environment that
+builds. Homebrew's current ffmpeg formula is 9.0.2 (formulae.brew.sh,
+2026-11-03), ahead of the 9.0.1 installed here.
 
 The bundled four, from the environment the build uses (run it with each
 architecture's own interpreter):
@@ -306,9 +315,12 @@ architecture's own interpreter):
 uv run python -c "import ssl, sqlite3, soundfile; from PySide6 import QtCore; print(ssl.OPENSSL_VERSION, sqlite3.sqlite_version, soundfile.__libsndfile_version__, QtCore.qVersion())"
 ```
 
-`ffmpeg -version` and `brew list --versions chromaprint` read the other
-two. Neither app bundles ffmpeg; the Intel app carries its own
-libchromaprint, and the Apple silicon app finds the user's.
+`ffmpeg -version` reads ffmpeg's version and `grep '^VERSION='
+packaging/build_chromaprint.sh` the Intel app's libchromaprint (1.6.2).
+Neither app bundles ffmpeg; the Intel app carries its own
+libchromaprint, and the Apple silicon app finds the user's. A new
+chromaprint release changes the script's `VERSION` and `SHA256` together,
+and this table with them.
 
 **Tracked, because they decode peer files unsandboxed (AUDIT S-03,
 accepted):** open against libsndfile 1.2.2 (both architectures) on 2026-10-09 are
