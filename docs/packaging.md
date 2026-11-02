@@ -9,20 +9,20 @@ wizard detects and starts.
 | Platform | Status |
 |---|---|
 | macOS 15+, Apple silicon | Built and verified on real hardware: the `.app`, the `.dmg`, and the app launched after being copied to `/Applications`. The frozen app also passes its own `--smoke-test` (2026-11-02, [HISTORY §257](history/241-270.md#257)). Image: `Seeker.dmg`. |
-| macOS 15+, Intel (x86_64) | **Built and smoke-tested under Rosetta 2 on Apple silicon; never run on an Intel Mac.** On 2026-11-02 the app built from an x86_64 interpreter, passed the post-build check and `--smoke-test` under Rosetta ([HISTORY §260](history/241-270.md#260)), and the test suite passed on a real Intel Mac, GitHub's `macos-15-intel` runner ([HISTORY §261](history/241-270.md#261)). That Intel build did not yet bundle libchromaprint, and the build that does has not run. Image: `Seeker-Intel.dmg`. <!-- S7-PENDING: the first dispatched build.yml run (id, date, both smoke reports, the Intel runner's cold and warm analysis times) and whether the bundled libchromaprint passed bundle_check; then reword "never run on an Intel Mac" here and in the paragraph below --> |
+| macOS 15+, Intel (x86_64) | **Built, bundle-checked and smoke-tested on GitHub's Intel runner and under Rosetta 2; no person has launched the app on any Mac (UNVERIFIED).** On 2026-11-02 `build.yml` built the app on `macos-15-intel`; its bundle check passed, and `--smoke-test` passed there with libchromaprint loading from the bundle ([Build run 41537431447](https://github.com/KristiyanDDimitrov/Seeker/actions/runs/41537431447), [HISTORY §262](history/241-270.md#262)). The test suite passed on the same runner ([HISTORY §261](history/241-270.md#261)). Under Rosetta 2 on Apple silicon the app built from an x86_64 interpreter and passed the same two checks ([HISTORY §260](history/241-270.md#260)). Image: `Seeker-Intel.dmg`. |
 | Windows | **Written, never verified on real hardware.** `seeker.spec` is cross-platform and `packaging/seeker.iss` is a complete Inno Setup script, but neither has run on a Windows machine. |
 | Linux | **Written, never verified on real hardware.** The same `seeker.spec`; no installer format (AppImage, `.deb`) is scoped. |
 
 Treat the Windows and Linux rows as unverified until someone runs the
-build on those platforms, and the Intel row's "never run on an Intel
-Mac" as open until someone launches the app on one: the runner and
-Rosetta cover the suite, the build and the smoke test, not a person
-double-clicking the app, Gatekeeper's first-launch block on an Intel
-Mac, or Docker Desktop for Intel. Both macOS images need macOS 15, the
-highest `minos` among their binaries (the Info.plist bullet below). Phase 02
-([`phase-02/README.md`](phase-02/README.md)) adds the Intel build in
-round 13 and verifies Windows in rounds 14 and 15; this table changes
-as each lands.
+build on those platforms, and the Intel row's "no person has launched
+the app" as open until someone launches it on an Intel Mac: GitHub's
+runner and Rosetta cover the suite, the build and the headless smoke
+test, not a person double-clicking the app, Gatekeeper's first-launch
+block on an Intel Mac, or Docker Desktop for Intel. Both macOS images
+need macOS 15, the highest `minos` among their binaries (the Info.plist
+bullet below). Phase 02 ([`phase-02/README.md`](phase-02/README.md))
+adds the Intel build in round 13 and verifies Windows in rounds 14 and
+15; this table changes as each lands.
 
 ## The app
 
@@ -188,15 +188,29 @@ only on a Mac with Homebrew's chromaprint.
 
 ### CI builds
 
-`.github/workflows/build.yml` is meant to build both apps on GitHub's
-runners, `macos-26` for Apple silicon and `macos-15-intel` for Intel,
-with `packaging/build_dmg.py`, run `--smoke-test` on each built app and
-upload each image as an artifact with a short retention. It runs on
-`workflow_dispatch`, on tags, and on pushes that change
-`pyproject.toml`, `uv.lock` or `packaging/**`, so a dependency bump that
-breaks the frozen app fails there rather than at a release. It never
-publishes a release: `RELEASING.md` builds the release's images
-locally. <!-- S7-PENDING: the workflow's state (written, dispatched, green on both runners), its first run id, and the HISTORY section that records the runner's smoke reports -->
+`.github/workflows/build.yml` builds both apps on GitHub's runners,
+`macos-26` for Apple silicon and `macos-15-intel` for Intel, with
+`packaging/build_dmg.py`, runs `--smoke-test` on each built app, checks
+the report (`passed`, `frozen`, `chromaprint_available` and the
+architecture the app was built for) and uploads each image and report as
+an artifact kept for a week. It runs on `workflow_dispatch`, on tags,
+and on pushes that change `pyproject.toml`, `uv.lock`, `packaging/**` or
+the workflow itself, so a dependency bump that breaks the frozen app
+fails there rather than at a release. It never publishes a release:
+`RELEASING.md` builds the release's images locally.
+
+The Intel job builds libchromaprint first (`packaging/build_chromaprint.sh`,
+into `/usr/local/lib`) and, before the smoke test, deletes
+`/usr/local/lib/libchromaprint*`. `audio/fingerprint.py` searches the
+bundle, then `/opt/homebrew/lib`, then `/usr/local/lib`, so with the
+build machine's copy gone, a report that finds libchromaprint found the
+bundled one. `ci.yml`'s `check-intel` builds the same library for the
+suite, and Homebrew's `chromaprint` formula had pulled ffmpeg onto that
+runner as a dependency; the source build does not, so the three tests
+marked `requires_ffmpeg` skip there (one already skipped, for want of
+the X9 drive, so `check-intel` skips 31 against 29) and run on the arm64
+`check` job only.
+[HISTORY §262](history/241-270.md#262)
 
 ### What was verified
 
@@ -237,6 +251,31 @@ sklearn's `libomp.dylib` SDK version, Windows-only ctypes names and
 three hidden imports it could not find (`pycparser.lextab`,
 `pycparser.yacctab`, `scipy.special._cdflib`); none affected the run.
 [HISTORY §260](history/241-270.md#260)
+
+**CI built and smoke-tested both apps** on 2026-11-02 ([Build run
+41537431447](https://github.com/KristiyanDDimitrov/Seeker/actions/runs/41537431447),
+a push of the round's branch at `14d533e`). Apple silicon, on `macos-26`:
+161 s for the job, 98 s of it the build; the bundle check passed ("every
+Mach-O is arm64, minos <= 15.0"), the smoke test passed, cold analysis
+6.62 s, warm 0.059 s, architecture "Apple silicon". Intel, on
+`macos-15-intel`: 591 s for the job (setup-uv 60 s, libchromaprint 88 s,
+the build 378 s, the smoke test 31 s); the bundle check passed over the
+whole bundle, the staged dylib included ("every Mach-O is x86_64, minos
+<= 15.0"); the smoke test passed with `chromaprint_available` true after
+the job had deleted the build machine's `/usr/local/lib/libchromaprint*`,
+so the library came from the bundle (an inference: the log does not name
+the path); cold analysis 23.32 s, warm 0.257 s, architecture "Intel".
+Those are the first analysis times from an Intel Mac's hardware; under
+Rosetta the cold analysis took 37.5 s. The library's `otool -L` lists
+`@rpath/libchromaprint.1.dylib` (its own id), libSystem.B, Accelerate and
+libc++.1. PyInstaller warned, on Intel only, that
+`sklearn/.dylibs/libomp.dylib` has an invalid macOS SDK version (a
+warning, not a failure). This verifies the build and the headless smoke
+test on GitHub's Intel runner, not an app launched by a person on a
+user's Mac. A branch push triggered the run, and `workflow_dispatch`
+needs the file on `main`, so a dispatched run follows the merge.
+<!-- S7-PENDING: dispatched run id and date -->
+[HISTORY §262](history/241-270.md#262)
 
 **The Intel suite on real Intel hardware** ran on 2026-11-02 on
 `macos-15-intel` (run `41506032138`): 2500 passed, 29 skipped in 19 min
