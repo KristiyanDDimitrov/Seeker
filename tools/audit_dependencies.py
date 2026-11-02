@@ -3,9 +3,10 @@
     uv run --no-project tools/audit_dependencies.py
 
 Exports `uv.lock` (runtime and dev groups: the dev group builds the
-DMG, and PyInstaller's bootloader ships inside it) as a hashed
-requirements file and runs a pinned pip-audit over it. Exits non-zero
-on any finding, or on a package pip-audit cannot audit.
+DMG, and PyInstaller's bootloader ships inside it) as hashed
+requirements and runs a pinned pip-audit over every pin in it, each
+platform's alike (see `audit_layers`). Exits non-zero on any finding,
+or on a package pip-audit cannot audit.
 
 A finding that cannot be fixed yet goes in `tools/audit_ignore.toml`
 with a reason and an expiry date. An expired entry fails the audit
@@ -17,6 +18,7 @@ inside wheels (libsndfile, Qt, OpenSSL, SQLite) are invisible to it;
 `docs/packaging.md` records their versions for a human check at each
 release.
 """
+import re
 import subprocess
 import sys
 import tempfile
@@ -83,6 +85,48 @@ def export_command(requirements: Path) -> list[str]:
     ]
 
 
+def _package_name(requirement: str) -> str:
+    name = re.split(r"[\s=<>!~;@\[]", requirement, maxsplit=1)[0]
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def audit_layers(exported: str) -> list[str]:
+    """Splits a hashed `uv export` into requirements files that
+    pip-audit audits in full.
+
+    pip-audit skips, without a word, a requirement whose environment
+    marker is false where it runs (read in its source, HISTORY §253):
+    a macOS-only pin on CI's Linux runner, and on any machine one of
+    the two pins of a package the lock forks by platform (numba on
+    Intel Macs). So each file drops the markers and pins a package at
+    most once, since pip-audit refuses a file that names one twice.
+    """
+    layers: list[list[str]] = []
+    seen: dict[str, int] = {}
+    current: list[str] | None = None
+    for line in exported.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if line[0].isspace():
+            # A hash line of the entry above.
+            if current is None:
+                raise ValueError(f"No requirement above the line {line!r}.")
+            current.append(line)
+            continue
+        requirement, _, marker = line.partition(" ; ")
+        if marker.endswith("\\"):
+            requirement += " \\"
+        name = _package_name(requirement)
+        index = seen.get(name, 0)
+        seen[name] = index + 1
+        if index == len(layers):
+            layers.append([])
+        current = layers[index]
+        current.append(requirement)
+    return ["\n".join(layer) + "\n" for layer in layers]
+
+
 def pip_audit_command(
         requirements: Path, ignored: Sequence[Ignored]) -> list[str]:
     # --disable-pip with --require-hashes audits the exported pins as
@@ -111,9 +155,20 @@ def main(
             )
         return 1
     with tempfile.TemporaryDirectory() as scratch:
-        requirements = Path(scratch) / "requirements.txt"
-        run(export_command(requirements), check=True)
-        return run(pip_audit_command(requirements, ignored), check=False).returncode
+        exported = Path(scratch) / "exported.txt"
+        run(export_command(exported), check=True)
+        layers = audit_layers(exported.read_text(encoding="utf-8"))
+        if not layers:
+            print("The lock's export names no package.", file=sys.stderr)
+            return 1
+        returncode = 0
+        # Every file is audited, so one run reports every finding.
+        for index, layer in enumerate(layers, start=1):
+            requirements = Path(scratch) / f"requirements-{index}.txt"
+            requirements.write_text(layer, encoding="utf-8")
+            result = run(pip_audit_command(requirements, ignored), check=False)
+            returncode = returncode or result.returncode
+        return returncode
 
 
 if __name__ == "__main__":
