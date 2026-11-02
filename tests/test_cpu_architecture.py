@@ -2,6 +2,7 @@
 architecture. Each test patches the module's own inputs
 (`sys.platform`, `platform.machine`, `_read_sysctl_int`), never the
 machine it runs on; the real `sysctlbyname` read runs only on macOS."""
+import platform
 import sys
 
 import pytest
@@ -148,6 +149,10 @@ def test_a_libc_without_sysctlbyname_reads_as_no_value(monkeypatch):
 def test_the_real_sysctl_read_on_this_mac():
     # 0 natively, 1 under Rosetta (both observed through this read on
     # Apple silicon, 2026-11-02); a key that doesn't exist reads None.
-    assert cpu_architecture._read_sysctl_int(b"sysctl.proc_translated") in (0, 1)
+    # A real Intel Mac has no such key: it reads None (observed on the
+    # macos-15-intel runner, CI run 41501947860), and None means native.
+    allowed = (0, 1, None) if platform.machine() == "x86_64" else (0, 1)
+    translated = cpu_architecture._read_sysctl_int(b"sysctl.proc_translated")
+    assert translated in allowed
     assert cpu_architecture._read_sysctl_int(b"hw.ncpu") > 0
     assert cpu_architecture._read_sysctl_int(b"seeker.no.such.key") is None
