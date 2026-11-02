@@ -28,6 +28,14 @@ Round 13 (Intel Macs → v0.2.0), 18 rows. **S0 is done** (§246).
 (the plan's Execution section). Its lead first measures the new B
 (`tokens.py measure --last 1`) into `tasks.json` and this file.
 
+**Wave 1's first attempt (2026-11-02) stopped before any row:** the
+process had started at 11:36, before S0 created `.claude/agents/`
+(12:48) and turned the plugins off (13:05). `/clear` reloaded neither:
+`row-worker` and `suite-runner` were "not found" and product-skills
+was still listed. Kris restarts Claude Code, runs `/context`, then
+relaunches wave 1. Measured then, B = 52 K (`tokens.py`, base of
+that session); the relaunch measures again.
+
 ## 3. Session report (S0, 2026-11-02)
 
 - `CLAUDE.md`: 37.1 KB → 15.4 KB core plus six topic files and
@@ -86,6 +94,8 @@ Round 13 (Intel Macs → v0.2.0), 18 rows. **S0 is done** (§246).
   one DMG per architecture (`Seeker.dmg` stays Apple silicon, beside
   `Seeker-Intel.dmg`); Intel-only pins; macOS 15 on Intel; a per-user
   Windows installer; Windows fixes built on the Mac first.
+- **Kris (2026-11-02, wave 1):** yes to S1b and S1c, the [ASK]
+  rows; each merge still needs his approval.
 - **Re-plan (Code's, 2026-11-02):** rows are capped at 65 K of work
   because B is 54–62 K; the brief's § numbers stay, and splits take a
   suffix (S1b–S1d, S2b, S3b, S5b, S6b).
