@@ -67,7 +67,11 @@ import bundle_info  # noqa: E402
 
 # The source tree's own list, not an installed copy's.
 sys.path.insert(0, str(SRC_DIR))
-from seeker.frozen_imports import HIDDEN_IMPORTS  # noqa: E402
+from seeker.frozen_imports import (  # noqa: E402
+    HIDDEN_IMPORTS,
+    MANIFEST_NAME,
+    source_modules,
+)
 
 ICONS_DIR = SPEC_DIR / "icons"
 ICON_ICNS = ICONS_DIR / "seeker_icon.icns"
@@ -101,8 +105,18 @@ else:
 # resolves the same way, through ui/theme.py's bundled_dir("fonts").
 # licenses/ carries every runtime distribution's licence texts, and
 # fails the build for one that has none (bundle_info.license_datas).
+# The module manifest (frozen_imports.MANIFEST_NAME) is what the source
+# tree holds; the smoke test compares the frozen walk with it.
+MANIFEST_PATH = PROJECT_ROOT / "build" / MANIFEST_NAME
+MANIFEST_PATH.parent.mkdir(exist_ok=True)
+MANIFEST_PATH.write_text(
+    "\n".join(sorted(source_modules(SRC_DIR / "seeker"))) + "\n",
+    encoding="utf-8",
+)
+
 datas = [
     (str(PROJECT_ROOT / "docker-compose.yml"), "."),
+    (str(MANIFEST_PATH), "."),
     (str(ICONS_DIR), "icons"),
     (str(SPEC_DIR / "fonts"), "fonts"),
     *bundle_info.license_datas(PROJECT_ROOT),

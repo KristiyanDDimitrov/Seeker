@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from seeker import cpu_architecture, main_ui
+from seeker import cpu_architecture, frozen_imports, main_ui
 from seeker.audio.analysis import AudioAnalysis
 from seeker.ui import icons, smoke_test, theme
 
@@ -38,6 +38,10 @@ def frozen_bundle(monkeypatch, tmp_path):
         (bundle / name).symlink_to(packaging / name)
     (bundle / "docker-compose.yml").symlink_to(
         SRC_SEEKER.parents[1] / "docker-compose.yml",
+    )
+    (bundle / frozen_imports.MANIFEST_NAME).write_text(
+        "\n".join(sorted(_source_modules() - frozen_imports.NOT_BUNDLED)),
+        encoding="utf-8",
     )
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
@@ -353,8 +357,10 @@ def test_a_bundle_without_its_resources_fails_their_checks(
     code, printed, err = run()
 
     assert code == 1
-    assert printed["failed"] == ["fonts", "icons", "compose_template"]
-    assert err == "Smoke test failed: fonts, icons, compose_template\n"
+    assert printed["failed"] == [
+        "imports", "fonts", "icons", "compose_template",
+    ]  # no manifest either
+    assert err == "Smoke test failed: imports, fonts, icons, compose_template\n"
     (checked,) = (c for c in printed["checks"] if c["name"] == "icons")
     assert "seeker_menubar_Template.png" in checked["detail"]
 
@@ -374,7 +380,7 @@ def test_a_check_that_raises_fails_and_the_report_is_still_written(
 
         code, printed, err = run(report_path)
 
-    failed = ["theme", "fonts", "icons", "compose_template"]
+    failed = ["imports", "theme", "fonts", "icons", "compose_template"]
     assert code == 1
     assert printed["failed"] == failed
     assert json.loads(report_path.read_text()) == printed
@@ -482,3 +488,48 @@ def test_the_entry_point_runs_the_check_offscreen_and_writes_nothing_else(
     assert report["passed"] is True
     assert report["platform"] == "offscreen"
     assert list(home.iterdir()) == []
+
+
+def test_a_frozen_walk_missing_a_module_the_source_has_fails_the_import_check(
+        run, frozen_bundle, monkeypatch,
+):
+    """Frozen, `walk_packages` lists only what PyInstaller bundled, so a
+    module its analysis missed is never listed; the manifest the spec
+    wrote from the source tree names it."""
+    monkeypatch.setattr(smoke_test._build_info, "GIT_DESCRIBE", BUILT)
+    manifest = frozen_bundle / frozen_imports.MANIFEST_NAME
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8") + "\nseeker.not_bundled_module",
+        encoding="utf-8",
+    )
+
+    code, printed, _err = run()
+
+    assert code == 1
+    assert printed["failed"] == ["imports"]
+    (checked,) = (c for c in printed["checks"] if c["name"] == "imports")
+    assert "seeker.not_bundled_module" in checked["detail"]
+
+
+def test_a_frozen_build_without_its_module_manifest_fails_the_import_check(
+        run, frozen_bundle, monkeypatch,
+):
+    monkeypatch.setattr(smoke_test._build_info, "GIT_DESCRIBE", BUILT)
+    (frozen_bundle / frozen_imports.MANIFEST_NAME).unlink()
+
+    code, printed, _err = run()
+
+    assert code == 1
+    assert printed["failed"] == ["imports"]
+
+
+def test_the_source_module_list_leaves_out_what_a_gui_build_never_bundles():
+    names = frozen_imports.source_modules(SRC_SEEKER)
+
+    assert names == _source_modules() - frozen_imports.NOT_BUNDLED
+    assert "seeker.ui.smoke_test" in names
+    assert sorted(frozen_imports.NOT_BUNDLED) == ["seeker.cli", "seeker.main"]
+
+
+def test_the_spec_bundles_the_module_manifest():
+    assert "MANIFEST_NAME" in SPEC.read_text(encoding="utf-8")

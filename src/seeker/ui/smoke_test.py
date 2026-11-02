@@ -296,10 +296,24 @@ def _check_imports(report: SmokeReport) -> CheckResult:
             problems.append(f"{name}: {_describe(error)}")
         else:
             report.modules_imported += 1
+    if getattr(sys, "frozen", False):
+        problems.extend(_missing_from_the_bundle(names))
     detail = "; ".join(problems) or (
         f"Imported {report.modules_imported} modules."
     )
     return CheckResult("imports", not problems, detail)
+
+
+def _missing_from_the_bundle(walked: list[str]) -> list[str]:
+    """Modules the build's manifest names that the frozen walk did not
+    list: PyInstaller's analysis missed them."""
+    manifest = theme.bundled_dir(".") / frozen_imports.MANIFEST_NAME
+    try:
+        expected = manifest.read_text(encoding="utf-8").split()
+    except OSError as error:
+        return [f"{manifest.name}: {_describe(error)}"]
+    missing = sorted(set(expected) - set(walked) - {seeker.__name__})
+    return [f"{name}: not in the bundle" for name in missing]
 
 
 def _check_hidden_imports() -> CheckResult:
