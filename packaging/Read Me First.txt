@@ -1,7 +1,11 @@
 Seeker — first launch on this Mac
 ==================================
 
-Seeker needs macOS 15 or later on an Apple silicon Mac.
+Seeker needs macOS 15 or later. Seeker.dmg is for a Mac with Apple
+silicon (Apple menu > About This Mac shows a "Chip" line) and
+Seeker-Intel.dmg for an Intel Mac (it shows a "Processor" line). If this
+disk image is the wrong one for your Mac, download the other from the
+release page.
 
 This build is not notarized by Apple (that needs a paid Apple
 Developer account). The first time you open it, macOS says it
