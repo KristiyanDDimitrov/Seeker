@@ -208,3 +208,10 @@ def test_a_prefix_that_cannot_be_created_installs_through_sudo(tmp_path):
         "sudo cmake --install /the/build",
         "cmake --install /the/build",
     ]
+
+
+def test_the_usage_names_the_variable_that_points_the_spec_at_the_prefix():
+    info = _bundle_info()
+    text = SCRIPT.read_text()
+
+    assert f"{info.CHROMAPRINT_DIR_VARIABLE}=" in text

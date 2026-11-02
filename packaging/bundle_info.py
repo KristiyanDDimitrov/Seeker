@@ -5,6 +5,7 @@ Each value has one source: the version is pyproject.toml's, the
 copyright LICENSE's own line, a licence text the wheel's own.
 """
 
+import os
 import platform
 import re
 import shutil
@@ -197,32 +198,50 @@ def license_datas(project_root: Path) -> list[tuple[str, str]]:
 
 # The Intel bundle ships libchromaprint; the arm64 one finds the user's
 # Homebrew copy (audio/fingerprint.py searches _MEIPASS first, then the
-# Homebrew prefixes). packaging/build_chromaprint.sh installs the Intel
-# copy to /usr/local/lib, the prefix Intel Homebrew used.
+# Homebrew prefixes). The build stages the copy from
+# SEEKER_CHROMAPRINT_DIR when that names a folder, else from
+# /usr/local/lib, the prefix Intel Homebrew used and where
+# packaging/build_chromaprint.sh installs by default. A Mac with no
+# /usr/local/lib builds into a folder of its own and sets the variable
+# to that folder's lib/.
 CHROMAPRINT_LIBRARY = "libchromaprint.1.dylib"
+CHROMAPRINT_DIR_VARIABLE = "SEEKER_CHROMAPRINT_DIR"
 INTEL_HOMEBREW_LIB = Path("/usr/local/lib")
 CHROMAPRINT_LICENSE_TEXTS = ("Chromaprint-LICENSE.md", "LGPL-2.1.txt")
+
+
+def chromaprint_library_dir() -> Path:
+    """The folder the Intel build stages libchromaprint from: the
+    environment's choice when it is set and not empty."""
+    chosen = os.environ.get(CHROMAPRINT_DIR_VARIABLE)
+    return Path(chosen) if chosen else INTEL_HOMEBREW_LIB
 
 
 def chromaprint_binaries(
     architecture: str,
     staging_dir: Path,
-    library_dir: Path = INTEL_HOMEBREW_LIB,
+    library_dir: Path | None = None,
 ) -> list[tuple[str, str]]:
     """PyInstaller `binaries` for libchromaprint: the Intel build's
     copy, staged under the soname fingerprint.py loads (Homebrew keeps
     the real file under a versioned name), or nothing for arm64.
 
-    Raises FileNotFoundError when the Intel build has no library to
-    ship, so a build never silently loses fingerprinting.
+    `library_dir` None means `chromaprint_library_dir()`. Raises
+    FileNotFoundError when the Intel build has no library to ship, so a
+    build never silently loses fingerprinting.
     """
     if architecture != "x86_64":
         return []
+    if library_dir is None:
+        library_dir = chromaprint_library_dir()
     source = library_dir / CHROMAPRINT_LIBRARY
     if not source.is_file():
         raise FileNotFoundError(
-            f"{source} is missing: run packaging/build_chromaprint.sh on "
-            f"the Intel build machine."
+            f"{CHROMAPRINT_LIBRARY} is not in {library_dir.absolute()}. "
+            f"Build it with packaging/build_chromaprint.sh <prefix>, "
+            f"which installs to <prefix>/lib, then build the app with "
+            f"{CHROMAPRINT_DIR_VARIABLE}=<prefix>/lib (without the "
+            f"variable the build looks in {INTEL_HOMEBREW_LIB})."
         )
     staging_dir.mkdir(parents=True, exist_ok=True)
     staged = staging_dir / CHROMAPRINT_LIBRARY

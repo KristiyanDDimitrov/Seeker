@@ -223,3 +223,69 @@ def test_spec_bundles_libchromaprint_through_bundle_info():
 
     assert "bundle_info.chromaprint_binaries(" in spec
     assert "bundle_info.chromaprint_license_datas(" in spec
+
+
+def test_the_chromaprint_directory_comes_from_the_environment(
+    tmp_path, monkeypatch,
+):
+    """A build machine with no /usr/local/lib builds the library into a
+    folder of its own and says where."""
+    bundle_info = _load_bundle_info()
+    library_dir = tmp_path / "prefix" / "lib"
+    library_dir.mkdir(parents=True)
+    (library_dir / "libchromaprint.1.dylib").write_bytes(b"x86_64 dylib")
+    monkeypatch.setenv("SEEKER_CHROMAPRINT_DIR", str(library_dir))
+
+    binaries = bundle_info.chromaprint_binaries("x86_64", tmp_path / "stage")
+
+    staged = tmp_path / "stage" / "libchromaprint.1.dylib"
+    assert binaries == [(str(staged), ".")]
+    assert staged.read_bytes() == b"x86_64 dylib"
+
+
+def test_the_explicit_chromaprint_directory_beats_the_environment(
+    tmp_path, monkeypatch,
+):
+    bundle_info = _load_bundle_info()
+    ignored = tmp_path / "ignored"
+    ignored.mkdir()
+    (ignored / "libchromaprint.1.dylib").write_bytes(b"the wrong one")
+    chosen = tmp_path / "chosen"
+    chosen.mkdir()
+    (chosen / "libchromaprint.1.dylib").write_bytes(b"the right one")
+    monkeypatch.setenv("SEEKER_CHROMAPRINT_DIR", str(ignored))
+
+    bundle_info.chromaprint_binaries("x86_64", tmp_path / "stage", chosen)
+
+    staged = tmp_path / "stage" / "libchromaprint.1.dylib"
+    assert staged.read_bytes() == b"the right one"
+
+
+@pytest.mark.parametrize("value", [None, ""])
+def test_without_the_variable_the_chromaprint_directory_is_homebrews(
+    monkeypatch, value,
+):
+    bundle_info = _load_bundle_info()
+    if value is None:
+        monkeypatch.delenv("SEEKER_CHROMAPRINT_DIR", raising=False)
+    else:
+        monkeypatch.setenv("SEEKER_CHROMAPRINT_DIR", value)
+
+    assert bundle_info.chromaprint_library_dir() == Path("/usr/local/lib")
+
+
+def test_the_missing_library_message_says_where_it_looked_and_what_to_do(
+    tmp_path, monkeypatch,
+):
+    looked_in = tmp_path / "nothing-here"
+    monkeypatch.setenv("SEEKER_CHROMAPRINT_DIR", str(looked_in))
+
+    with pytest.raises(FileNotFoundError) as raised:
+        _load_bundle_info().chromaprint_binaries(
+            "x86_64", tmp_path / "stage",
+        )
+
+    message = str(raised.value)
+    assert str(looked_in) in message
+    assert "packaging/build_chromaprint.sh <prefix>" in message
+    assert "SEEKER_CHROMAPRINT_DIR=<prefix>/lib" in message

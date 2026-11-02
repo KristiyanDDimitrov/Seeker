@@ -4,6 +4,16 @@
 #
 #     packaging/build_chromaprint.sh [PREFIX]    # PREFIX defaults to /usr/local
 #
+# The library lands in PREFIX/lib, where bundle_info.chromaprint_binaries
+# stages it from when the build runs with SEEKER_CHROMAPRINT_DIR set to
+# that folder (unset, it reads /usr/local/lib). A Mac with no
+# /usr/local/lib names a folder of the repository, which needs no sudo
+# (the folder must be one `git status` ignores, and not build/, which
+# PyInstaller's --clean empties):
+#
+#     packaging/build_chromaprint.sh "$PWD/<prefix>"
+#     SEEKER_CHROMAPRINT_DIR="$PWD/<prefix>/lib" <the Intel build>
+#
 # Homebrew has stopped building bottles for Intel Macs
 # (docs.brew.sh/Support-Tiers: "Homebrew has stopped building new
 # bottles for Intel systems"; its API lists none for chromaprint 1.6.2,
