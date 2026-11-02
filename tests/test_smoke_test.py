@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from seeker import cpu_architecture
+from seeker import cpu_architecture, main_ui
 from seeker.audio.analysis import AudioAnalysis
 from seeker.ui import icons, smoke_test, theme
 
@@ -51,28 +51,49 @@ def _source_modules() -> set[str]:
     return names
 
 
+@pytest.mark.parametrize("argv", [[], ["-psn_0_12345"]])
+def test_parse_request_without_the_flag_is_none(argv):
+    assert smoke_test.parse_request(argv) is None
+
+
 @pytest.mark.parametrize(
-    ("argv", "expected"),
+    ("argv", "report_path"),
     [
-        ([], None),
-        (["-psn_0_12345"], None),
-        (["--smoke-test"], smoke_test.SmokeTestRequest(report_path=None)),
-        (
-            ["--smoke-test", "out/report.json"],
-            smoke_test.SmokeTestRequest(report_path=Path("out/report.json")),
-        ),
-        (
-            ["--smoke-test=report.json"],
-            smoke_test.SmokeTestRequest(report_path=Path("report.json")),
-        ),
-        (
-            ["--smoke-test", "-platform", "offscreen"],
-            smoke_test.SmokeTestRequest(report_path=None),
-        ),
+        (["--smoke-test"], None),
+        (["--smoke-test", "-platform", "offscreen"], None),
+        (["--smoke-test", "out/report.json"], "out/report.json"),
+        (["--smoke-test=report.json"], "report.json"),
+        (["--smoke-test", "/var/report.json"], "/var/report.json"),
     ],
 )
-def test_parse_request_reads_the_flag_and_its_report_path(argv, expected):
-    assert smoke_test.parse_request(argv) == expected
+def test_parse_request_resolves_the_report_path_against_the_cwd(
+        argv, report_path, monkeypatch, tmp_path,
+):
+    """Resolved when parsed, so the report names the file it means: a
+    Finder or `open --args` launch runs with the cwd at /."""
+    monkeypatch.chdir(tmp_path)
+    expected = None if report_path is None else tmp_path / report_path
+
+    assert smoke_test.parse_request(argv) == smoke_test.SmokeTestRequest(
+        report_path=expected,
+    )
+
+
+def test_parse_request_refuses_an_empty_report_path():
+    with pytest.raises(smoke_test.SmokeTestUsageError, match="--smoke-test="):
+        smoke_test.parse_request(["--smoke-test="])
+
+
+def test_the_entry_point_names_an_unusable_flag_and_exits_2(
+        monkeypatch, capsys,
+):
+    monkeypatch.setattr(sys, "argv", ["seeker-ui", "--smoke-test="])
+
+    with pytest.raises(SystemExit) as exited:
+        main_ui.main()
+
+    assert exited.value.code == 2
+    assert "--smoke-test=" in capsys.readouterr().err
 
 
 def test_smoke_test_passes_unfrozen_and_writes_its_report(run, tmp_path):

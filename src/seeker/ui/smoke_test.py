@@ -11,7 +11,7 @@ folder (only a temporary WAV), so it is safe to run on any machine.
 The report is one JSON object, printed and, when a path follows the
 flag, also written there (a windowed build may have no console). The
 exit code is 0 when every check passed, else 1, with the failed
-checks named on stderr.
+checks named on stderr; 2 when the flag's report path is empty.
 """
 
 import importlib
@@ -52,6 +52,7 @@ import seeker
 from seeker import _build_info, cpu_architecture, frozen_imports
 from seeker.audio import fingerprint
 from seeker.audio.analysis import SAMPLE_RATE, analyze_audio
+from seeker.errors import SeekerError
 from seeker.soulseek import docker_setup
 from seeker.ui import icons, theme, tray
 
@@ -137,21 +138,38 @@ class SmokeReport:
         )
 
 
+class SmokeTestUsageError(SeekerError):
+    """`--smoke-test` was given a report path that names no file."""
+
+
 def parse_request(argv: Sequence[str]) -> SmokeTestRequest | None:
     """The request in `argv` (the arguments after the program name),
     or None without the flag. A following argument is the report's
-    path unless it starts with "-" (a Qt option such as `-platform`)."""
+    path unless it starts with "-" (a Qt option such as `-platform`).
+
+    The path is made absolute here, against the cwd the process started
+    in, so the report and any error name the file meant: a Finder or
+    `open --args` launch runs with the cwd at /."""
     for index, argument in enumerate(argv):
         if argument.startswith(f"{SMOKE_TEST_FLAG}="):
             return SmokeTestRequest(
-                report_path=Path(argument.removeprefix(f"{SMOKE_TEST_FLAG}=")),
+                _report_path(argument.removeprefix(f"{SMOKE_TEST_FLAG}=")),
             )
         if argument == SMOKE_TEST_FLAG:
             following = argv[index + 1:index + 2]
             if following and not following[0].startswith("-"):
-                return SmokeTestRequest(report_path=Path(following[0]))
+                return SmokeTestRequest(_report_path(following[0]))
             return SmokeTestRequest(report_path=None)
     return None
+
+
+def _report_path(argument: str) -> Path:
+    if not argument:
+        raise SmokeTestUsageError(
+            f"{SMOKE_TEST_FLAG}= needs a report path after the =, or "
+            f"leave out the = to print the report only.",
+        )
+    return Path(argument).expanduser().absolute()
 
 
 def run_smoke_test(request: SmokeTestRequest) -> int:
