@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import qWarning
 
 from seeker import cpu_architecture
 from seeker.audio.analysis import AudioAnalysis
@@ -133,12 +132,14 @@ def test_a_module_that_cannot_be_imported_fails_the_import_check(
     )
 
 
-def test_a_qt_warning_while_theming_fails_the_theme_check(run, monkeypatch):
+def test_an_unparseable_stylesheet_fails_the_theme_check(run, monkeypatch):
+    """Qt parses a stylesheet only when it polishes a widget, so setting
+    a broken one warns nothing by itself."""
     real_apply = theme.apply_theme
 
     def apply_theme(app, mode="system"):
         palette = real_apply(app, mode)
-        qWarning("Could not parse application stylesheet")
+        app.setStyleSheet(app.styleSheet() + "\nQWidget { color: ")
         return palette
 
     monkeypatch.setattr(smoke_test.theme, "apply_theme", apply_theme)

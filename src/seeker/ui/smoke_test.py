@@ -32,7 +32,16 @@ import numpy as np
 from PySide6.QtCore import QMessageLogContext, QtMsgType, qInstallMessageHandler
 from PySide6.QtGui import QFontDatabase, QImage
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QLabel,
+    QLineEdit,
+    QMainWindow,
+    QPushButton,
+    QTableWidget,
+    QWidget,
+)
 
 import seeker
 from seeker import _build_info, cpu_architecture
@@ -60,6 +69,11 @@ _BPM_TOLERANCE = 2.0
 _QT_WARNINGS = (
     QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg,
 )
+# A warning about the platform, not the build: the offscreen platform's
+# default family is "Sans Serif", which macOS lacks, and Qt reports the
+# alias lookup's cost once, when a QLineEdit is first polished
+# (observed offscreen on macOS 26.6, PySide6 6.11.2).
+_IGNORED_QT_WARNINGS = ("Populating font family aliases took ",)
 
 
 @dataclass(frozen=True)
@@ -229,7 +243,10 @@ def _qt_warnings() -> Iterator[list[str]]:
     def handler(
             message_type: QtMsgType, _context: QMessageLogContext, message: str,
     ) -> None:
-        if message_type in _QT_WARNINGS:
+        if (
+                message_type in _QT_WARNINGS
+                and not message.startswith(_IGNORED_QT_WARNINGS)
+        ):
             warnings.append(message)
 
     previous = qInstallMessageHandler(handler)
@@ -239,8 +256,18 @@ def _qt_warnings() -> Iterator[list[str]]:
         qInstallMessageHandler(previous)
 
 
+# Widgets the theme's rules style. Qt parses an application stylesheet
+# only when it polishes a widget: setting a broken one warns nothing
+# until then (observed offscreen, "Could not parse application
+# stylesheet").
+_POLISHED_WIDGETS: tuple[type[QWidget], ...] = (
+    QMainWindow, QLabel, QPushButton, QLineEdit, QComboBox, QTableWidget,
+)
+
+
 def _check_theme(app: QApplication) -> CheckResult:
-    """Applies the light theme, then the dark, as Settings can."""
+    """Applies the light theme, then the dark, as Settings can, and
+    polishes a widget of each typical kind under each."""
     problems: list[str] = []
     with _qt_warnings() as warnings:
         for mode, expected in (("light", theme.LIGHT), ("dark", theme.DARK)):
@@ -248,6 +275,10 @@ def _check_theme(app: QApplication) -> CheckResult:
                 problems.append(f"The {mode} theme resolved another palette.")
             if not app.styleSheet():
                 problems.append(f"The {mode} theme set no stylesheet.")
+            for kind in _POLISHED_WIDGETS:
+                widget = kind()
+                widget.ensurePolished()
+                widget.deleteLater()
     problems.extend(f"Qt: {warning}" for warning in warnings)
     detail = " ".join(problems) or "Applied the light and the dark theme."
     return CheckResult("theme", not problems, detail)
