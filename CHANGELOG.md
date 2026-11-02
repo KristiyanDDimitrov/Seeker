@@ -7,6 +7,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Spotify Premium is named up front.** Spotify runs an app in
+  Development Mode, which every Seeker user's own Spotify app is, only
+  while its owner has Premium. The setup wizard's Spotify step and the
+  README's Install section now say so.
+
 ## [0.1.1] - 2026-10-26
 
 A security release; nothing else changes.

@@ -67,7 +67,9 @@ You need:
 
 - a [Spotify app](https://developer.spotify.com/dashboard) of your own,
   with the redirect URI `http://127.0.0.1:8888/callback`, for its Client
-  ID (no secret: Seeker uses PKCE);
+  ID (no secret: Seeker uses PKCE). Spotify requires the account that
+  owns the app to have
+  [Premium](https://developer.spotify.com/documentation/web-api/concepts/quota-modes);
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/), for
   SoulSeek;
 - optionally, `brew install chromaprint`, for duplicate detection.
