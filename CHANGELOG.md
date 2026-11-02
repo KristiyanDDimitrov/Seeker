@@ -24,6 +24,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **CI runs the suite on an Intel Mac too:** a blocking `check-intel` job
+  on `macos-15-intel` beside `check`; both fail, not skip, the
+  real-chromaprint tests when the library is missing.
+
 - **Spotify Premium is named up front.** Spotify runs an app in
   Development Mode, which every Seeker user's own Spotify app is, only
   while its owner has Premium. The setup wizard's Spotify step and the

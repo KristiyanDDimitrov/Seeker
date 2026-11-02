@@ -32,6 +32,9 @@ jobs:
     timeout-minutes: 30
     env:
       QT_QPA_PLATFORM: offscreen
+      # A missing or unloadable libchromaprint fails the real-audio
+      # tests instead of skipping them (tests/chromaprint_gate.py).
+      SEEKER_REQUIRE_CHROMAPRINT: "1"
     steps:
       # No later step pushes, so the job token stays out of .git/config.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,6 +54,35 @@ jobs:
       - run: >-
           uv run pytest --cov=seeker --cov-branch --cov-report=term-missing
           --cov-fail-under=92
+
+  check-intel:
+    # The suite on real Intel hardware, which the Rosetta runs of
+    # round 13 only approximate (Rosetta is not an Intel Mac). Blocking:
+    # an Intel-only failure is the finding this job exists for. ruff and
+    # mypy don't depend on the architecture and run in `check` alone, as
+    # does the coverage gate. GitHub retires macos-15-intel in fall
+    # 2027, its last Intel macOS image; after that Intel is tested under
+    # Rosetta only (CLAUDE.md -> Commands) and this job goes.
+    runs-on: macos-15-intel
+    # The weekly run is for the audit job alone.
+    if: github.event_name != 'schedule'
+    timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: offscreen
+      # Intel Homebrew installs under /usr/local: a library the app
+      # cannot find there must fail the tests, not skip them.
+      SEEKER_REQUIRE_CHROMAPRINT: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - run: brew install chromaprint
+      - run: uv sync --locked --all-extras --dev
+      - run: uv run pytest -q
 
   audit:
     # pip-audit over every locked dependency (tools/audit_dependencies.py
