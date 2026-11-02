@@ -19,10 +19,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Development Mode, which every Seeker user's own Spotify app is, only
   while its owner has Premium. The setup wizard's Spotify step and the
   README's Install section now say so.
-- **The dependencies install on Intel Macs.** numba publishes no
-  Intel macOS wheels after 0.62.1, so there the lock pins numba
-  0.62.1, llvmlite 0.45.1 and numpy 2.3; Apple silicon and Windows
-  keep their versions.
+- **The lock pins Intel Mac wheels.** numba publishes no Intel macOS
+  wheels after 0.62.1, so for Intel Macs the lock pins numba 0.62.1,
+  llvmlite 0.45.1 and numpy 2.3, each with a macOS x86_64 wheel;
+  Apple silicon and Windows keep their versions.
 
 ## [0.1.1] - 2026-10-26
 
