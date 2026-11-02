@@ -351,3 +351,4 @@ under their entry and live in the same file, after it.
 - §254 — Round 13 S2b: `tests/test_lock_platforms.py`, every package uv.lock installs needs a cp313/abi3/pure wheel on arm64, Intel and Windows → [241-270.md#254](241-270.md#254)
 - §255 — Round 13 S3: `.venv-x86_64` under Rosetta; Intel pins install, librosa runs, no AVX (westmere); 17 x86_64 failures, all arm64-only chromaprint → [241-270.md#255](241-270.md#255)
 - §256 — Round 13 S5: `seeker-ui --smoke-test`: identity, imports, hidden imports, Qt plugin, polished themes, bundled fonts/icons, 123 BPM analysis → [241-270.md#256](241-270.md#256)
+- §257 — Round 13 S5b: frozen arm64 smoke test passes (cold 3.7 s, warm 0.035 s); a build-time module manifest closes the frozen-walk gap → [241-270.md#257](241-270.md#257)

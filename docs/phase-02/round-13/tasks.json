@@ -182,7 +182,7 @@
       "id": "S5b", "title": "The smoke test on the frozen Apple silicon app",
       "type": "behaviour", "executes": "BRIEF.md §5 step 3", "depends_on": ["S5"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 2,
-      "est_work_k": 45, "est_peak_k": 99, "actual_peak_k": null,
+      "est_work_k": 45, "est_peak_k": 99, "actual_peak_k": 75,
       "split_point": "After the first frozen report",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "386-422", "est_k": 0.5},
@@ -190,7 +190,7 @@
         {"path": "packaging/seeker.spec", "range": "95-171", "est_k": 0.7},
         {"path": "RELEASING.md", "range": "27-76", "est_k": 0.5}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["d72eb91", "e3a1920", "fbb1e99"], "history": 257
     },
     {
       "id": "S6", "title": "target_arch explicit; per-architecture names; the post-build lipo/minos check (PF-02, PF-04)",

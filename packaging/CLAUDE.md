@@ -46,7 +46,7 @@ investigation; `docs/history/README.md` resolves any `§N`.
   test imports on macOS: a deferred import of a new framework goes
   there. The spec also writes `module_manifest.txt` (the source tree's
   modules less the CLI's) into the bundle; frozen, the import check
-  fails a module the walk lacks. [§256](../docs/history/241-270.md#256)
+  fails a module the walk lacks. [§256](../docs/history/241-270.md#256), [§257](../docs/history/241-270.md#257)
 - **Intel Macs are pinned to numba < 0.63, llvmlite < 0.46, numpy <
   2.4** (the last x86_64 wheels) by marker-scoped `[tool.uv]
   constraint-dependencies`, which fork `uv.lock`; permanent.
