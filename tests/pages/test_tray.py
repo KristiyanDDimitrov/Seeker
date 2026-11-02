@@ -336,7 +336,7 @@ def test_download_notifications_fire_after_seeding_found_no_history(
     assert "A: 1 track downloaded" in messages[0]
 
 
-def testtray_icon_path_dev_mode_points_at_real_repo_file():
+def test_tray_icon_path_dev_mode_points_at_real_repo_file():
     # Roadmap item 98 (B9.1) — the real template asset, not the
     # full-colour app .icns (setIsMask(True) against the .icns produced
     # a solid filled squircle instead of a legible glyph).
@@ -349,7 +349,7 @@ def testtray_icon_path_dev_mode_points_at_real_repo_file():
     assert path.exists()
 
 
-def testtray_icon_path_frozen_mode_uses_meipass(
+def test_tray_icon_path_frozen_mode_uses_meipass(
         monkeypatch,
         tmp_path,
 ):
