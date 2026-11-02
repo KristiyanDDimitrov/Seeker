@@ -1,0 +1,114 @@
+name: Build
+
+# Builds both apps on the hardware each one is for and smoke-tests the
+# frozen result: macos-15-intel is the only real x86_64 Mac in reach, and
+# a dependency bump that breaks the frozen app shows here before a
+# release does. It never publishes: RELEASING.md builds the release
+# assets locally.
+on:
+  workflow_dispatch:
+  push:
+    # Naming `tags` alone would skip every branch push ("If you define
+    # only tags ... the workflow won't run for events affecting the
+    # undefined Git ref"), so `branches` is named too. "Path filters are
+    # not evaluated for pushes of tags": a tag always builds.
+    branches: ["**"]
+    tags: ["v*"]
+    paths:
+      - pyproject.toml
+      - uv.lock
+      - packaging/**
+      # A workflow_dispatch run needs this file on the default branch;
+      # a push of a branch that changes it does not.
+      - .github/workflows/build.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (${{ matrix.architecture }})
+    # Pinned to concrete images, as in ci.yml: a runner-image change
+    # arrives as a reviewed commit. GitHub retires macos-15-intel in
+    # fall 2027, its last Intel macOS image; then this entry goes.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: arm64
+            runner: macos-26
+            image: Seeker.dmg
+            expected_architecture: Apple silicon
+          - architecture: x86_64
+            runner: macos-15-intel
+            image: Seeker-Intel.dmg
+            expected_architecture: Intel
+    steps:
+      # No later step pushes, so the job token stays out of .git/config.
+      # The full history, so `git describe` names the build from a tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+      # The Apple silicon app does not ship libchromaprint: it loads the
+      # user's Homebrew copy, as this runner will.
+      - name: Install libchromaprint for the smoke test
+        if: matrix.architecture == 'arm64'
+        run: brew install chromaprint
+      # The Intel app ships it: the build stages /usr/local/lib's copy.
+      - name: Install libchromaprint (bundled into the Intel app)
+        if: matrix.architecture == 'x86_64'
+        run: brew install chromaprint
+      - run: uv sync --locked
+      # Fails when a Mach-O lacks the architecture or needs a newer macOS
+      # than the bundle declares (bundle_check.py), before the image.
+      - name: Build the app and the disk image
+        timeout-minutes: 30
+        run: .venv/bin/python packaging/build_dmg.py
+      - name: Check the image is named for its architecture
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: test -f "dist/$IMAGE"
+      # fingerprint.py looks in the bundle first and /usr/local/lib next:
+      # with the build machine's copy gone, a report that finds
+      # libchromaprint found the bundled one.
+      - name: Remove the build machine's libchromaprint
+        if: matrix.architecture == 'x86_64'
+        run: sudo rm -f /usr/local/lib/libchromaprint*
+      # The first analysis compiles numba's functions: 37 s under Rosetta.
+      - name: Smoke test the built app
+        timeout-minutes: 15
+        env:
+          REPORT: ${{ github.workspace }}/dist/smoke-report-${{ matrix.architecture }}.json
+        run: dist/Seeker.app/Contents/MacOS/Seeker --smoke-test "$REPORT"
+      # The exit code covers every check; this adds what the runner must
+      # show: a frozen app, found libchromaprint, and the architecture
+      # it was built for, natively (the Rosetta sentence would differ).
+      - name: Check the report
+        env:
+          REPORT: ${{ github.workspace }}/dist/smoke-report-${{ matrix.architecture }}.json
+          EXPECTED: ${{ matrix.expected_architecture }}
+        run: >-
+          jq -e --arg expected "$EXPECTED"
+          '.passed and .frozen and .chromaprint_available
+          and .architecture == $expected' "$REPORT"
+      # Dismounted images and reports are small; a week is long enough
+      # to look at them.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: Seeker-${{ matrix.architecture }}
+          path: |
+            dist/${{ matrix.image }}
+            dist/smoke-report-${{ matrix.architecture }}.json
+          retention-days: 7
+          if-no-files-found: warn

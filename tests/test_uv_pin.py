@@ -14,7 +14,7 @@ from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text())
-WORKFLOW = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
 
 
 def _required_uv() -> str:
@@ -24,14 +24,16 @@ def _required_uv() -> str:
 
 
 def test_every_setup_uv_step_pins_the_required_version():
-    steps = re.findall(
-        r"uses: astral-sh/setup-uv@.*\n(?:\s+with:\n(?:\s+\S.*\n)+)?",
-        WORKFLOW,
-    )
+    assert {path.name for path in WORKFLOWS} >= {"ci.yml", "build.yml"}
+    for path in WORKFLOWS:
+        steps = re.findall(
+            r"uses: astral-sh/setup-uv@.*\n(?:\s+with:\n(?:\s+\S.*\n)+)?",
+            path.read_text(),
+        )
 
-    assert steps
-    for step in steps:
-        assert f'version: "{_required_uv()}"' in step, step
+        assert steps, path.name
+        for step in steps:
+            assert f'version: "{_required_uv()}"' in step, (path.name, step)
 
 
 def test_uv_build_range_contains_the_required_version():
