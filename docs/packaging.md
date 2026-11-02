@@ -128,8 +128,11 @@ start the app from it ([CLAUDE.md](../CLAUDE.md#platforms)).
   `audio/fingerprint.py` searches before the Homebrew prefixes, and the
   spec adds its licence texts under `licenses/chromaprint/`. A missing
   library fails the build, so the app never silently loses
-  fingerprinting. The Apple silicon app still finds the user's own
-  Homebrew copy. On an Apple silicon Mac, Homebrew lives in
+  fingerprinting. Homebrew's arm64 copy links only system libraries
+  (Accelerate, libSystem, libc++: `otool -L`, 2026-11-03), so a lone
+  copy loads; the Intel copy's links are for the first Intel build to
+  show. The Apple silicon app still finds the user's own Homebrew
+  copy. On an Apple silicon Mac, Homebrew lives in
   `/opt/homebrew`, so the Intel build machine needs a second, x86_64
   Homebrew in `/usr/local` (run under `arch -x86_64`). Homebrew treats
   Intel Macs as Tier 3 since September 2026 and no longer builds new
@@ -161,9 +164,9 @@ bundle carries its identity (not `"dev"`), imports every module and the
 macOS frameworks the spec bundles by hand, finds Qt's native platform
 plugin, applies both themes, loads the bundled fonts, icons and Compose
 template, and times two analyses of a generated click track (cold, then
-warm; it reads back 123.05 BPM). It prints one JSON report, also written to `REPORT`,
-and exits 0, or 1 naming what failed. It touches no settings, database
-or library, so it is safe on any Mac. On an Apple silicon Mac, prefix an
+warm; it reads back 123.05 BPM). It prints one JSON report, also
+written to `REPORT`, and exits 0, or 1 naming what failed. It touches no
+settings, database or library, so it is safe on any Mac. On an Apple silicon Mac, prefix an
 Intel app with `arch -x86_64` (a real Intel Mac runs it as it is). Give
 the first cold analysis a generous timeout: numba compiles it (37 s under
 Rosetta). The report's `architecture` line is the one Help → Build
