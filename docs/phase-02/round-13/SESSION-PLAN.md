@@ -49,7 +49,7 @@ Est. work includes the type's risk factor; est. peak is B + work.
 | ☑ S5 | `seeker-ui --smoke-test`, passing unfrozen (PF-06) | Feature | §5 steps 1–2 | ~80 K | After the import, theme and resource checks pass with the report written; analysis and chromaprint then move to S5b |
 | ☑ S5b | The smoke test on the frozen Apple silicon app | Behaviour | §5 step 3 | ~45 K | After the first frozen report |
 | ☑ S6 | `target_arch` explicit; per-architecture names; the post-build `lipo`/`minos` check (PF-02, PF-04) | Feature | §6 steps 1–2 | ~65 K | After step 1, with both bundle sizes |
-| ☐ S6b | The Intel app built under Rosetta: post-build check, smoke test, timings | Behaviour | §6 steps 3–4 | ~40 K | — |
+| ☑ S6b | The Intel app built under Rosetta: post-build check, smoke test, timings | Behaviour | §6 steps 3–4 | ~40 K | — |
 | ☐ S7 | `build.yml`: both apps built and smoke-tested in CI | Feature | §7 | ~50 K | After the first dispatched run is recorded |
 | **D — Document, accept, release** | | | | | |
 | ☐ S8 | Documents for two Macs (PF-04, PF-07) | Docs | §8 | ~50 K | After README and RELEASING |

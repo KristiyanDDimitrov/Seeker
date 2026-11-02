@@ -212,14 +212,14 @@
       "id": "S6b", "title": "The Intel app built under Rosetta: post-build check, smoke test, timings",
       "type": "behaviour", "executes": "BRIEF.md §6 steps 3-4", "depends_on": ["S6", "S3"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 3,
-      "est_work_k": 40, "est_peak_k": 94, "actual_peak_k": null,
+      "est_work_k": 40, "est_peak_k": 94, "actual_peak_k": 35,
       "split_point": null,
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "444-469", "est_k": 0.4},
         {"path": "packaging/bundle_info.py", "range": "100-176", "est_k": 1.0},
         {"path": "docs/history/README.md", "range": "grep -n '§215', then the entry's range", "est_k": 1.0}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": [], "history": 260
     },
     {
       "id": "S7", "title": "build.yml: both apps built and smoke-tested in CI",
