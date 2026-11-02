@@ -58,6 +58,11 @@ S9's Code half (the lead), then Kris's gate; wave 5 is S10 (solo).
 - Kris (2026-11-02): numpy split `>=2.5.2` off Intel, `>=2.3` on it
   (`07157c4`); the lead merged Dependabot #14 (setup-uv 10.3.3, green
   on its rebase, `0b7497a`): S7 copies the new pin.
+- Kris (2026-11-02): the Intel bundle ships libchromaprint
+  (`f19ad82`; `bundle_info.chromaprint_binaries`, staged from
+  `/usr/local/lib`, plus its licence texts); arm64 stays on the user's
+  Homebrew copy. Not yet built for real: S7's Intel job must
+  `brew install chromaprint` and `bundle_check` must pass on the dylib.
 - S5 click track at 123.05 BPM (§256). S6's check reports a failing
   lipo/otool as a problem rather than skipping it (§259).
 
@@ -71,9 +76,6 @@ None.
 
 ## 8. Waiting on Kris
 
-- **Intel app has no fingerprinting** (§260): the bundle holds no
-  libchromaprint (the arm64 app has it). Bundle an x86_64 build of it,
-  or ship Intel without? S7 and the release notes depend on it.
 - #1, #5, #7, #8 are still open though their changes are on `main`.
 - `/context` at the next lead's start.
 - Later: S9's Intel image test (BRIEF §9); S10's outward steps.
