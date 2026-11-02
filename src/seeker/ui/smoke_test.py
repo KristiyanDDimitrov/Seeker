@@ -3,10 +3,10 @@ exits.
 
 Meant for a frozen build, whose `hiddenimports` and `datas` are kept
 by hand in `packaging/seeker.spec`: a module, font, icon or the
-Compose template missing from the bundle shows up here rather than
-when a person launches the app. It touches no logging, no
-`Application`, no database and no user folder, so it is safe to run
-on any machine.
+Compose template missing from the bundle, or numba failing to compile
+inside it, shows up here rather than when a person launches the app.
+It touches no logging, no `Application`, no database and no user
+folder (only a temporary WAV), so it is safe to run on any machine.
 
 The report is one JSON object, printed and, when a path follows the
 flag, also written there (a windowed build may have no console). The
@@ -19,12 +19,16 @@ import json
 import pkgutil
 import platform
 import sys
+import tempfile
+import time
+import wave
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+import numpy as np
 from PySide6.QtCore import QMessageLogContext, QtMsgType, qInstallMessageHandler
 from PySide6.QtGui import QFontDatabase, QImage
 from PySide6.QtSvg import QSvgRenderer
@@ -32,6 +36,8 @@ from PySide6.QtWidgets import QApplication
 
 import seeker
 from seeker import _build_info, cpu_architecture
+from seeker.audio import fingerprint
+from seeker.audio.analysis import analyze_audio
 from seeker.soulseek import docker_setup
 from seeker.ui import icons, theme, tray
 
@@ -40,6 +46,16 @@ SMOKE_TEST_FLAG = "--smoke-test"
 # The two faces packaging/fonts/ carries, at the weights the theme
 # sets (theme.WEIGHT_MEDIUM, theme.WEIGHT_SEMIBOLD).
 _DISPLAY_STYLES = ("Medium", "SemiBold")
+
+# analyze_audio loads at 22,050 Hz, and librosa's tempo estimate steps
+# in whole lags of its 512-sample hop: it can report only
+# 60 * 22050 / (512 * lag) BPM. 120 BPM falls between lags 22 and 21
+# (117.45 and 123.05; a 120 BPM click measured 117.45), so the click
+# runs at lag 21's tempo, which the estimate reaches exactly.
+_SAMPLE_RATE = 22_050
+CLICK_BPM = 60 * _SAMPLE_RATE / (512 * 21)
+_CLICK_SECONDS = 10.0
+_BPM_TOLERANCE = 2.0
 
 _QT_WARNINGS = (
     QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg,
@@ -61,10 +77,25 @@ class CheckResult:
     detail: str
 
 
+@dataclass(frozen=True)
+class AnalysisTiming:
+    """Two analyses of the click track: the first compiles numba's
+    functions or loads them from its cache, the second reuses them."""
+
+    expected_bpm: float
+    cold_bpm: float
+    warm_bpm: float
+    cold_seconds: float
+    warm_seconds: float
+
+
 @dataclass
 class SmokeReport:
     checks: list[CheckResult] = field(default_factory=list)
     modules_imported: int = 0
+    analysis: AnalysisTiming | None = None
+    # Optional (duplicate detection only), so reported, never a check.
+    chromaprint_available: bool | None = None
     platform: str = ""
     architecture: str = ""
     frozen: bool = False
@@ -120,6 +151,9 @@ def run_smoke_test(request: SmokeTestRequest) -> int:
     report.checks.append(_check_fonts())
     report.checks.append(_check_icons())
     report.checks.append(_check_compose_template())
+    analysis, report.analysis = _check_analysis()
+    report.checks.append(analysis)
+    report.chromaprint_available = fingerprint.is_available()
 
     text = report.to_json()
     print(text)
@@ -293,3 +327,58 @@ def _check_compose_template() -> CheckResult:
     return CheckResult(
         "compose_template", passed=True, detail=f"Read {path.name}.",
     )
+
+
+def _write_click_track(path: Path) -> None:
+    """A 16-bit mono WAV of 10 ms 1 kHz clicks at `CLICK_BPM`."""
+    samples = np.zeros(round(_CLICK_SECONDS * _SAMPLE_RATE))
+    times = np.arange(round(0.01 * _SAMPLE_RATE)) / _SAMPLE_RATE
+    click = np.sin(2 * np.pi * 1000 * times) * np.exp(-400 * times)
+    period = 60 / CLICK_BPM * _SAMPLE_RATE
+    for start in np.arange(0, len(samples) - len(click), period).round():
+        samples[int(start):int(start) + len(click)] = click
+    pcm = (samples * 0.8 * np.iinfo(np.int16).max).astype("<i2")
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(_SAMPLE_RATE)
+        output.writeframes(pcm.tobytes())
+
+
+def _timed_analysis(path: Path) -> tuple[float, float]:
+    started = time.perf_counter()
+    bpm = analyze_audio(path).bpm
+    return bpm, time.perf_counter() - started
+
+
+def _check_analysis() -> tuple[CheckResult, AnalysisTiming | None]:
+    """Analyses a generated click track twice, as tagging does a file:
+    numba's JIT, inside a bundle too, and the tempo it finds."""
+    with tempfile.TemporaryDirectory(prefix="seeker-smoke-test-") as directory:
+        path = Path(directory) / "click.wav"
+        try:
+            _write_click_track(path)
+            cold_bpm, cold_seconds = _timed_analysis(path)
+            warm_bpm, warm_seconds = _timed_analysis(path)
+        except Exception as error:  # any failure to analyse is the finding
+            return CheckResult("analysis", False, _describe(error)), None
+    timing = AnalysisTiming(
+        expected_bpm=CLICK_BPM,
+        cold_bpm=cold_bpm,
+        warm_bpm=warm_bpm,
+        cold_seconds=cold_seconds,
+        warm_seconds=warm_seconds,
+    )
+    wrong = [
+        bpm for bpm in (cold_bpm, warm_bpm)
+        if abs(bpm - CLICK_BPM) > _BPM_TOLERANCE
+    ]
+    if wrong:
+        found = " and ".join(f"{bpm:g}" for bpm in wrong)
+        detail = f"Found {found} BPM in a {CLICK_BPM:.2f} BPM click track."
+        return CheckResult("analysis", False, detail), timing
+    detail = (
+        f"Found {cold_bpm:.2f} BPM in {cold_seconds:.2f} s, "
+        f"then in {warm_seconds:.2f} s."
+    )
+    return CheckResult("analysis", True, detail), timing

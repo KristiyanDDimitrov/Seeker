@@ -14,9 +14,10 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a pointer to the faster Apple silicon download.
 - **`seeker-ui --smoke-test [REPORT]` checks a build and exits:** it
   imports every module, applies both themes offscreen and loads the
-  bundled fonts, icons and Compose template, then prints a JSON report
-  (also written to `REPORT`) and exits 0, or 1 naming what failed. It
-  touches no settings, database or library.
+  bundled fonts, icons and Compose template, times two analyses of a
+  generated click track and says whether chromaprint loads, then
+  prints a JSON report (also written to `REPORT`) and exits 0, or 1
+  naming what failed. It touches no settings, database or library.
 
 ### Changed
 

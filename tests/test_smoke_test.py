@@ -12,10 +12,11 @@ import pytest
 from PySide6.QtCore import qWarning
 
 from seeker import cpu_architecture
+from seeker.audio.analysis import AudioAnalysis
 from seeker.ui import icons, smoke_test, theme
 
 SRC_SEEKER = Path(smoke_test.__file__).resolve().parents[1]
-CHECKS = ["imports", "theme", "fonts", "icons", "compose_template"]
+CHECKS = ["imports", "theme", "fonts", "icons", "compose_template", "analysis"]
 
 
 @pytest.fixture
@@ -166,3 +167,60 @@ def test_a_bundle_without_its_resources_fails_their_checks(
     assert err == "Smoke test failed: fonts, icons, compose_template\n"
     (checked,) = (c for c in printed["checks"] if c["name"] == "icons")
     assert "seeker_menubar_Template.png" in checked["detail"]
+
+
+def test_the_analysis_check_finds_the_click_tracks_tempo_twice(run):
+    _code, printed, _err = run()
+
+    analysis = printed["analysis"]
+    assert analysis["expected_bpm"] == pytest.approx(123.05, abs=0.01)
+    for bpm in (analysis["cold_bpm"], analysis["warm_bpm"]):
+        assert abs(bpm - analysis["expected_bpm"]) <= 2
+    assert analysis["cold_seconds"] > 0
+    assert analysis["warm_seconds"] > 0
+
+
+def test_a_wrong_tempo_fails_the_analysis_check(run, monkeypatch):
+    monkeypatch.setattr(
+        smoke_test, "analyze_audio",
+        lambda path: AudioAnalysis(bpm=61.5, camelot_key=None, key_confidence=0),
+    )
+
+    code, printed, err = run()
+
+    assert code == 1
+    assert printed["failed"] == ["analysis"]
+    assert err == "Smoke test failed: analysis\n"
+    (checked,) = (c for c in printed["checks"] if c["name"] == "analysis")
+    assert "61.5" in checked["detail"]
+
+
+def test_an_analysis_that_raises_fails_the_check_and_still_reports(
+        run, monkeypatch,
+):
+    def analyze_audio(path):
+        raise OSError("numba could not write its cache")
+
+    monkeypatch.setattr(smoke_test, "analyze_audio", analyze_audio)
+
+    code, printed, _err = run()
+
+    assert code == 1
+    assert printed["failed"] == ["analysis"]
+    assert printed["analysis"] is None
+    (checked,) = (c for c in printed["checks"] if c["name"] == "analysis")
+    assert checked["detail"] == "OSError: numba could not write its cache"
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_chromaprint_is_reported_and_never_fails_the_test(
+        run, monkeypatch, available,
+):
+    """Chromaprint is optional (duplicate detection only), so the report
+    says whether it loads and the exit code ignores it."""
+    monkeypatch.setattr(smoke_test.fingerprint, "is_available", lambda: available)
+
+    code, printed, _err = run()
+
+    assert code == 0
+    assert printed["chromaprint_available"] is available
