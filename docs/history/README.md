@@ -355,3 +355,4 @@ under their entry and live in the same file, after it.
 - §258 — Round 13 S3b: one chromaprint gate, `SEEKER_REQUIRE_CHROMAPRINT=1` turns its skip into a failure; Rosetta cold analyze 67 s vs 23 s native → [241-270.md#258](241-270.md#258)
 - §259 — Round 13 S6: explicit `target_arch`, per-architecture DMG names, post-build lipo/minos check; arm64 bundle unchanged at 310 MB → [241-270.md#259](241-270.md#259)
 - §260 — Round 13 S6b: the Intel app builds under Rosetta, check and smoke test pass; cold analysis 37.5 s then 1.5 s; no chromaprint in the Intel bundle → [241-270.md#260](241-270.md#260)
+- §261 — Round 13 S4: blocking `check-intel` job on macos-15-intel (19.5 min, 2500 passed); the first real Intel run found one wrong test expectation (no proc_translated key) → [241-270.md#261](241-270.md#261)

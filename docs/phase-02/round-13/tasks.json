@@ -151,14 +151,14 @@
       "id": "S4", "title": "CI: a blocking macos-15-intel job (PF-03)",
       "type": "behaviour", "executes": "BRIEF.md §4", "depends_on": ["S3b", "S1c"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 3,
-      "est_work_k": 45, "est_peak_k": 99, "actual_peak_k": null,
+      "est_work_k": 45, "est_peak_k": 99, "actual_peak_k": 55,
       "split_point": "After the first run is recorded; a runner-only failure becomes its own row",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "348-376", "est_k": 0.4},
         {"path": "docs/phase-02/AUDIT.md", "range": "140-149", "est_k": 0.2},
         {"path": ".github/workflows/ci.yml", "range": null, "est_k": 0.7}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["e875cef", "085ff27"], "history": 261
     },
     {
       "id": "S5", "title": "seeker-ui --smoke-test, passing unfrozen (PF-06)",

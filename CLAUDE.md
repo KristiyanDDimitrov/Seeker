@@ -272,6 +272,11 @@ UNVERIFIED). `docs/status.md` loads only when read.
   `SEEKER_REQUIRE_CHROMAPRINT=1` makes them fail instead (set it where
   the library must exist). Cold `analyze_audio` takes about 3x as long
   under Rosetta (67 s against 23 s, numba compiling). [§258](docs/history/241-270.md#258)
+- **CI runs the suite on a real Intel Mac** (`check-intel`,
+  `macos-15-intel`, ~20 min; the image retires fall 2027, then Rosetta
+  only). A real Intel Mac has no `sysctl.proc_translated` key: it reads
+  None, meaning native (observed in CI run `41501947860`).
+  [§261](docs/history/241-270.md#261)
 
 ## Working agreements
 
