@@ -14,7 +14,8 @@
 # conversion comes from the copy of avresample inside the source.
 #
 # Needs cmake, a compiler, curl and shasum (every macOS runner has them).
-# Writes under PREFIX with sudo when the current user cannot.
+# Creates PREFIX/lib itself and runs the install through sudo only when
+# the current user cannot, so a PREFIX inside the repository needs none.
 set -euo pipefail
 
 VERSION=1.6.2
@@ -39,10 +40,13 @@ only_system_dependencies() {
 }
 
 # Installs the finished build in $1 under the prefix $2, through sudo
-# when the current user cannot write the prefix's lib/.
+# only when the current user can neither create nor write the prefix's
+# lib/. A prefix that does not exist yet (a folder in the repository)
+# is not unwritable, so it is created before it is asked about;
+# `[ -w ]` alone says no to a folder that is not there.
 install_library() {
     local build=$1 prefix=$2
-    if [ -w "$prefix/lib" ]; then
+    if mkdir -p "$prefix/lib" 2>/dev/null && [ -w "$prefix/lib" ]; then
         cmake --install "$build"
     else
         sudo cmake --install "$build"

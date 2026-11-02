@@ -179,3 +179,32 @@ def test_a_prefix_the_user_cannot_write_installs_through_sudo(tmp_path):
         "sudo cmake --install /the/build",
         "cmake --install /the/build",
     ]
+
+
+def test_a_prefix_that_does_not_exist_yet_installs_without_sudo(tmp_path):
+    # A local Intel build into the repository: neither the prefix nor
+    # its lib/ exists, and cmake would create both.
+    prefix = tmp_path / "repo" / ".chromaprint"
+
+    calls = _install(tmp_path, prefix)
+
+    assert calls == ["cmake --install /the/build"]
+    assert (prefix / "lib").is_dir()
+
+
+@needs_non_root
+def test_a_prefix_that_cannot_be_created_installs_through_sudo(tmp_path):
+    # /usr/local/lib on a Mac with no Intel Homebrew: /usr/local is
+    # root's and has no lib/ yet.
+    parent = tmp_path / "root-owned"
+    parent.mkdir()
+    parent.chmod(0o555)
+    try:
+        calls = _install(tmp_path, parent / "local")
+    finally:
+        parent.chmod(0o755)
+
+    assert calls == [
+        "sudo cmake --install /the/build",
+        "cmake --install /the/build",
+    ]
