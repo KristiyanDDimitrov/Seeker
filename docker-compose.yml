@@ -18,7 +18,7 @@ services:
   slskd:
     # The multi-platform index digest of the tag, read with `docker buildx
     # imagetools inspect`. A bump changes both together.
-    image: slskd/slskd:0.26.0@sha256:ecd4026d4f8fb504e2cc55323efa2c1f5b56d20d3686b018249cc36b48ea17a6
+    image: slskd/slskd:0.26.2@sha256:d0963a3e5b16facd295bf4f2156dad0182f246b1b21a032cae12f5494c694843
     container_name: slskd
     ports:
       # The web UI and API answer on this machine only; Seeker talks to
