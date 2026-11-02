@@ -253,6 +253,13 @@ volume gives both. UNVERIFIED on a quarantined download until S17's
 acceptance tries it on macOS 26.
 [HISTORY §36](history/032-046.md#36), [§214](history/211-240.md#214)
 
+The Intel app is signed the same way: PyInstaller's bundle step signs
+with no architecture test (read in the locked PyInstaller's
+`building/osx.py`, 2026-11-03), and the first launch is macOS's, not
+the architecture's. Nobody has yet run `codesign -dvvv` on an Intel
+app or opened a quarantined Intel download; RELEASING.md step 3 and
+round 13's acceptance do (UNVERIFIED until then).
+
 Notarization needs a paid Apple Developer account. The hooks for it
 are marked in `packaging/seeker.spec`: `codesign_identity=` and
 `entitlements_file=` on `EXE(...)`, followed by `xcrun notarytool` and
