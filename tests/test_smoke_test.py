@@ -245,6 +245,31 @@ def test_an_unparseable_stylesheet_fails_the_theme_check(run, monkeypatch):
     assert "Could not parse application stylesheet" in checked["detail"]
 
 
+def test_a_weight_found_only_outside_the_bundle_fails_the_font_check(
+        run, monkeypatch, tmp_path,
+):
+    """The font database merges every source of a family: SemiBold
+    registered from elsewhere (this session's theme here, a system
+    install for a person) must not stand in for the bundle's file."""
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    medium = theme.bundled_dir("fonts") / "BarlowSemiCondensed-Medium.ttf"
+    (fonts / medium.name).write_bytes(medium.read_bytes())
+    real_dir = theme.bundled_dir
+
+    def bundled_dir(name):
+        return fonts if name == "fonts" else real_dir(name)
+
+    monkeypatch.setattr(smoke_test.theme, "bundled_dir", bundled_dir)
+
+    code, printed, _err = run()
+
+    assert code == 1
+    assert printed["failed"] == ["fonts"]
+    (checked,) = (c for c in printed["checks"] if c["name"] == "fonts")
+    assert "SemiBold" in checked["detail"]
+
+
 def test_a_bundle_without_its_resources_fails_their_checks(
         run, monkeypatch, tmp_path,
 ):

@@ -35,7 +35,7 @@ from PySide6.QtCore import (
     QtMsgType,
     qInstallMessageHandler,
 )
-from PySide6.QtGui import QFontDatabase, QImage
+from PySide6.QtGui import QFontDatabase, QImage, QRawFont
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
@@ -381,11 +381,15 @@ def _check_theme(app: QApplication) -> CheckResult:
 
 
 def _check_fonts() -> CheckResult:
-    """Every bundled font file loads as the display face, which offers
-    each weight the theme uses."""
+    """Every bundled font file loads as the display face, and the files
+    themselves carry each weight the theme uses. Each style is read
+    from its file: `QFontDatabase.styles()` merges every source of the
+    family, so a system-installed Barlow would stand in for a missing
+    file."""
     directory = theme.bundled_dir("fonts")
     files = sorted(directory.glob("*.ttf"))
     problems = [] if files else [f"No font files in {directory}."]
+    styles: list[str] = []
     for file in files:
         font_id = QFontDatabase.addApplicationFont(str(file))
         if font_id == -1:
@@ -397,10 +401,13 @@ def _check_fonts() -> CheckResult:
         QFontDatabase.removeApplicationFont(font_id)
         if theme.DISPLAY_FAMILY not in families:
             problems.append(f"{file.name} is {families}, not the display face.")
-    styles = QFontDatabase.styles(theme.DISPLAY_FAMILY)
+            continue
+        styles.append(QRawFont(str(file), 12).styleName())
     missing = [style for style in _DISPLAY_STYLES if style not in styles]
     if missing:
-        problems.append(f"{theme.DISPLAY_FAMILY} lacks {', '.join(missing)}.")
+        problems.append(
+            f"No bundled {theme.DISPLAY_FAMILY} file is {', '.join(missing)}.",
+        )
     detail = " ".join(problems) or (
         f"Loaded {len(files)} font files: {theme.DISPLAY_FAMILY} "
         f"{', '.join(styles)}."
