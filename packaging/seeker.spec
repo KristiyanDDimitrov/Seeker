@@ -107,6 +107,11 @@ else:
 # fails the build for one that has none (bundle_info.license_datas).
 # The module manifest (frozen_imports.MANIFEST_NAME) is what the source
 # tree holds; the smoke test compares the frozen walk with it.
+if not (SRC_DIR / "seeker" / "_build_info_generated.py").exists():
+    raise SystemExit(
+        "Run packaging/build_dmg.py: it writes _build_info_generated.py,"
+        " which the module manifest lists."
+    )
 MANIFEST_PATH = PROJECT_ROOT / "build" / MANIFEST_NAME
 MANIFEST_PATH.parent.mkdir(exist_ok=True)
 MANIFEST_PATH.write_text(

@@ -527,9 +527,17 @@ def test_the_source_module_list_leaves_out_what_a_gui_build_never_bundles():
     names = frozen_imports.source_modules(SRC_SEEKER)
 
     assert names == _source_modules() - frozen_imports.NOT_BUNDLED
-    assert "seeker.ui.smoke_test" in names
+    # Literal pins: _source_modules is a copy of the function under test,
+    # so a shared bug would pass the comparison above.
+    assert {"seeker.ui.smoke_test", "seeker.models.track"} <= names
+    assert "seeker" in names
+    assert not {"seeker.cli", "seeker.main", "seeker.ui."} & names
     assert sorted(frozen_imports.NOT_BUNDLED) == ["seeker.cli", "seeker.main"]
 
 
 def test_the_spec_bundles_the_module_manifest():
-    assert "MANIFEST_NAME" in SPEC.read_text(encoding="utf-8")
+    text = SPEC.read_text(encoding="utf-8")
+
+    assert 'MANIFEST_PATH = PROJECT_ROOT / "build" / MANIFEST_NAME' in text
+    assert '(str(MANIFEST_PATH), "."),' in text
+    assert "MANIFEST_PATH.write_text(" in text

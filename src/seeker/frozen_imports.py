@@ -24,8 +24,9 @@ smoke test's import check compares its walk with this list."""
 
 NOT_BUNDLED = frozenset({"seeker.cli", "seeker.main"})
 """The CLI's modules: the entry point is `seeker-ui`, and nothing in it
-imports them, so the frozen app has no use for them (measured: the one
-build whose archive was compared held every other module)."""
+imports them, so the frozen app has no use for them (observed 2026-11-02,
+HISTORY §257: the one build whose PYZ was compared held every other
+module)."""
 
 
 def source_modules(package_dir: Path) -> frozenset[str]:
