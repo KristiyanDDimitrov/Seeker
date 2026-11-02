@@ -115,3 +115,37 @@ def test_wheel_excludes_the_generated_module():
         (PROJECT_ROOT / "pyproject.toml").read_text(),
     )["tool"]["uv"]["build-backend"]
     assert "**/_build_info_generated.py" in backend["wheel-exclude"]
+
+
+def test_build_dmg_imports_on_an_unsupported_machine(monkeypatch):
+    monkeypatch.setattr("platform.machine", lambda: "aarch64")
+
+    _load_build_dmg(monkeypatch)
+
+
+def test_build_dmg_stops_before_dmgbuild_when_the_check_fails(
+        tmp_path, monkeypatch,
+):
+    build_dmg = _load_build_dmg(monkeypatch)
+    app = tmp_path / "Seeker.app"
+    app.mkdir()
+    monkeypatch.setattr(build_dmg, "APP_PATH", app)
+    monkeypatch.setattr(build_dmg, "DIST_DIR", tmp_path)
+    monkeypatch.setattr(
+        build_dmg.bundle_info, "target_architecture", lambda: "arm64",
+    )
+    monkeypatch.setattr(
+        build_dmg.bundle_check, "check_bundle",
+        lambda *args: ["Seeker has x86_64, not arm64."],
+    )
+    commands = []
+    monkeypatch.setattr(
+        build_dmg.subprocess, "run",
+        lambda command, **kwargs: commands.append(command),
+    )
+
+    with pytest.raises(SystemExit, match="x86_64, not arm64"):
+        build_dmg._build()
+
+    assert len(commands) == 1  # PyInstaller only
+    assert "PyInstaller" in commands[0]

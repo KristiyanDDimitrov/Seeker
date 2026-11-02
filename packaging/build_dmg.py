@@ -27,8 +27,6 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PACKAGING_DIR = PROJECT_ROOT / "packaging"
 DIST_DIR = PROJECT_ROOT / "dist"
 APP_PATH = DIST_DIR / "Seeker.app"
-ARCHITECTURE = bundle_info.target_architecture()
-DMG_PATH = DIST_DIR / bundle_check.dmg_name(ARCHITECTURE)
 BUILD_INFO_PATH = PROJECT_ROOT / "src" / "seeker" / "_build_info_generated.py"
 
 
@@ -77,6 +75,10 @@ def main() -> None:
 
 
 def _build() -> None:
+    # Not module-level: this file is imported on platforms with no
+    # supported target architecture.
+    architecture = bundle_info.target_architecture()
+    dmg_path = DIST_DIR / bundle_check.dmg_name(architecture)
     subprocess.run(
         [
             sys.executable, "-m", "PyInstaller",
@@ -94,18 +96,18 @@ def _build() -> None:
         )
 
     problems = bundle_check.check_bundle(
-        APP_PATH, ARCHITECTURE, bundle_info.MINIMUM_SYSTEM_VERSION,
+        APP_PATH, architecture, bundle_info.MINIMUM_SYSTEM_VERSION,
     )
     if problems:
         raise SystemExit(
-            f"{APP_PATH} failed the {ARCHITECTURE} check:\n  "
+            f"{APP_PATH} failed the {architecture} check:\n  "
             + "\n  ".join(problems)
         )
-    print(f"{APP_PATH}: every Mach-O is {ARCHITECTURE}, minos <= "
+    print(f"{APP_PATH}: every Mach-O is {architecture}, minos <= "
           f"{bundle_info.MINIMUM_SYSTEM_VERSION}")
 
-    if DMG_PATH.exists():
-        DMG_PATH.unlink()
+    if dmg_path.exists():
+        dmg_path.unlink()
 
     subprocess.run(
         [
@@ -113,13 +115,13 @@ def _build() -> None:
             "-s", str(PACKAGING_DIR / "dmg_settings.py"),
             "-D", f"app={APP_PATH}",
             "Seeker",
-            str(DMG_PATH),
+            str(dmg_path),
         ],
         check=True,
         cwd=PROJECT_ROOT,
     )
 
-    print(f"Built {DMG_PATH}")
+    print(f"Built {dmg_path}")
 
 
 if __name__ == "__main__":
