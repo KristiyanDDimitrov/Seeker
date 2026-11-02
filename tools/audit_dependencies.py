@@ -114,6 +114,10 @@ def audit_layers(exported: str) -> list[str]:
                 raise ValueError(f"No requirement above the line {line!r}.")
             current.append(line)
             continue
+        if line.startswith("-"):
+            # An editable or an index option: the export's format
+            # changed, and the option would pass as a package's name.
+            raise ValueError(f"The line {line!r} is not a pinned requirement.")
         requirement, _, marker = line.partition(" ; ")
         if marker.endswith("\\"):
             requirement += " \\"

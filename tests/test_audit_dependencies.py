@@ -201,6 +201,16 @@ def test_a_hash_line_with_no_requirement_above_is_refused(audit):
         audit.audit_layers("    --hash=sha256:aa\n")
 
 
+@pytest.mark.parametrize("line", [
+    "-e ./pkg", "--index-url https://example.org/simple",
+])
+def test_an_option_line_in_the_export_is_refused(audit, line):
+    # The audit reads `uv export` as pins only; an option would
+    # otherwise pass as a package named after it.
+    with pytest.raises(ValueError, match="not a pinned requirement"):
+        audit.audit_layers(f"altgraph==0.17.5\n{line}\n")
+
+
 class _ExportingRunner:
     """Writes `export` where `uv export` was told to, and answers each
     pip-audit run with the next return code."""
