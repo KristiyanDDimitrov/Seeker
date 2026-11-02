@@ -48,7 +48,12 @@ def frozen_bundle(monkeypatch, tmp_path):
 def run(qapp, capsys):
     """Runs the smoke test; returns its exit code, its printed report
     and its stderr. Puts back the session's own theme afterwards: the
-    check applies light, then dark, to the one QApplication."""
+    check applies light, then dark, to the one QApplication. The real
+    `apply_theme` is taken now: conftest's autouse `monkeypatch` is
+    undone after this teardown, so a test's patched one (appending a
+    broken rule) would still be in place and leave its stylesheet to
+    the next test (reproduced after tests/pages)."""
+    apply_theme = theme.apply_theme
 
     def run_check(report_path=None):
         request = smoke_test.SmokeTestRequest(report_path=report_path)
@@ -57,7 +62,7 @@ def run(qapp, capsys):
         return code, json.loads(out), err
 
     yield run_check
-    theme.apply_theme(qapp)
+    apply_theme(qapp)
 
 
 def _source_modules() -> set[str]:
