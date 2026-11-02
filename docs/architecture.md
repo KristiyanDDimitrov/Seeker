@@ -177,6 +177,7 @@ src/seeker/
     ├── slskd_status.py      # shared slskd outage state
     ├── sweep_scheduler.py   # the daily sweep, while the app runs
     ├── update_scheduler.py  # the opt-in update check at startup
+    ├── smoke_test.py        # `seeker-ui --smoke-test`: a build's self-check
     ├── theme.py             # palette tokens, QSS, apply_theme(), layouts
     ├── icons.py, wordmark.py, status_lamp.py, step_indicator.py
     ├── notice.py            # InlineNotice, FeedbackTarget

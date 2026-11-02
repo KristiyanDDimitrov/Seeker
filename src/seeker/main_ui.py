@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow
 from seeker import config
 from seeker.application import Application, resolve_log_dir
 from seeker.soulseek import poller
+from seeker.ui import smoke_test
 from seeker.ui.error_hooks import (
     install_exception_hooks,
     install_qt_message_handler,
@@ -59,6 +60,12 @@ def _configure_application_identity(qt_app: QApplication) -> None:
 
 
 def main() -> None:
+    # Before logging, Application or any window: the check touches no
+    # log file, database or user folder.
+    request = smoke_test.parse_request(sys.argv[1:])
+    if request is not None:
+        sys.exit(smoke_test.run_smoke_test(request))
+
     _configure_logging()
     install_exception_hooks()
     install_qt_message_handler()

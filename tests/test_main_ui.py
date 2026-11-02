@@ -283,3 +283,36 @@ def test_seeker_debug_poll_turns_on_the_gui_poll_trace(
     _run_main(monkeypatch, FakeApplication())
 
     assert poller.logger.level == logging.DEBUG
+
+
+def test_smoke_test_flag_runs_the_check_before_anything_else(
+        isolated_entry_point, monkeypatch, tmp_path,
+):
+    """`--smoke-test` exits with the check's code before main() logs,
+    builds an `Application` (the database, config.json) or a window."""
+    requests = []
+    touched: list[str] = []
+
+    def run_smoke_test(request):
+        requests.append(request)
+        return 1
+
+    def must_not_run(name):
+        return lambda *args, **kwargs: touched.append(name)
+
+    report = tmp_path / "report.json"
+    monkeypatch.setattr(sys, "argv", ["seeker-ui", "--smoke-test", str(report)])
+    monkeypatch.setattr(main_ui.smoke_test, "run_smoke_test", run_smoke_test)
+    for name in (
+            "_configure_logging", "install_exception_hooks", "Application",
+            "QApplication", "MainWindow", "OnboardingWizard",
+    ):
+        monkeypatch.setattr(main_ui, name, must_not_run(name))
+
+    with pytest.raises(SystemExit) as exit_info:
+        main_ui.main()
+
+    assert exit_info.value.code == 1
+    assert [request.report_path for request in requests] == [report]
+    assert touched == []
+    assert not isolated_entry_point.exists()
