@@ -21,9 +21,15 @@ each fact linked to the HISTORY entry holding its investigation;
 - **Rejections come in three shapes:** a locked file's `request_download`
   succeeds and the rejection surfaces later in `get_download_status` as
   `"Completed, Rejected"`; a peer gone offline is a synchronous 404 at
-  enqueue; bad credentials or a kick shows only in `/api/v0/logs`
-  (`ServerState` has no reason field), so `check_slskd_health` reads the
-  logs with a `since:` filter. `is_recognized_rejection()` applies to
+  enqueue; bad credentials or a kick shows only in slskd's log buffer
+  (`ServerState` has no reason field): `GET /api/v0/logs/live` from
+  0.26.1, else `GET /api/v0/logs` (0.26.0), so `check_slskd_health`
+  tries `/live`, falls back on a 404, and filters with `since:`. A bare
+  `SLSKD_API_KEY` reads `/live` on 0.26.2 (200, observed on a disposable
+  container 2026-11-02; slskd's source suggested a 403, and a
+  `role=Administrator;` prefix with an empty key stops slskd at start,
+  "API key must be between 16 and 255 characters").
+  [§251](../../../docs/history/241-270.md#251) `is_recognized_rejection()` applies to
   every `download_requests.role`. [§13](../../../docs/history/001-024.md#13)
 - Exponential backoff plus a terminal `unavailable` after 8 attempts
   bounds any retry storm, whatever its cause (item 63).

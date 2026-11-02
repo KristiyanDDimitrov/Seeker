@@ -49,7 +49,10 @@ short, under `src/seeker/`:
 
 - Python 3.13, pinned by `.python-version` (uv otherwise takes the
   newest: CI's runner got 3.15, which numba refuses,
-  [§245](docs/history/241-270.md#245)); `uv` for env and build. Type
+  [§245](docs/history/241-270.md#245)); `uv` for env and build, one
+  version pinned in three places (`[tool.uv] required-version`, setup-uv's
+  `version:`, the `uv_build` range; `tests/test_uv_pin.py`,
+  [§251](docs/history/241-270.md#251)). Type
   hints everywhere; `mypy --strict` clean before work is done. Models are dataclasses, no
   getter/setter classes.
 - slskd through its REST API, never a raw protocol library.

@@ -76,7 +76,7 @@
         {"path": "docs/history/README.md", "range": "grep -n '§204\\|§238', then each entry's range", "est_k": 3.0},
         {"path": "gh pr view <n> --json title,files,statusCheckRollup", "range": "per PR", "est_k": 2.0}
       ],
-      "status": "doing", "commits": [], "history": null
+      "status": "done", "commits": ["3036f1c", "2ea53c2", "3d32afd", "74242c3"], "history": 251
     },
     {
       "id": "S1d", "title": "Spotify Premium in the README and the wizard",

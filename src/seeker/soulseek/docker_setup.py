@@ -244,8 +244,9 @@ def _read_slskd_log_buffer(
     """slskd's recent log buffer, as its JSON list of entries.
 
     Seen in slskd's source: 0.26.0 serves the buffer at GET
-    /api/v0/logs; 0.26.2 at GET /api/v0/logs/live (administrator role
-    only), where a bare /api/v0/logs is its catch-all 404. An install
+    /api/v0/logs; 0.26.2 at GET /api/v0/logs/live, where a bare
+    /api/v0/logs is its catch-all 404. Observed on a 0.26.2 container,
+    2026-11-02: a bare SLSKD_API_KEY reads /live (200). An install
     keeps its own Compose copy (HISTORY §140, §222), so both stay in the
     field: try /live, and fall back only on a 404.
     """
