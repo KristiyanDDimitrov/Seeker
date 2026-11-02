@@ -222,6 +222,10 @@ uv run pytest         # run tests
 uv run mypy --strict src/  # type check — must stay clean
 uv run ruff check src tests tools  # lint — CI's exact gate, 0 findings
 uv run python tools/screenshots.py  # every screen, both themes -> tools/.screens/
+# x86_64 under Rosetta (shares the real data folders, BRIEF §0.5; HISTORY §255):
+uv python install cpython-3.13.15-macos-x86_64-none
+UV_PROJECT_ENVIRONMENT=.venv-x86_64 uv sync --locked --python cpython-3.13.15-macos-x86_64-none
+QT_QPA_PLATFORM=offscreen .venv-x86_64/bin/python -m pytest -q
 ```
 
 ## Standing facts and gotchas

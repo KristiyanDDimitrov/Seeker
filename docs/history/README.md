@@ -349,3 +349,4 @@ under their entry and live in the same file, after it.
 - §252 — A CI-only 'already deleted' setup error: `test_quit_stops_the_wait_for_a_new_share` ended before its worker's handler ran; it now waits for the registry to drain → [241-270.md#252](241-270.md#252)
 - §253 — Round 13 S2: Intel pins fork uv.lock (numba 0.62.1/llvmlite 0.45.1/numpy 2.3.5), native set unchanged; pip-audit skipped marker-false pins, now all 72 → [241-270.md#253](241-270.md#253)
 - §254 — Round 13 S2b: `tests/test_lock_platforms.py`, every package uv.lock installs needs a cp313/abi3/pure wheel on arm64, Intel and Windows → [241-270.md#254](241-270.md#254)
+- §255 — Round 13 S3: `.venv-x86_64` under Rosetta; Intel pins install, librosa runs, no AVX (westmere); 17 x86_64 failures, all arm64-only chromaprint → [241-270.md#255](241-270.md#255)

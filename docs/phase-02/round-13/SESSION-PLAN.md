@@ -42,8 +42,8 @@ Est. work includes the type's risk factor; est. peak is B + work.
 | **B — Intel installs and passes the suite** | | | | | |
 | ☑ S2 | The Intel pins and the forked lock; native set unchanged; audit (PF-01) | Behaviour | §2 steps 1–3 | ~60 K | After the lock commit, before the audit |
 | ☑ S2b | `tests/test_lock_platforms.py` | Behaviour | §2 step 4 | ~50 K | — |
-| ☐ S3 | `.venv-x86_64` under Rosetta; the whole suite on x86_64; the failure list; re-plans S3b | Investigation | §3 steps 1–3 | ~65 K | After the environment's versions are pasted |
-| ☐ S3b | Rosetta triage: each Intel bug test-first, test fixes, timings, commands and platform facts | Investigation | §3 steps 4–6 | ~60 K (S3 re-estimates) | After any cause's commit |
+| ☑ S3 | `.venv-x86_64` under Rosetta; the whole suite on x86_64; the failure list; re-plans S3b | Investigation | §3 steps 1–3 | ~65 K | After the environment's versions are pasted |
+| ☐ S3b | Rosetta triage: the chromaprint skip that cannot hide an Intel lookup bug (one cause, §255), timings, commands and platform facts | Investigation | §3 steps 4–6 | ~35 K (re-estimated by S3) | After the chromaprint skip commit, before the timings |
 | ☐ S4 | CI: a blocking `macos-15-intel` job (PF-03) | Behaviour | §4 | ~45 K | After the first run is recorded; a runner-only failure becomes its own row |
 | **C — Both apps build and pass a smoke test** | | | | | |
 | ☐ S5 | `seeker-ui --smoke-test`, passing unfrozen (PF-06) | Feature | §5 steps 1–2 | ~80 K | After the import, theme and resource checks pass with the report written; analysis and chromaprint then move to S5b |

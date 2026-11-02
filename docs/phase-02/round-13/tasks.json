@@ -126,20 +126,20 @@
       "id": "S3", "title": ".venv-x86_64 under Rosetta; the whole suite on x86_64; the failure list; re-plans S3b",
       "type": "investigation", "executes": "BRIEF.md §3 steps 1-3", "depends_on": ["S2"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 2,
-      "est_work_k": 65, "est_peak_k": 119, "actual_peak_k": null,
+      "est_work_k": 65, "est_peak_k": 119, "actual_peak_k": 50,
       "split_point": "After the environment's versions are pasted",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "301-346", "est_k": 0.6},
         {"path": ".gitignore", "range": null, "est_k": 0.1}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["9e51398"], "history": 255
     },
     {
       "id": "S3b", "title": "Rosetta triage: each Intel bug test-first, test fixes, timings, commands and platform facts",
       "type": "investigation", "executes": "BRIEF.md §3 steps 4-6", "depends_on": ["S3"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 3,
-      "est_work_k": 60, "est_peak_k": 114, "actual_peak_k": null,
-      "split_point": "After any cause's commit",
+      "est_work_k": 35, "est_peak_k": 89, "actual_peak_k": null,
+      "split_point": "After the chromaprint skip commit, before the timings (re-planned by S3, §255)",
       "reading_list": [
         {"path": "docs/history/241-270.md", "range": "S3's entry (its failure list)", "est_k": 1.0},
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "322-346", "est_k": 0.4},
