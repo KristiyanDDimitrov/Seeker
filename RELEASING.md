@@ -164,8 +164,8 @@ its image's name; the Intel app's bundled library, "libchromaprint 1.6.2"
 (`grep '^VERSION=' packaging/build_chromaprint.sh`; the version README →
 License points a recipient to for its source); the first-launch steps from `packaging/Read Me
 First.txt`; and README → License's second paragraph, with "the
-release's tag" naming this one (`vX.Y.Z`). Save them to a file outside
-the repository.
+release's tag" naming this one (`vX.Y.Z`); after Intel's end, the
+warning in step 7. Save them to a file outside the repository.
 
 ```
 git push origin vX.Y.Z
@@ -199,7 +199,12 @@ GitHub, so the release can't silently tag a different commit.
 - **The release is wrong, the tag is right** (bad notes, a missing
   asset, one image of the two wrong): edit it with `gh release edit
   vX.Y.Z` or `gh release upload vX.Y.Z <file> --clobber`, a file at a
-  time. Nothing else changes.
+  time. Nothing else changes, with one exception: a replaced image is
+  a new file with its own SHA-256. Rewrite that image's `.sha256` (step 3), upload the
+  image and its `.sha256` together with `--clobber`, put the new
+  checksum in the release notes (`gh release edit vX.Y.Z --notes-file
+  <notes file>`, the other image's line untouched) and repeat step 5.2
+  for that image.
 - **The build is wrong:** withdraw the release and keep the tag, so
   the record of what was published stays:
 
@@ -228,6 +233,17 @@ GitHub's last Intel runner retires in fall 2027, the suite under
 Rosetta) is Intel's final version. For that release:
 
 - its notes and README → Install say "the final Intel version";
+- the notes of every later release start with a warning, because
+  Seeker's update check cannot know about images: it compares the latest
+  release's tag with the installed version and nothing else
+  (`update_check.py`), so an Intel Mac on the final version is told that
+  an update is available, from Help or at startup when Settings → General
+  → Updates is on, and linked to a release page whose only download,
+  `Seeker.dmg`, does not run on it. The warning says Intel Macs stay on
+  version X.Y.Z, and that the update notice does not apply to them. Only
+  a check shipped inside the final Intel version could stay quiet (by
+  reading the release's assets: not built), so that is decided before
+  the final Intel version is built, not after;
 - every later release ships `Seeker.dmg` alone: steps 2 to 5 lose the
   Intel build, the Intel checksum and the third and fourth asset;
 - the Intel row in `docs/packaging.md`'s platform table says which
