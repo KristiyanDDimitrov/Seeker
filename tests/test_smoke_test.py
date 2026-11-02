@@ -531,7 +531,7 @@ def test_the_source_module_list_leaves_out_what_a_gui_build_never_bundles():
     # so a shared bug would pass the comparison above.
     assert {"seeker.ui.smoke_test", "seeker.models.track"} <= names
     assert "seeker" in names
-    assert not {"seeker.cli", "seeker.main", "seeker.ui."} & names
+    assert not {"seeker.cli", "seeker.main"} & names
     assert sorted(frozen_imports.NOT_BUNDLED) == ["seeker.cli", "seeker.main"]
 
 
