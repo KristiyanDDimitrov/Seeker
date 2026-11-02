@@ -74,7 +74,10 @@ You need:
   SoulSeek;
 - optionally, for duplicate detection, the chromaprint library: `brew
   install chromaprint` on an Apple silicon Mac. The Intel download
-  carries its own copy.
+  carries its own copy, built from source: the built app found it in a
+  smoke test on GitHub's Intel runner ([run
+  41537431447](https://github.com/KristiyanDDimitrov/Seeker/actions/runs/41537431447)),
+  though not yet on an Intel Mac of anyone's own.
 
 **The app.** The [latest
 release](https://github.com/KristiyanDDimitrov/Seeker/releases/latest)
@@ -216,13 +219,14 @@ Seeker's source code is MIT; see [`LICENSE`](LICENSE).
 
 The macOS app bundles third-party libraries under their own licences,
 among them mutagen (GPL-2.0-or-later), Qt and PySide6 (LGPL-3.0) and
-soxr (LGPL-2.1-or-later); the Intel app also carries libchromaprint
-(LGPL-2.1). Because it includes mutagen, the app as a whole is
-distributed under the GNU General Public License, version 3. Its source
-is this repository at the release's tag; the bundled libraries' sources
-are their PyPI releases at the versions in [`uv.lock`](uv.lock), and
-libchromaprint's is the [upstream
-release](https://github.com/acoustid/chromaprint/releases) of the
-version named in [`docs/packaging.md`](docs/packaging.md#native-libraries).
-Every licence text is inside the app, in
+soxr (LGPL-2.1-or-later); the Intel app also carries libchromaprint,
+which `packaging/build_chromaprint.sh` builds from source (LGPL-2.1).
+Because it includes mutagen, the app as a whole is distributed under the
+GNU General Public License, version 3. Its source is this repository at
+the release's tag; the bundled libraries' sources are their PyPI
+releases at the versions in [`uv.lock`](uv.lock), and libchromaprint's
+is the [upstream release](https://github.com/acoustid/chromaprint/releases)
+of the version in the Intel column of the table in
+[`docs/packaging.md`](docs/packaging.md#native-libraries), which is the
+script's pin (1.6.2 today). Every licence text is inside the app, in
 `Seeker.app/Contents/Resources/licenses/`.
