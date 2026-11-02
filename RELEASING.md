@@ -127,12 +127,18 @@ Expected:
   (step 5), or a Mac that has never had the library.
 - No modified files.
 
-Then open each app from `dist/` and check Help → Build: it reads
-`vX.Y.Z — built <today>` and names the architecture. Launching it reads
-and migrates that Mac's real Seeker data, so do it only on a machine
-where that is intended, and quit one app before opening the other.
+Then, before another build replaces `dist/Seeker.app`, open this app
+(`open dist/Seeker.app`) and check Help: the Build line reads
+`vX.Y.Z — built <today>`, and the Architecture line below it names the
+build. It reads "Apple silicon" for the Apple silicon app, and for the
+Intel app "Intel" on an Intel Mac or, under Rosetta, text that begins
+"Intel build on Apple silicon (Rosetta)". Launching an app reads and
+migrates that Mac's real Seeker data, so do it only on a machine where
+that is intended, and quit it before the next build. After both builds,
+`dist/Seeker.app` is whichever built last: open the other from its
+mounted image instead.
 
-Write both checksums next to the images:
+After both apps are checked, write both checksums next to the images:
 
 ```
 cd dist
@@ -178,9 +184,11 @@ GitHub, so the release can't silently tag a different commit.
 2. Download each `.dmg` in a browser (so it is quarantined), check it
    with `shasum -a 256 -c`, install the one that matches the Mac in
    front of you, and follow `Read Me First.txt` to the first launch.
-   The other image runs only where it can: the Intel app under Rosetta
-   on Apple silicon (and Help → Build says so); the Apple silicon app
-   not at all on an Intel Mac.
+   The other image runs only where it can: the Intel app should run
+   under Rosetta on Apple silicon (its headless smoke test did; Help's
+   Architecture line then begins "Intel build on Apple silicon
+   (Rosetta)"); the Apple silicon app, which is arm64 code, cannot run
+   on an Intel Mac.
 3. In each app that ran, Help → "Check for updates…" says Seeker is up
    to date. An older build says an update is available and links to
    this release's page (the link is the release's page, not an asset,
