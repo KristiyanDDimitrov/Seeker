@@ -9,6 +9,13 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **An Intel Mac build, `Seeker-Intel.dmg`,** beside `Seeker.dmg`, which
+  stays the Apple silicon image. Both need macOS 15 or later; the
+  README's Install section says which to download. The Intel app carries
+  its own copy of libchromaprint, so Duplicates fingerprints without
+  Homebrew; the Apple silicon app still uses Homebrew's. Every build now
+  checks its own bundle: each binary carries the build's architecture
+  and none needs a newer macOS than 15.0.
 - **Help and About name the architecture Seeker runs as:** Apple
   silicon, Intel, or the Intel build on Apple silicon (Rosetta), with
   a pointer to the faster Apple silicon download.
