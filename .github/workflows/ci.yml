@@ -96,6 +96,38 @@ jobs:
       # §264, §265) and nothing else records whether it stalls.
       - run: uv run pytest -q --durations=25 --durations-min=1.0
 
+  check-windows:
+    # The suite on Windows, where it has never passed. Non-blocking
+    # until it does: continue-on-error keeps this job's failure from
+    # failing the run, and the change that makes the suite pass here
+    # deletes that line. No libchromaprint is built for Windows yet, so
+    # the fingerprint tests skip (tests/chromaprint_gate.py). ruff, both
+    # mypy runs and the coverage gate run in `check` alone. Pinned for
+    # the same reason as macos-26 above.
+    runs-on: windows-2025
+    # The weekly run is for the audit job alone.
+    if: github.event_name != 'schedule'
+    continue-on-error: true
+    timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.6"
+          enable-cache: true
+      - run: uv sync --locked --all-extras --dev
+      # -rfEs adds each skip and its reason to the failures and errors
+      # (-r replaces pytest's default fE, so both are spelled out);
+      # --durations lists the tests that took over a second; a test
+      # still running after five minutes dumps every thread's stack
+      # (pytest's faulthandler), so a run the job's timeout kills still
+      # names the test that hung.
+      - run: uv run pytest -q -rfEs --durations=25 --durations-min=1.0 -o faulthandler_timeout=300
+
   audit:
     # pip-audit over every locked dependency (tools/audit_dependencies.py
     # says what it can and cannot see). Linux, because it reads only
