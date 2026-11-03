@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
     FakeDownloadService,
     FakeDuplicateService,
@@ -332,18 +333,18 @@ def test_quit_stops_a_running_fingerprint_run(qtbot, monkeypatch):
     page = window._duplicates_page
     window._show_page("duplicates")
     qtbot.waitUntil(
-        lambda: page.duplicates_location_combo.count() == 1, timeout=2000,
+        lambda: page.duplicates_location_combo.count() == 1, timeout=WAIT_MS,
     )
 
     page.compute_fingerprints_button.click()
     assert service.started.wait(2)
     window.cleanup_before_quit()
 
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     assert service.stopped
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running("compute_fingerprints"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -386,19 +387,19 @@ def test_quit_stops_a_running_playlist_download(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._dashboard_page
-    qtbot.waitUntil(lambda: page.playlist_list.count() == 1, timeout=2000)
+    qtbot.waitUntil(lambda: page.playlist_list.count() == 1, timeout=WAIT_MS)
     page.playlist_list.setCurrentRow(0)
-    qtbot.waitUntil(page.download_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(page.download_button.isEnabled, timeout=WAIT_MS)
 
     page.download_button.click()
     assert service.started.wait(2)
     window.cleanup_before_quit()
 
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     assert service.stopped
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running("download"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -433,16 +434,16 @@ def test_quit_stops_a_running_library_scan(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._dashboard_page
-    qtbot.waitUntil(page.scan_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(page.scan_button.isEnabled, timeout=WAIT_MS)
 
     page.scan_button.click()
     assert service.started.wait(2)
     window.cleanup_before_quit()
 
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     assert service.stopped
     qtbot.waitUntil(
-        lambda: not window.busy_actions.is_running("scan"), timeout=2000,
+        lambda: not window.busy_actions.is_running("scan"), timeout=WAIT_MS,
     )
 
 
@@ -498,7 +499,7 @@ def test_quit_stops_a_running_playlist_tagging_task(
     qtbot.addWidget(window)
     qtbot.waitUntil(
         lambda: window._dashboard_page.playlist_list.count() == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
 
@@ -506,10 +507,10 @@ def test_quit_stops_a_running_playlist_tagging_task(
     assert service.started.wait(2)
     window.cleanup_before_quit()
 
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     assert service.stopped
     qtbot.waitUntil(
-        lambda: not window.busy_actions.is_running(action), timeout=2000,
+        lambda: not window.busy_actions.is_running(action), timeout=WAIT_MS,
     )
 
 
@@ -535,20 +536,20 @@ def test_quit_stops_a_running_rename(qtbot, monkeypatch):
     qtbot.addWidget(window)
     qtbot.waitUntil(
         lambda: window._dashboard_page.playlist_list.count() == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
 
     window._library_page._tagging_panel.rename_files_button.click()
     # The preview opens from the plan's finish handler, on this thread.
-    qtbot.waitUntil(service.started.is_set, timeout=2000)
+    qtbot.waitUntil(service.started.is_set, timeout=WAIT_MS)
     window.cleanup_before_quit()
 
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     assert service.stopped
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running("rename_files"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -570,7 +571,7 @@ def test_quit_waits_a_bounded_time_and_logs_work_still_running(
     monkeypatch.setattr(window_lifecycle, "QUIT_WAIT_MS", 200)
     window = MainWindow(FakeApplication())
     qtbot.addWidget(window)
-    window.thread_pool.waitForDone(2000)
+    window.thread_pool.waitForDone(WAIT_MS)
     release = threading.Event()
     window.thread_pool.start(_UnstoppableTask(release))
 
@@ -581,7 +582,7 @@ def test_quit_waits_a_bounded_time_and_logs_work_still_running(
             window.cleanup_before_quit()
     finally:
         release.set()
-        window.thread_pool.waitForDone(5000)
+        window.thread_pool.waitForDone(WAIT_MS)
 
     assert (
         "cleanup_before_quit: 1 task(s) still running after 0.2s" in caplog.text
@@ -592,7 +593,7 @@ def test_quit_waits_for_stopped_work_to_end(qtbot, monkeypatch, caplog):
     force_tray_available(monkeypatch, True)
     window = MainWindow(FakeApplication())
     qtbot.addWidget(window)
-    window.thread_pool.waitForDone(2000)
+    window.thread_pool.waitForDone(WAIT_MS)
     release = threading.Event()
     window.thread_pool.start(_UnstoppableTask(release))
     # Ends within the bound, as a stopped fingerprint run does.
@@ -628,7 +629,7 @@ def test_quit_waits_a_bounded_time_for_a_settings_task_and_logs_it(
     application.slskd_api_key = "key"
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window.thread_pool.waitForDone(2000)
+    window.thread_pool.waitForDone(WAIT_MS)
     window.settings_page.test_connection_button.click()
     assert started.wait(2)
 
@@ -639,8 +640,8 @@ def test_quit_waits_a_bounded_time_for_a_settings_task_and_logs_it(
             window.cleanup_before_quit()
     finally:
         release.set()
-        window.thread_pool.waitForDone(5000)
-        window.settings_page.thread_pool.waitForDone(5000)
+        window.thread_pool.waitForDone(WAIT_MS)
+        window.settings_page.thread_pool.waitForDone(WAIT_MS)
 
     assert (
         "cleanup_before_quit: 1 task(s) still running after 0.2s" in caplog.text

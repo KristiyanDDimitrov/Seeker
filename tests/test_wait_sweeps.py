@@ -1,8 +1,11 @@
 """Source sweeps over the tests' own waits: an idiom that cannot tell
-its flow's workers from anyone else's. See HISTORY §265.
+its flow's workers from anyone else's, and a bound sized on a faster
+machine than the one that runs it. See HISTORY §265.
 """
 import ast
 from pathlib import Path
+
+from fakes import WAIT_MS
 
 _TESTS_DIR = Path(__file__).parent
 
@@ -63,4 +66,105 @@ def test_no_wait_reads_the_global_worker_registry():
     assert not offenders, (
         "wait on the flow's own outcome or `fakes.settle_workers`, "
         f"never the global worker count: {offenders}"
+    )
+
+
+# Every wait that returns as soon as its condition holds, so that its
+# bound is only a ceiling: pytest-qt's (`timeout=`, keyword-only) and
+# `QThreadPool.waitForDone` (the first argument). Not here: fixed
+# delays (`qtbot.wait`), which a longer bound would make every run pay,
+# and `assertNotEmitted`, which passes only by waiting out its `wait`.
+_CEILING_WAITS = {
+    "waitUntil", "waitSignal", "waitSignals", "waitCallback",
+    "waitExposed", "waitActive", "waitForDone",
+}
+
+# Subprocess scripts run as `python <script>`, outside pytest's import
+# path, so they cannot import `fakes`. Their literal bounds are held to
+# at least `WAIT_MS` instead, which cannot hide a short one.
+_STANDALONE_DIR = "repro"
+
+
+def _bound_of(call: ast.Call) -> ast.expr | None:
+    if call.func.attr == "waitForDone":
+        return call.args[0] if call.args else None
+
+    return next(
+        (k.value for k in call.keywords if k.arg == "timeout"), None,
+    )
+
+
+def _wait_ms_comes_from_fakes(tree: ast.Module) -> bool:
+    """Imported from `fakes`, and never bound again in the file."""
+    imported = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "fakes"
+        and any(alias.name == "WAIT_MS" and alias.asname is None
+                for alias in node.names)
+        for node in tree.body
+    )
+    rebound = any(
+        isinstance(node, ast.Name)
+        and node.id == "WAIT_MS"
+        and isinstance(node.ctx, ast.Store)
+        for node in ast.walk(tree)
+    )
+
+    return imported and not rebound
+
+
+def _ceiling_waits() -> list[tuple[Path, ast.Module, ast.Call]]:
+    found = []
+
+    for path in sorted(_TESTS_DIR.rglob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+
+        for node in ast.walk(tree):
+            if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in _CEILING_WAITS
+            ):
+                found.append((path, tree, node))
+
+    return found
+
+
+def test_the_bound_sweep_sees_every_kind_of_wait():
+    # A rename, or a moved tests folder, would leave the sweep below
+    # passing over nothing.
+    kinds = {call.func.attr for _, _, call in _ceiling_waits()}
+
+    assert {"waitUntil", "waitSignal", "waitExposed", "waitForDone"} <= kinds
+
+
+def test_every_wait_is_bounded_by_the_named_bound():
+    # The Intel runner is 5 to 10 times slower than the Apple silicon
+    # Mac on UI work, so a bound picked locally (2000 ms, or pytest-qt's
+    # 5000 ms default) times out there on a wait that is merely slow.
+    # One named bound, `fakes.WAIT_MS`, sized from measurements, is the
+    # only ceiling a wait may have. See HISTORY §265.
+    offenders = []
+
+    for path, tree, call in _ceiling_waits():
+        label = f"{path.relative_to(_TESTS_DIR)}:{call.lineno}"
+        bound = _bound_of(call)
+
+        if path.parent.name == _STANDALONE_DIR:
+            if not (
+                    isinstance(bound, ast.Constant)
+                    and isinstance(bound.value, int)
+                    and bound.value >= WAIT_MS
+            ):
+                offenders.append(f"{label} (below WAIT_MS)")
+        elif not (isinstance(bound, ast.Name) and bound.id == "WAIT_MS"):
+            offenders.append(label)
+        elif path.name != "fakes.py" and not _wait_ms_comes_from_fakes(
+                tree,
+        ):
+            offenders.append(f"{label} (WAIT_MS not from fakes)")
+
+    assert not offenders, (
+        "bound every wait by `fakes.WAIT_MS` (`timeout=WAIT_MS`, "
+        f"`waitForDone(WAIT_MS)`): {offenders}"
     )

@@ -4,6 +4,7 @@ viewport so its headers stay in place."""
 import pytest
 from PySide6.QtWidgets import QPushButton, QTableWidget, QVBoxLayout, QWidget
 
+from fakes import WAIT_MS
 from seeker.ui.empty_state import EmptyGlyph, EmptyState
 
 
@@ -15,7 +16,7 @@ def _table_in_window(qtbot, height: int = 300) -> tuple[QWidget, QTableWidget]:
     qtbot.addWidget(window)
     window.resize(600, height)
     window.show()
-    qtbot.waitExposed(window)
+    qtbot.waitExposed(window, timeout=WAIT_MS)
     return window, table
 
 
@@ -38,7 +39,7 @@ def test_covers_the_viewport_as_the_table_resizes(qtbot):
     empty = EmptyState(table, EmptyGlyph.SEARCH, "Search above.")
 
     window.resize(800, 420)
-    qtbot.waitUntil(lambda: empty.size() == table.viewport().size())
+    qtbot.waitUntil(lambda: empty.size() == table.viewport().size(), timeout=WAIT_MS)
 
     assert empty.geometry() == table.viewport().rect()
 
@@ -58,7 +59,7 @@ def test_the_action_takes_its_size_hint_and_is_clickable(qtbot):
     button = QPushButton("Go to Dashboard")
     button.clicked.connect(lambda: clicks.append(True))
     EmptyState(table, EmptyGlyph.RECORD, "Nothing yet.", action=button)
-    qtbot.waitUntil(button.isVisible)
+    qtbot.waitUntil(button.isVisible, timeout=WAIT_MS)
 
     assert button.width() <= button.sizeHint().width() + 2
     button.click()
@@ -69,7 +70,7 @@ def test_a_short_table_drops_the_glyph_and_keeps_the_sentence(qtbot):
     _, table = _table_in_window(qtbot, height=90)
     empty = EmptyState(table, EmptyGlyph.SHARE, "No one is downloading.")
 
-    qtbot.waitUntil(lambda: empty.size() == table.viewport().size())
+    qtbot.waitUntil(lambda: empty.size() == table.viewport().size(), timeout=WAIT_MS)
 
     assert not empty.glyph.isVisible()
     assert empty.label.isVisible()
@@ -79,7 +80,7 @@ def test_a_short_table_drops_the_glyph_and_keeps_the_sentence(qtbot):
 def test_every_glyph_paints(qtbot, glyph):
     _, table = _table_in_window(qtbot)
     empty = EmptyState(table, glyph, "Text.")
-    qtbot.waitUntil(empty.glyph.isVisible)
+    qtbot.waitUntil(empty.glyph.isVisible, timeout=WAIT_MS)
 
     image = empty.glyph.grab().toImage()
     colors = {

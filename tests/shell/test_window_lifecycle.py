@@ -8,6 +8,7 @@ from dataclasses import replace
 from PySide6.QtCore import QRect, Qt, QTimer
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
     force_tray_available,
 )
@@ -164,7 +165,7 @@ def test_close_event_hides_to_tray_when_available(qtbot, monkeypatch):
     # `_hidden_to_tray` waits on the delayed platform-level confirmation
     # (E1.4, round 7, corrected after review).
     assert window.isHidden()
-    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=WAIT_MS)
 
 
 def test_close_event_from_fullscreen_hides_without_leaving_fullscreen_first(
@@ -203,7 +204,7 @@ def test_close_event_from_fullscreen_hides_without_leaving_fullscreen_first(
     # `_hidden_to_tray` waits on the delayed platform-level confirmation
     # (E1.4, round 7, corrected after review) — `isHidden()` above is
     # unaffected, since `hide()` itself is never deferred.
-    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=WAIT_MS)
     assert window._lifecycle._reopen_filled is True
 
 
@@ -401,7 +402,7 @@ def test_cleanup_before_quit_does_not_overwrite_geometry_already_hidden(
     qtbot.wait(20)
 
     window.close()
-    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=WAIT_MS)
 
     calls = []
     monkeypatch.setattr(
@@ -537,7 +538,7 @@ def test_ordinary_hide_drops_the_dock_icon_once_confirmed(qtbot, monkeypatch):
     )
 
     window.close()
-    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=WAIT_MS)
 
     assert dock_calls == [False]
 
@@ -569,7 +570,7 @@ def test_ordinary_hide_does_not_drop_dock_icon_without_a_visible_tray(
     # visible) -- patched only now, so it's specifically the LATER
     # confirm-check's own guard being exercised, not closeEvent's.
     monkeypatch.setattr(window._tray._tray_icon, "isVisible", lambda: False)
-    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=WAIT_MS)
 
     assert dock_calls == []
 
@@ -707,7 +708,7 @@ def test_reopen_restores_the_dock_icon_before_showing(qtbot, monkeypatch):
     window.show()
     qtbot.wait(20)
     window.close()
-    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=WAIT_MS)
 
     dock_calls = []
     monkeypatch.setattr(

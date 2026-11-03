@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QPushButton,
 )
 
+from fakes import WAIT_MS
 from seeker.ui import workers as workers_module
 from seeker.ui.workers import Worker, run_worker
 
@@ -138,7 +139,7 @@ def test_run_worker_finishes_after_its_button_is_deleted(qtbot):
     )
 
     assert results == ["done"]
-    qtbot.waitUntil(lambda: not shiboken6.Shiboken.isValid(worker))
+    qtbot.waitUntil(lambda: not shiboken6.Shiboken.isValid(worker), timeout=WAIT_MS)
 
 
 def test_run_worker_reports_an_error_after_its_button_is_deleted(qtbot):
@@ -160,7 +161,7 @@ def test_run_worker_reports_an_error_after_its_button_is_deleted(qtbot):
 
     assert errors == ["real failure text"]
     assert label.text() == "real failure text"
-    qtbot.waitUntil(lambda: not shiboken6.Shiboken.isValid(worker))
+    qtbot.waitUntil(lambda: not shiboken6.Shiboken.isValid(worker), timeout=WAIT_MS)
 
 
 def test_run_worker_error_shows_readable_text_for_a_connection_error(qtbot):

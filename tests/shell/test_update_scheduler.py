@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from PySide6.QtWidgets import QMenu, QMessageBox
 
-from fakes import FakeApplication, force_tray_available
+from fakes import WAIT_MS, FakeApplication, force_tray_available
 from seeker.ui.main_window import MainWindow
 from seeker.update_check import UpdateCheckResult, UpdateStatus
 
@@ -56,7 +56,7 @@ def _tray_messages(monkeypatch, window):
 
 def _wait_for_the_logged_outcome(qtbot, caplog):
     qtbot.waitUntil(
-        lambda: "Automatic update check:" in caplog.text, timeout=2000,
+        lambda: "Automatic update check:" in caplog.text, timeout=WAIT_MS,
     )
 
 
@@ -69,7 +69,7 @@ def test_a_due_check_runs_after_construction_off_the_ui_thread(
     window, _ = _window(qtbot)
     assert calls == []
 
-    qtbot.waitUntil(window.update_available_action.isVisible, timeout=2000)
+    qtbot.waitUntil(window.update_available_action.isVisible, timeout=WAIT_MS)
     assert len(calls) == 1
     assert calls[0] != threading.main_thread().name
 
@@ -110,7 +110,7 @@ def test_no_check_when_off_or_checked_within_a_day(
         qtbot, enabled=enabled, last_update_check_at=last,
     )
     qtbot.wait(50)
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
 
     assert calls == []
     assert application.settings.last_update_check_at == last
@@ -123,7 +123,7 @@ def test_a_check_a_day_after_the_last_one_runs(qtbot, monkeypatch):
 
     window, _ = _window(qtbot, last_update_check_at=last)
 
-    qtbot.waitUntil(window.update_available_action.isVisible, timeout=2000)
+    qtbot.waitUntil(window.update_available_action.isVisible, timeout=WAIT_MS)
     assert len(calls) == 1
 
 

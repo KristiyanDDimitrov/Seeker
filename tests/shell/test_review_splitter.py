@@ -3,7 +3,7 @@ cleanup_before_quit, restored the first time the page is shown), and
 each handle draws a 1 px line across a wider grab area."""
 from PySide6.QtCore import QPoint
 
-from fakes import FakeApplication, force_tray_available
+from fakes import WAIT_MS, FakeApplication, force_tray_available
 from seeker.ui import theme
 from seeker.ui.main_window import MainWindow
 
@@ -22,9 +22,9 @@ def _open_review(qtbot, application) -> MainWindow:
     qtbot.addWidget(window)
     window.resize(1200, 900)
     window.show()
-    qtbot.waitExposed(window)
+    qtbot.waitExposed(window, timeout=WAIT_MS)
     window._nav_buttons["review"].click()
-    qtbot.waitUntil(window._review_page.isVisible)
+    qtbot.waitUntil(window._review_page.isVisible, timeout=WAIT_MS)
     return window
 
 
@@ -71,7 +71,7 @@ def test_a_later_visit_keeps_a_size_dragged_since_the_restore(
     redragged = _drag(second, [400, 160, 120])
     second._nav_buttons["dashboard"].click()
     second._nav_buttons["review"].click()
-    qtbot.waitUntil(second._review_page.isVisible)
+    qtbot.waitUntil(second._review_page.isVisible, timeout=WAIT_MS)
 
     assert _splitter(second).sizes() == redragged
     second.cleanup_before_quit()

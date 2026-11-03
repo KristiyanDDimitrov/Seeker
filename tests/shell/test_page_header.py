@@ -3,6 +3,7 @@ subtitle read as one unit, at a readable measure."""
 
 from PySide6.QtWidgets import QLabel, QWidget
 
+from fakes import WAIT_MS
 from seeker.ui import help_text, theme
 from seeker.ui.pages.context import SUBTITLE_MEASURE_CHARS, build_page
 
@@ -13,7 +14,7 @@ def _shown_page(qtbot, subtitle: str) -> tuple[QWidget, QLabel, QLabel, QWidget]
     qtbot.addWidget(page)
     page.resize(1100, 600)
     page.show()
-    qtbot.waitExposed(page)
+    qtbot.waitExposed(page, timeout=WAIT_MS)
     title = page.findChild(QLabel, "pageTitleLabel")
     subtitle_label = next(
         label for label in page.findChildren(QLabel)

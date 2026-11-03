@@ -13,6 +13,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
     FakeSharingService,
     confirm_yes,
@@ -33,7 +34,7 @@ def test_sharing_shows_unconfigured_notice_when_soulseek_not_set_up(qtbot):
     window._show_page("sharing")
 
     summary_label = window._sharing_page.sharing_summary_label
-    qtbot.waitUntil(lambda: bool(summary_label.text()), timeout=2000)
+    qtbot.waitUntil(lambda: bool(summary_label.text()), timeout=WAIT_MS)
     assert summary_label.text() == help_text.SHARING_UNCONFIGURED_NOTICE
     assert window._sharing_page.sharing_locations_table.rowCount() == 0
 
@@ -52,7 +53,7 @@ def test_sharing_renders_the_default_fake_status_like_a_real_one(qtbot):
     summary_label = window._sharing_page.sharing_summary_label
     qtbot.waitUntil(
         lambda: summary_label.text().startswith("0 directories"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._sharing_page.sharing_status_label.text() == ""
 
@@ -93,7 +94,7 @@ def test_sharing_renders_reconciliation_and_uploads(qtbot):
     window._show_page("sharing")
 
     locations_table = window._sharing_page.sharing_locations_table
-    qtbot.waitUntil(lambda: locations_table.rowCount() == 2, timeout=2000)
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 2, timeout=WAIT_MS)
     assert locations_table.item(0, 1).text() == "Shared"
     assert not locations_table.item(0, 1).icon().isNull()
     assert locations_table.item(1, 1).text() == "Not shared"
@@ -146,7 +147,7 @@ def test_sharing_counts_read_as_counts(qtbot):
     window._show_page("sharing")
 
     locations_table = window._sharing_page.sharing_locations_table
-    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=2000)
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=WAIT_MS)
     assert window._sharing_page.sharing_summary_label.text().startswith(
         "1 directory, 3,180 files shared.",
     )
@@ -186,7 +187,7 @@ def test_sharing_locations_empty_state_sends_you_to_settings(qtbot):
     qtbot.waitUntil(
         lambda: page.sharing_locations_empty.text()
         == help_text.SHARING_LOCATIONS_UNCONFIGURED,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     page.sharing_locations_empty_action.click()
 
@@ -206,7 +207,7 @@ def test_sharing_locations_empty_state_asks_for_a_location(qtbot):
     qtbot.waitUntil(
         lambda: page.sharing_locations_empty.text()
         == help_text.SHARING_LOCATIONS_EMPTY,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -237,14 +238,14 @@ def test_sharing_add_to_share_button_calls_service_after_confirm(
 
     window._show_page("sharing")
     locations_table = window._sharing_page.sharing_locations_table
-    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=2000)
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=WAIT_MS)
 
     button = locations_table.cellWidget(0, 4).findChild(QPushButton)
     button.click()
 
     qtbot.waitUntil(
         lambda: bool(sharing_service.add_location_to_share_calls),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     called_location, confirm = sharing_service.add_location_to_share_calls[0]
     assert called_location.name == "Other"
@@ -283,7 +284,7 @@ def test_sharing_add_to_share_confirmation_survives_the_immediate_refresh(
 
     window._show_page("sharing")
     locations_table = window._sharing_page.sharing_locations_table
-    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=2000)
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=WAIT_MS)
 
     assert window._sharing_page.sharing_notice.isHidden()
 
@@ -292,7 +293,7 @@ def test_sharing_add_to_share_confirmation_survives_the_immediate_refresh(
 
     qtbot.waitUntil(
         lambda: not window._sharing_page.sharing_notice.isHidden(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     text = window._sharing_page.sharing_notice.text()
     assert "'Other' shared" in text
@@ -339,7 +340,7 @@ def test_sharing_not_self_managed_shows_guidance_instead_of_writing(
 
     window._show_page("sharing")
     locations_table = window._sharing_page.sharing_locations_table
-    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=2000)
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=WAIT_MS)
 
     button = locations_table.cellWidget(0, 4).findChild(QPushButton)
     button.click()
@@ -413,7 +414,7 @@ def test_a_failed_sharing_refresh_stays_on_the_notice(qtbot):
     window._show_page("sharing")
 
     page = window._sharing_page
-    qtbot.waitUntil(lambda: page.sharing_notice.isVisibleTo(window), timeout=2000)
+    qtbot.waitUntil(lambda: page.sharing_notice.isVisibleTo(window), timeout=WAIT_MS)
     assert "slskd answered 500" in page.sharing_notice.text()
     assert page.sharing_status_label.text() == ""
 
@@ -457,7 +458,7 @@ def test_an_upload_row_shows_its_state_with_a_lamp(qtbot):
     window._show_page("sharing")
 
     table = window._sharing_page.sharing_uploads_table
-    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=2000)
+    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=WAIT_MS)
     item = table.item(0, 2)
     assert item.text() == "Failed"
     assert item.data(SECONDARY_ROLE) == "Timed out"
@@ -536,7 +537,7 @@ def _unshared_location_window(qtbot):
     qtbot.addWidget(window)
     window._show_page("sharing")
     table = window._sharing_page.sharing_locations_table
-    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=2000)
+    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=WAIT_MS)
     sharing_service._reconciliation = reconciliation()
     return window, sharing_service
 
@@ -559,7 +560,7 @@ def test_a_poll_with_unchanged_locations_keeps_their_buttons(qtbot):
     ]
     page.poll_sharing()
     qtbot.waitUntil(
-        lambda: page.sharing_uploads_table.rowCount() == 1, timeout=2000,
+        lambda: page.sharing_uploads_table.rowCount() == 1, timeout=WAIT_MS,
     )
 
     assert page.sharing_locations_table.cellWidget(0, 4) is button
@@ -624,13 +625,13 @@ def test_quit_stops_the_wait_for_a_new_share(qtbot, monkeypatch):
     confirm_yes(monkeypatch)
     window._show_page("sharing")
     locations_table = window._sharing_page.sharing_locations_table
-    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=2000)
+    qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=WAIT_MS)
 
     locations_table.cellWidget(0, 4).findChild(QPushButton).click()
     assert sharing_service.started.wait(2)
     window.cleanup_before_quit()
 
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     assert sharing_service.stopped
     # The flow ends when the worker's finished handler has run, and the
     # handler starts a refresh worker of its own: either left over fires

@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
 )
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
     force_tray_available,
 )
@@ -38,7 +39,7 @@ def test_tray_open_seeker_unhides_and_refreshes(qtbot, monkeypatch):
     # already uses for the same class of reason.
     qtbot.wait(20)
     window.close()
-    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=WAIT_MS)
 
     window._tray._on_tray_open_seeker()
 
@@ -77,7 +78,7 @@ def test_tray_trigger_click_does_nothing_on_macos(qtbot, monkeypatch):
     # already uses for the same class of reason.
     qtbot.wait(20)
     window.close()
-    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=WAIT_MS)
 
     window._tray._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
 
@@ -116,7 +117,7 @@ def test_tray_trigger_click_opens_seeker_on_windows_and_linux(
     # already uses for the same class of reason.
     qtbot.wait(20)
     window.close()
-    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=1000)
+    qtbot.waitUntil(lambda: window._lifecycle._hidden_to_tray is True, timeout=WAIT_MS)
 
     window._tray._on_tray_icon_activated(QSystemTrayIcon.ActivationReason.Trigger)
 
@@ -137,12 +138,12 @@ def test_tray_check_now_triggers_backend_poll(qtbot, monkeypatch):
         lambda: application.download_service.poll_downloads_calls
         if hasattr(application.download_service, "poll_downloads_calls")
         else True,
-        timeout=500,
+        timeout=WAIT_MS,
     )
     # No direct call counter on FakeDownloadService.poll_downloads --
     # just confirm it doesn't raise and the in-progress flag round-trips.
     qtbot.waitUntil(
-        lambda: window._backend_poll_in_progress is False, timeout=2000,
+        lambda: window._backend_poll_in_progress is False, timeout=WAIT_MS,
     )
 
 

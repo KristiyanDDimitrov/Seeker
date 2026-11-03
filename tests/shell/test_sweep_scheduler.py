@@ -5,7 +5,7 @@ import threading
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-from fakes import FakeApplication, FakeSweepService, force_tray_available
+from fakes import WAIT_MS, FakeApplication, FakeSweepService, force_tray_available
 from seeker.models.sweep_result import SweepResult
 from seeker.ui.main_window import MainWindow
 from seeker.ui.sweep_scheduler import SWEEP_KEY
@@ -30,14 +30,14 @@ def _window(
 
 def _wait_for_the_sweep_to_end(qtbot, window):
     qtbot.waitUntil(
-        lambda: not window.busy_actions.is_running(SWEEP_KEY), timeout=2000,
+        lambda: not window.busy_actions.is_running(SWEEP_KEY), timeout=WAIT_MS,
     )
 
 
 def _first_good_poll(qtbot, window):
     window._trigger_backend_poll()
     qtbot.waitUntil(
-        lambda: not window._backend_poll_in_progress, timeout=2000,
+        lambda: not window._backend_poll_in_progress, timeout=WAIT_MS,
     )
 
 
@@ -97,7 +97,7 @@ def test_a_check_while_a_sweep_runs_starts_no_second_one(qtbot):
     window, sweeps = _window(qtbot)
     sweeps.hold = threading.Event()
     _first_good_poll(qtbot, window)
-    qtbot.waitUntil(lambda: len(sweeps.calls) == 1, timeout=2000)
+    qtbot.waitUntil(lambda: len(sweeps.calls) == 1, timeout=WAIT_MS)
 
     window.sweep_timer.timeout.emit()
     window.sweep_timer.timeout.emit()
@@ -126,7 +126,7 @@ def test_quitting_stops_a_running_sweep_and_starts_no_other(qtbot):
     window, sweeps = _window(qtbot)
     sweeps.hold = threading.Event()
     _first_good_poll(qtbot, window)
-    qtbot.waitUntil(lambda: len(sweeps.calls) == 1, timeout=2000)
+    qtbot.waitUntil(lambda: len(sweeps.calls) == 1, timeout=WAIT_MS)
     stop = sweeps.calls[0]
     assert stop is not None and not stop.is_set()
 

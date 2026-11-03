@@ -4,7 +4,7 @@ Start slskd action (HISTORY §151)."""
 
 from dataclasses import replace
 
-from fakes import FakeApplication, force_tray_available
+from fakes import WAIT_MS, FakeApplication, force_tray_available
 from seeker.models.download_result import PollResult
 from seeker.soulseek.client import SlskdUnreachableError
 from seeker.soulseek.docker_setup import (
@@ -25,7 +25,7 @@ def _raise_outage() -> dict:
 def _poll(qtbot, window: MainWindow) -> None:
     window._trigger_backend_poll()
     qtbot.waitUntil(
-        lambda: not window._backend_poll_in_progress, timeout=2000,
+        lambda: not window._backend_poll_in_progress, timeout=WAIT_MS,
     )
 
 
@@ -50,14 +50,14 @@ def _record_tray_messages(monkeypatch, window: MainWindow) -> list[str]:
 def test_slskd_status_reports_and_signals_only_edges(qtbot):
     status = SlskdStatus()
 
-    with qtbot.waitSignal(status.changed, timeout=500):
+    with qtbot.waitSignal(status.changed, timeout=WAIT_MS):
         assert status.mark_unreachable(OUTAGE) is True
     assert status.unreachable_message == OUTAGE
 
     with qtbot.assertNotEmitted(status.changed):
         assert status.mark_unreachable(OUTAGE) is False
 
-    with qtbot.waitSignal(status.changed, timeout=500):
+    with qtbot.waitSignal(status.changed, timeout=WAIT_MS):
         assert status.mark_reachable() is True
     assert status.unreachable_message is None
 
@@ -71,7 +71,7 @@ def test_outage_shows_on_dashboard_and_downloads(qtbot, monkeypatch):
     _poll(qtbot, window)
 
     next_step = window._dashboard_page.next_step_notice
-    qtbot.waitUntil(lambda: next_step.text() == OUTAGE, timeout=2000)
+    qtbot.waitUntil(lambda: next_step.text() == OUTAGE, timeout=WAIT_MS)
     assert not next_step.isHidden()
     assert next_step.action_button.text() == "Start slskd"
 
@@ -119,14 +119,14 @@ def test_first_successful_poll_clears_the_outage(qtbot, monkeypatch):
     application, window = _outage_window(qtbot, monkeypatch)
     _poll(qtbot, window)
     next_step = window._dashboard_page.next_step_notice
-    qtbot.waitUntil(lambda: next_step.text() == OUTAGE, timeout=2000)
+    qtbot.waitUntil(lambda: next_step.text() == OUTAGE, timeout=WAIT_MS)
 
     application.download_service.poll_downloads = PollResult
     _poll(qtbot, window)
 
     assert window.slskd_status.unreachable_message is None
     assert window._downloads_page.outage_notice.isHidden()
-    qtbot.waitUntil(lambda: next_step.text() != OUTAGE, timeout=2000)
+    qtbot.waitUntil(lambda: next_step.text() != OUTAGE, timeout=WAIT_MS)
 
 
 def test_other_poll_errors_are_not_an_outage(qtbot, monkeypatch):
@@ -148,13 +148,13 @@ def test_start_slskd_from_dashboard_calls_the_bring_up(qtbot, monkeypatch):
     application, window = _outage_window(qtbot, monkeypatch)
     _poll(qtbot, window)
     next_step = window._dashboard_page.next_step_notice
-    qtbot.waitUntil(lambda: next_step.text() == OUTAGE, timeout=2000)
+    qtbot.waitUntil(lambda: next_step.text() == OUTAGE, timeout=WAIT_MS)
 
     next_step.action_button.click()
 
     dashboard_notice = window._dashboard_page.dashboard_notice
     qtbot.waitUntil(
-        lambda: "starting" in dashboard_notice.text().lower(), timeout=2000,
+        lambda: "starting" in dashboard_notice.text().lower(), timeout=WAIT_MS,
     )
     assert application.restart_slskd_calls == 1
     assert not window.busy_actions.is_running("start_slskd")
@@ -169,7 +169,7 @@ def test_start_slskd_refusal_reports_on_downloads(qtbot, monkeypatch):
     window._downloads_page.outage_notice.action_button.click()
 
     notice = window._downloads_page.notice
-    qtbot.waitUntil(lambda: notice.text() == refusal, timeout=2000)
+    qtbot.waitUntil(lambda: notice.text() == refusal, timeout=WAIT_MS)
     assert application.restart_slskd_calls == 1
     assert window._dashboard_page.dashboard_notice.isHidden()
     assert notice.action_button.isHidden()
@@ -187,7 +187,7 @@ def test_a_refusal_settings_can_resolve_offers_settings(qtbot, monkeypatch):
     window._downloads_page.outage_notice.action_button.click()
 
     notice = window._downloads_page.notice
-    qtbot.waitUntil(lambda: notice.text() == refusal, timeout=2000)
+    qtbot.waitUntil(lambda: notice.text() == refusal, timeout=WAIT_MS)
     assert notice.property("variant") == "error"
     assert not notice.action_button.isHidden()
 

@@ -5,7 +5,7 @@ import pytest
 from PySide6.QtGui import QColor, QFontMetricsF, QImage
 from PySide6.QtWidgets import QWidget
 
-from fakes import FakeApplication
+from fakes import WAIT_MS, FakeApplication
 from seeker.ui import theme
 from seeker.ui.main_window import MainWindow
 from seeker.ui.wordmark import Wordmark
@@ -41,7 +41,7 @@ def _shown_wordmark(
     wordmark.resize(wordmark.sizeHint())
     host.resize(wordmark.sizeHint())
     host.show()
-    qtbot.waitExposed(host)
+    qtbot.waitExposed(host, timeout=WAIT_MS)
     # The host too: qtbot holds widgets weakly.
     return host, wordmark
 

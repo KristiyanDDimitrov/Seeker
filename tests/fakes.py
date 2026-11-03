@@ -57,6 +57,17 @@ from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.soulseek.sharing_service import ShareStatus
 from seeker.ui import plain_text
 
+# The one ceiling for every wait that returns as soon as its condition
+# holds (`waitUntil`, `waitSignal`, `waitExposed`, `waitForDone`, …);
+# `tests/test_wait_sweeps.py` fails any other. A green run never waits
+# it out, so its size costs only a failing wait's report time. Sized
+# from one offscreen run on the Apple silicon Mac (2026-11-03): the
+# slowest of 628 waits took 425 ms (a 400 ms timer's), the slowest
+# handler wait 38 ms. The Intel runner is 5 to 10 times slower on UI
+# work, so about 4.3 s at worst there, and its slowest UI test outside
+# the screen sweeps took 6.4 s whole. See HISTORY §265.
+WAIT_MS = 10_000
+
 
 class FakeSyncService:
     def __init__(
@@ -1176,7 +1187,7 @@ def wait_for_workers(window) -> None:
     make the call. Events are deliberately not processed, so a result
     dialog a wrongly started worker would open cannot block the test.
     """
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
 
 
 def settle_workers(window) -> None:

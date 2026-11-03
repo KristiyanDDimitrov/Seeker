@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
     make_active_download,
     make_needs_review_match,
@@ -246,7 +247,7 @@ def test_next_step_action_button_opens_settings_on_the_connection_tab(
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: not window._dashboard_page.next_step_notice.isHidden(), timeout=2000,
+        lambda: not window._dashboard_page.next_step_notice.isHidden(), timeout=WAIT_MS,
     )
     # Drive the dispatch method directly — exercising the exact click
     # path a real InlineNotice action button takes without needing to
@@ -311,7 +312,7 @@ def test_leaving_settings_refreshes_duplicates_locations_and_next_step(
 
     qtbot.waitUntil(
         lambda: application.library_service.list_locations_calls >= 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -360,7 +361,7 @@ def test_review_nav_badge_counts_all_three_sections(qtbot):
 
     qtbot.waitUntil(
         lambda: window._nav_buttons["review"].text() == "Review  (3)",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 

@@ -7,6 +7,7 @@ from dataclasses import astuple
 import pytest
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
 )
 from seeker.ui import theme
@@ -32,7 +33,7 @@ def test_wordmark_bottom_row_has_no_text_colored_pixel(qtbot):
     label.setStyleSheet(theme_module.build_stylesheet(theme_module.DARK))
     label.resize(label.sizeHint())
     label.show()
-    qtbot.waitExposed(label)
+    qtbot.waitExposed(label, timeout=WAIT_MS)
 
     image = label.grab().toImage()
     text_rgb = tuple(int(theme.DARK.TEXT[i:i + 2], 16) for i in (1, 3, 5))

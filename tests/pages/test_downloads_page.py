@@ -12,6 +12,7 @@ from PySide6.QtGui import QTextDocument
 from PySide6.QtWidgets import QLabel, QProgressBar, QPushButton
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
     FakeDownloadService,
     force_tray_available,
@@ -603,7 +604,7 @@ def test_trigger_backend_poll_samples_eta_after_poll_succeeds(qtbot):
     window._trigger_backend_poll()
 
     qtbot.waitUntil(
-        lambda: 7 in window._downloads_page._eta_tracker._history, timeout=2000,
+        lambda: 7 in window._downloads_page._eta_tracker._history, timeout=WAIT_MS,
     )
 
 
@@ -741,7 +742,7 @@ def test_clear_finished_dismisses_finished_rows_and_refreshes(qtbot):
 
     dashboard_service = application.dashboard_service
     qtbot.waitUntil(
-        lambda: page.downloads_table.rowCount() == 1, timeout=2000,
+        lambda: page.downloads_table.rowCount() == 1, timeout=WAIT_MS,
     )
     assert dashboard_service.clear_finished_calls == 1
     assert page.downloads_table.item(0, 2).text() == "Downloading"
@@ -776,7 +777,7 @@ def test_clear_finished_finishing_never_re_enables_over_a_newer_render(
 
     page.clear_finished_button.click()
     page._render_active_downloads([active])
-    qtbot.waitUntil(lambda: refreshes == [1], timeout=2000)
+    qtbot.waitUntil(lambda: refreshes == [1], timeout=WAIT_MS)
 
     assert not page.clear_finished_button.isEnabled()
 
@@ -955,7 +956,7 @@ def test_retry_searches_again_and_reports_what_it_found(qtbot):
         == help_text.retry_outcome_text(
             TrackSearchOutcome.REQUESTED, "Artist - Title",
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.download_service.retry_download_calls == [7]
 
@@ -986,7 +987,7 @@ def test_retry_stays_disabled_across_renders_while_it_searches(qtbot):
     assert not _row_button(page, 0, "Retry").isEnabled()
     assert not _row_button(page, 1, "Retry").isEnabled()
     gate.set()
-    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=2000)
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=WAIT_MS)
     page._rendered_rows = None
     page._render_active_downloads([failed, other])
     assert _row_button(page, 1, "Retry").isEnabled()
@@ -1009,7 +1010,7 @@ def test_a_retry_that_fails_says_why(qtbot):
     _row_button(page, 0, "Retry").click()
 
     qtbot.waitUntil(
-        lambda: "slskd went away." in page.notice.text(), timeout=2000,
+        lambda: "slskd went away." in page.notice.text(), timeout=WAIT_MS,
     )
 
 
@@ -1052,7 +1053,7 @@ def test_cancel_stops_the_download_and_says_what_happened(qtbot, outcome):
     qtbot.waitUntil(
         lambda: page.notice.text()
         == help_text.cancel_outcome_text(outcome, "Artist - Title"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.download_service.cancel_download_calls == [7]
 
@@ -1075,7 +1076,7 @@ def test_cancel_stays_disabled_across_renders_while_it_runs(qtbot):
     assert not _row_button(page, 0, "Cancel").isEnabled()
     assert not _row_button(page, 1, "Cancel").isEnabled()
     gate.set()
-    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=2000)
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=WAIT_MS)
     page._rendered_rows = None
     page._render_active_downloads([queued, other])
     assert _row_button(page, 1, "Cancel").isEnabled()
@@ -1095,7 +1096,7 @@ def test_a_cancel_that_fails_says_why(qtbot):
     _row_button(page, 0, "Cancel").click()
 
     qtbot.waitUntil(
-        lambda: "slskd went away." in page.notice.text(), timeout=2000,
+        lambda: "slskd went away." in page.notice.text(), timeout=WAIT_MS,
     )
 
 
@@ -1135,7 +1136,7 @@ def test_clean_up_with_no_leftovers_says_so_and_asks_nothing(
 
     page.clean_up_button.click()
 
-    qtbot.waitUntil(lambda: not page.notice.isHidden(), timeout=2000)
+    qtbot.waitUntil(lambda: not page.notice.isHidden(), timeout=WAIT_MS)
     assert page.notice.text() == help_text.leftover_listing_empty_text(0)
     assert shown == []
     assert leftovers.delete_calls == []
@@ -1153,8 +1154,8 @@ def test_clean_up_declined_deletes_nothing(qtbot, monkeypatch):
 
     page.clean_up_button.click()
 
-    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
-    qtbot.waitUntil(page.clean_up_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=WAIT_MS)
+    qtbot.waitUntil(page.clean_up_button.isEnabled, timeout=WAIT_MS)
     assert leftovers.delete_calls == []
     assert page.notice.isHidden()
 
@@ -1175,8 +1176,8 @@ def test_clean_up_confirmed_deletes_the_listed_files_and_reports(
 
     page.clean_up_button.click()
 
-    qtbot.waitUntil(lambda: not page.notice.isHidden(), timeout=2000)
-    qtbot.waitUntil(page.clean_up_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(lambda: not page.notice.isHidden(), timeout=WAIT_MS)
+    qtbot.waitUntil(page.clean_up_button.isEnabled, timeout=WAIT_MS)
     assert len(shown) == 1
     assert leftovers.delete_calls == [files]
     assert page.notice.text() == help_text.leftover_cleanup_outcome_text(
@@ -1197,8 +1198,8 @@ def test_clean_up_shows_why_it_could_not_list(qtbot, monkeypatch):
 
     page.clean_up_button.click()
 
-    qtbot.waitUntil(lambda: not page.notice.isHidden(), timeout=2000)
-    qtbot.waitUntil(page.clean_up_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(lambda: not page.notice.isHidden(), timeout=WAIT_MS)
+    qtbot.waitUntil(page.clean_up_button.isEnabled, timeout=WAIT_MS)
     assert page.notice.text() == "Not slskd's folder."
     assert page.notice.property("variant") == "error"
     assert shown == []
@@ -1240,9 +1241,9 @@ def test_quit_stops_a_running_retry(qtbot):
     assert service.started.wait(2)
     window.cleanup_before_quit()
 
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     assert service.stopped
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running("retry_download"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )

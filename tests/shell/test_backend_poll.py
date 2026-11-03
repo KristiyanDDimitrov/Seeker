@@ -4,6 +4,7 @@ overlap guard, and the Dashboard refresh it triggers.
 import threading
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
     FakeDashboardService,
 )
@@ -47,7 +48,7 @@ def test_backend_poll_runs_poll_downloads_off_the_main_thread(qtbot):
     # was actually processed before the test ends.
     qtbot.waitUntil(
         lambda: "thread" in recorded and not window._backend_poll_in_progress,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     assert recorded["thread"] != threading.main_thread()
@@ -71,7 +72,7 @@ def test_backend_poll_refreshes_selected_playlist_track_table(qtbot):
     window._trigger_backend_poll()
 
     qtbot.waitUntil(
-        lambda: "Test Playlist" in dashboard_service.calls, timeout=2000,
+        lambda: "Test Playlist" in dashboard_service.calls, timeout=WAIT_MS,
     )
 
 
@@ -113,7 +114,7 @@ def test_backend_poll_overlap_guard_skips_concurrent_tick(qtbot):
 
     release.set()
     qtbot.waitUntil(
-        lambda: not window._backend_poll_in_progress, timeout=2000,
+        lambda: not window._backend_poll_in_progress, timeout=WAIT_MS,
     )
 
     assert call_count["n"] == 1

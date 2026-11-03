@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
 )
 
-from fakes import FakeApplication, settle_workers, wait_for_workers
+from fakes import WAIT_MS, FakeApplication, settle_workers, wait_for_workers
 from seeker.application import Application
 from seeker.login_item import LoginItemStatus
 from seeker.models.library_location import LibraryLocation
@@ -202,7 +202,7 @@ def test_locations_tab_lists_existing_locations(qtbot, tmp_path, monkeypatch):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window.locations_table.rowCount() == 1, timeout=2000,
+        lambda: window.locations_table.rowCount() == 1, timeout=WAIT_MS,
     )
     assert window.locations_table.item(0, 0).text() == "Main"
     assert window.locations_table.item(0, 2).text() == "Available"
@@ -224,7 +224,7 @@ def test_a_locations_folder_shows_as_a_lamp_beside_its_state(
     qtbot.addWidget(window)
 
     table = window.locations_table
-    qtbot.waitUntil(lambda: table.rowCount() == 2, timeout=2000)
+    qtbot.waitUntil(lambda: table.rowCount() == 2, timeout=WAIT_MS)
     states = {
         table.item(row, 0).text(): table.item(row, 2)
         for row in range(table.rowCount())
@@ -248,7 +248,7 @@ def test_a_theme_change_repaints_the_locations_lamps(qtbot, monkeypatch):
     window = MainWindow(FakeApplication(locations=[(location, True)]))
     qtbot.addWidget(window)
     table = window.settings_page.locations_table
-    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=2000)
+    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=WAIT_MS)
     repainted = replace(theme.DARK, SUCCESS="#123456")
     monkeypatch.setattr(theme, "active_palette", lambda: repainted)
 
@@ -278,7 +278,7 @@ def test_add_location_uses_the_chosen_folders_own_basename_as_the_name(
     window.add_location_button.click()
 
     qtbot.waitUntil(
-        lambda: window.locations_table.rowCount() == 1, timeout=2000,
+        lambda: window.locations_table.rowCount() == 1, timeout=WAIT_MS,
     )
     locations = application.library_service.list_locations()
     assert [loc.name for loc, _ in locations] == ["Chosen"]
@@ -304,7 +304,7 @@ def test_add_location_for_an_already_registered_path_shows_an_inline_notice(
     window.add_location_button.click()
 
     qtbot.waitUntil(
-        lambda: not window.library_notice.isHidden(), timeout=2000,
+        lambda: not window.library_notice.isHidden(), timeout=WAIT_MS,
     )
     assert existing.name in window.library_notice.text()
     # No duplicate row was added — still just the one real location.
@@ -320,7 +320,7 @@ def test_rename_location_updates_the_table(qtbot, tmp_path, monkeypatch):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window.locations_table.rowCount() == 1, timeout=2000,
+        lambda: window.locations_table.rowCount() == 1, timeout=WAIT_MS,
     )
     location = application.library_service.list_locations()[0][0]
 
@@ -331,7 +331,7 @@ def test_rename_location_updates_the_table(qtbot, tmp_path, monkeypatch):
 
     qtbot.waitUntil(
         lambda: window.locations_table.item(0, 0).text() == "My Music",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -343,7 +343,7 @@ def test_rename_location_cancelled_makes_no_call(qtbot, tmp_path, monkeypatch):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window.locations_table.rowCount() == 1, timeout=2000,
+        lambda: window.locations_table.rowCount() == 1, timeout=WAIT_MS,
     )
     location = application.library_service.list_locations()[0][0]
 
@@ -366,7 +366,7 @@ def test_rename_location_collision_shows_an_inline_notice(
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window.locations_table.rowCount() == 2, timeout=2000,
+        lambda: window.locations_table.rowCount() == 2, timeout=WAIT_MS,
     )
     other = next(
         loc for loc, _ in application.library_service.list_locations()
@@ -379,14 +379,14 @@ def test_rename_location_collision_shows_an_inline_notice(
     window._on_rename_location_clicked(other.id, "Other")
 
     qtbot.waitUntil(
-        lambda: not window.library_notice.isHidden(), timeout=2000,
+        lambda: not window.library_notice.isHidden(), timeout=WAIT_MS,
     )
     assert "Main" in window.library_notice.text()
 
 
 def click_remove_location(window: SettingsPage, qtbot) -> None:
     qtbot.waitUntil(
-        lambda: window.locations_table.rowCount() == 1, timeout=2000,
+        lambda: window.locations_table.rowCount() == 1, timeout=WAIT_MS,
     )
     actions = window.locations_table.cellWidget(0, 3)
     remove_button = next(
@@ -423,7 +423,7 @@ def test_remove_location_confirms_with_the_real_counts_then_removes(
     click_remove_location(window, qtbot)
 
     qtbot.waitUntil(
-        lambda: window.locations_table.rowCount() == 0, timeout=2000,
+        lambda: window.locations_table.rowCount() == 0, timeout=WAIT_MS,
     )
     assert application.library_service.list_locations() == []
     assert len(asked) == 1
@@ -432,7 +432,7 @@ def test_remove_location_confirms_with_the_real_counts_then_removes(
     assert "1 playlist downloads here" in asked[0]
     assert "Files on disk are not touched." in asked[0]
     qtbot.waitUntil(
-        lambda: not window.library_notice.isHidden(), timeout=2000,
+        lambda: not window.library_notice.isHidden(), timeout=WAIT_MS,
     )
     assert window.library_notice.property("variant") == "info"
     assert "Removed 'Main'" in window.library_notice.text()
@@ -459,7 +459,7 @@ def test_nested_locations_show_a_warning_naming_both(
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: not window.nesting_notice.isHidden(), timeout=2000,
+        lambda: not window.nesting_notice.isHidden(), timeout=WAIT_MS,
     )
     assert window.nesting_notice.property("variant") == "warning"
     assert "'Music' is inside 'x9-pro'" in window.nesting_notice.text()
@@ -488,12 +488,12 @@ def test_fix_merges_every_location_nested_with_the_one_kept(
     window = SettingsPage(application)
     qtbot.addWidget(window)
     qtbot.waitUntil(
-        lambda: not window.nesting_notice.isHidden(), timeout=2000,
+        lambda: not window.nesting_notice.isHidden(), timeout=WAIT_MS,
     )
     window.nesting_notice.action_button.click()
 
     qtbot.waitUntil(
-        lambda: window.locations_table.rowCount() == 1, timeout=4000,
+        lambda: window.locations_table.rowCount() == 1, timeout=WAIT_MS,
     )
     assert picked == [["x9-pro", "Music", "Test"]]
     assert len(asked) == 1
@@ -505,7 +505,7 @@ def test_fix_merges_every_location_nested_with_the_one_kept(
         location.name
         for location, _ in application.library_service.list_locations()
     ] == ["Music"]
-    qtbot.waitUntil(window.nesting_notice.isHidden, timeout=2000)
+    qtbot.waitUntil(window.nesting_notice.isHidden, timeout=WAIT_MS)
     assert "Merged 'x9-pro' and 'Test' into 'Music'" in (
         window.library_notice.text()
     )
@@ -525,7 +525,7 @@ def test_fix_cancelled_at_the_pick_merges_nothing(
     window = SettingsPage(application)
     qtbot.addWidget(window)
     qtbot.waitUntil(
-        lambda: not window.nesting_notice.isHidden(), timeout=2000,
+        lambda: not window.nesting_notice.isHidden(), timeout=WAIT_MS,
     )
     window.nesting_notice.action_button.click()
     wait_for_workers(window)
@@ -560,7 +560,7 @@ def test_separate_locations_show_no_nesting_warning(
     window = SettingsPage(application)
     qtbot.addWidget(window)
     qtbot.waitUntil(
-        lambda: window.locations_table.rowCount() == 1, timeout=2000,
+        lambda: window.locations_table.rowCount() == 1, timeout=WAIT_MS,
     )
     wait_for_workers(window)
     # Delivers the finished signals the workers already posted.
@@ -580,7 +580,7 @@ def test_remove_location_cancelled_removes_nothing(
     qtbot.addWidget(window)
     click_remove_location(window, qtbot)
 
-    qtbot.waitUntil(lambda: len(asked) == 1, timeout=2000)
+    qtbot.waitUntil(lambda: len(asked) == 1, timeout=WAIT_MS)
     wait_for_workers(window)
     assert len(application.library_service.list_locations()) == 1
     assert window.locations_table.rowCount() == 1
@@ -603,7 +603,7 @@ def test_remove_location_failure_lands_on_the_notice_as_an_error(
     click_remove_location(window, qtbot)
 
     qtbot.waitUntil(
-        lambda: not window.library_notice.isHidden(), timeout=2000,
+        lambda: not window.library_notice.isHidden(), timeout=WAIT_MS,
     )
     assert window.library_notice.property("variant") == "error"
     assert "database is locked" in window.library_notice.text()
@@ -625,7 +625,7 @@ def test_destinations_tab_lists_playlists_and_locations(
 
     qtbot.waitUntil(
         lambda: window.destinations_playlist_list.count() == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window.destinations_playlist_list.item(0).text() == "240KM/H"
     assert window.destination_location_combo.findText("Main") != -1
@@ -641,7 +641,7 @@ def test_default_destination_group_lists_locations(
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window.default_location_combo.count() > 1, timeout=2000,
+        lambda: window.default_location_combo.count() > 1, timeout=WAIT_MS,
     )
     assert window.default_location_combo.findText("Main") != -1
     # Checked by default, per the task's own spec.
@@ -658,7 +658,7 @@ def test_save_default_destination_persists_to_the_real_application(
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window.default_location_combo.count() > 1, timeout=2000,
+        lambda: window.default_location_combo.count() > 1, timeout=WAIT_MS,
     )
     combo_index = window.default_location_combo.findData(location.id)
     window.default_location_combo.setCurrentIndex(combo_index)
@@ -668,7 +668,7 @@ def test_save_default_destination_persists_to_the_real_application(
 
     qtbot.waitUntil(
         lambda: not window.library_notice.isHidden(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert (
         application._config_store.default_download_location_id
@@ -716,7 +716,7 @@ def test_default_destination_prefills_existing_config_value(
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window.default_location_combo.count() > 1, timeout=2000,
+        lambda: window.default_location_combo.count() > 1, timeout=WAIT_MS,
     )
     assert window.default_location_combo.currentData() == location.id
     assert not window.default_subfolder_per_playlist_checkbox.isChecked()
@@ -736,7 +736,7 @@ def test_save_destination_calls_set_destination_with_selected_values(
 
     qtbot.waitUntil(
         lambda: window.destinations_playlist_list.count() == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     window.destinations_playlist_list.setCurrentRow(0)
 
@@ -748,7 +748,7 @@ def test_save_destination_calls_set_destination_with_selected_values(
 
     qtbot.waitUntil(
         lambda: not window.library_notice.isHidden(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     with application.database.transaction() as connection:
@@ -786,7 +786,7 @@ def test_destination_subfolder_return_pressed_saves_destination(
 
     qtbot.waitUntil(
         lambda: window.destinations_playlist_list.count() == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     window.destinations_playlist_list.setCurrentRow(0)
 
@@ -798,7 +798,7 @@ def test_destination_subfolder_return_pressed_saves_destination(
 
     qtbot.waitUntil(
         lambda: not window.library_notice.isHidden(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     with application.database.transaction() as connection:
@@ -901,7 +901,7 @@ def test_connection_tab_displays_web_ui_login_when_confirmed_active(
 
     qtbot.waitUntil(
         lambda: window.slskd_web_username_display.text() == "seeker",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window.slskd_web_password_display.text() == "••••••••"
 
@@ -936,7 +936,7 @@ def test_connection_tab_hides_web_ui_login_when_it_did_not_take(
     qtbot.waitUntil(
         lambda: "already in place"
         in window.slskd_web_username_display.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window.slskd_web_password_display.text() == ""
     assert window.reveal_web_password_button.isHidden()
@@ -992,7 +992,7 @@ def test_reauthorize_spotify_calls_connect_spotify_with_force_flag(
     window.spotify_client_id_field.setText("new-client-id")
     window.reauthorize_spotify_button.click()
 
-    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    qtbot.waitUntil(lambda: calls != [], timeout=WAIT_MS)
     assert calls == [("new-client-id", True)]
 
 
@@ -1016,7 +1016,7 @@ def test_spotify_client_id_return_pressed_calls_connect_spotify(
     window.spotify_client_id_field.setText("new-client-id")
     window.spotify_client_id_field.returnPressed.emit()
 
-    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    qtbot.waitUntil(lambda: calls != [], timeout=WAIT_MS)
     assert calls == [("new-client-id", True)]
 
 
@@ -1042,7 +1042,7 @@ def test_test_connection_reports_healthy_result(qtbot, tmp_path, monkeypatch):
 
     qtbot.waitUntil(
         lambda: not window.connections_notice.isHidden(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window.connections_notice.text() == "Connected to SoulSeek."
 
@@ -1122,10 +1122,10 @@ def _start_form_page(qtbot, tmp_path, monkeypatch, mounts: dict[str, str]):
 
     window = SettingsPage(application)
     qtbot.addWidget(window)
-    qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=2000)
+    qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=WAIT_MS)
     window._load_start_slskd_form()
     qtbot.waitUntil(
-        lambda: window.slskd_data_dir_field.text() != "", timeout=2000,
+        lambda: window.slskd_data_dir_field.text() != "", timeout=WAIT_MS,
     )
     return application, window, bring_up_calls
 
@@ -1138,7 +1138,7 @@ def _wait_for_slskd_start(qtbot, window, bring_up_calls) -> None:
     qtbot.waitUntil(
         lambda: bring_up_calls != []
         and window.connections_notice.text().startswith("slskd is starting"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -1165,7 +1165,7 @@ def test_start_form_opens_with_the_saved_login_and_the_live_folders(
 
     qtbot.waitUntil(
         lambda: window.slskd_username_field.text() == "netuser",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window.slskd_password_field.text() == "netpass"
     assert window.slskd_share_combo.currentText() == "Music"
@@ -1262,12 +1262,12 @@ def test_the_form_prefers_the_recorded_folders_when_no_container_is_left(
 
     window = SettingsPage(application)
     qtbot.addWidget(window)
-    qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=2000)
+    qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=WAIT_MS)
     window._load_start_slskd_form()
 
     qtbot.waitUntil(
         lambda: window.slskd_share_combo.currentText() == "Music",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window.slskd_data_dir_field.text() == str(old_data)
 
@@ -1334,10 +1334,10 @@ def test_an_unconnected_location_is_never_shared(
     bring_up_calls = _fake_successful_bring_up(monkeypatch, tmp_path)
     window = SettingsPage(application)
     qtbot.addWidget(window)
-    qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=2000)
+    qtbot.waitUntil(lambda: window._locations_by_name != {}, timeout=WAIT_MS)
     window._load_start_slskd_form()
     qtbot.waitUntil(
-        lambda: window.slskd_data_dir_field.text() != "", timeout=2000,
+        lambda: window.slskd_data_dir_field.text() != "", timeout=WAIT_MS,
     )
     window.slskd_username_field.setText("realuser")
     window.slskd_password_field.setText("realpass")
@@ -1371,7 +1371,7 @@ def test_showing_the_connections_tab_loads_the_start_form(
 
     qtbot.waitUntil(
         lambda: window.slskd_username_field.text() == "netuser",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -1442,7 +1442,7 @@ def test_start_slskd_needs_no_library_location(
     qtbot.addWidget(window)
     window._load_start_slskd_form()
     qtbot.waitUntil(
-        lambda: window.slskd_data_dir_field.text() != "", timeout=2000,
+        lambda: window.slskd_data_dir_field.text() != "", timeout=WAIT_MS,
     )
     window.slskd_username_field.setText("realuser")
     window.slskd_password_field.setText("realpass")
@@ -1848,7 +1848,7 @@ def test_reauthorize_wait_offers_cancel_and_ignores_a_second_submit(
 
     window.spotify_client_id_field.setText("mistyped-client-id")
     window.reauthorize_spotify_button.click()
-    qtbot.waitUntil(started.is_set, timeout=2000)
+    qtbot.waitUntil(started.is_set, timeout=WAIT_MS)
 
     assert not wait.isHidden()
     assert not window.reauthorize_spotify_button.isEnabled()
@@ -1859,7 +1859,7 @@ def test_reauthorize_wait_offers_cancel_and_ignores_a_second_submit(
     window.spotify_client_id_field.returnPressed.emit()
     wait.cancel_button.click()
 
-    qtbot.waitUntil(window.reauthorize_spotify_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(window.reauthorize_spotify_button.isEnabled, timeout=WAIT_MS)
     assert wait.isHidden()
     assert window.spotify_status_label.text() == "Authorization cancelled."
     assert calls == ["mistyped-client-id"]
@@ -1885,11 +1885,11 @@ def test_quit_ends_a_reauthorize_wait(qtbot, monkeypatch):
     settings = window.settings_page
     settings.spotify_client_id_field.setText("client-id")
     settings.reauthorize_spotify_button.click()
-    qtbot.waitUntil(started.is_set, timeout=2000)
+    qtbot.waitUntil(started.is_set, timeout=WAIT_MS)
 
     window.cleanup_before_quit()
 
-    assert settings.thread_pool.waitForDone(2000)
+    assert settings.thread_pool.waitForDone(WAIT_MS)
     assert cancelled == [True]
 
 
@@ -1906,7 +1906,7 @@ def _wait_for_notice(qtbot, window, text: str) -> InlineNotice:
     qtbot.waitUntil(
         lambda: (notice := _shown_notice(window)) is not None
         and text in notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     notice = _shown_notice(window)
     assert notice is not None
@@ -1926,7 +1926,7 @@ def test_a_refused_destination_is_reported_on_a_notice(
     qtbot.addWidget(window)
     qtbot.waitUntil(
         lambda: window.destinations_playlist_list.count() == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     window.destinations_playlist_list.setCurrentRow(0)
     window.destination_location_combo.setCurrentIndex(
@@ -1949,7 +1949,7 @@ def test_a_saved_default_destination_is_confirmed_on_a_notice(
     window = SettingsPage(application)
     qtbot.addWidget(window)
     qtbot.waitUntil(
-        lambda: window.default_location_combo.count() > 1, timeout=2000,
+        lambda: window.default_location_combo.count() > 1, timeout=WAIT_MS,
     )
     window.default_location_combo.setCurrentIndex(
         window.default_location_combo.findData(location.id),
@@ -1982,7 +1982,7 @@ def test_a_failed_connection_test_is_reported_on_a_notice(
 
     notice = _wait_for_notice(qtbot, window, "cannot read")
     assert notice.property("variant") == "error"
-    qtbot.waitUntil(window.test_connection_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(window.test_connection_button.isEnabled, timeout=WAIT_MS)
 
 
 def test_a_failed_slskd_start_is_reported_on_a_notice(
@@ -2004,7 +2004,7 @@ def test_a_failed_slskd_start_is_reported_on_a_notice(
     notice = _wait_for_notice(qtbot, window, "Docker isn't running.")
     assert notice.property("variant") == "error"
     assert window.start_slskd_status_label.text() == ""
-    qtbot.waitUntil(window.start_slskd_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(window.start_slskd_button.isEnabled, timeout=WAIT_MS)
 
 
 def test_a_failed_spotify_reauthorization_is_reported_on_a_notice(
@@ -2025,7 +2025,7 @@ def test_a_failed_spotify_reauthorization_is_reported_on_a_notice(
     notice = _wait_for_notice(qtbot, window, "refused this Client ID")
     assert notice.property("variant") == "error"
     qtbot.waitUntil(
-        window.reauthorize_spotify_button.isEnabled, timeout=2000,
+        window.reauthorize_spotify_button.isEnabled, timeout=WAIT_MS,
     )
 
 
@@ -2040,7 +2040,7 @@ def _show_short_page(
 ) -> None:
     window.resize(*size)
     window.show()
-    qtbot.waitExposed(window)
+    qtbot.waitExposed(window, timeout=WAIT_MS)
     window.select_tab(tab_name)
     settle_workers(window)
 
@@ -2079,7 +2079,7 @@ def test_a_started_slskd_is_confirmed_in_view_at_the_bottom_of_the_tab(
     qtbot.waitUntil(
         lambda: window.slskd_username_field.text() == "netuser"
         and window.slskd_data_dir_field.text() != "",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     _scroll_to_the_bottom(window)
     assert _in_view(window.start_slskd_button)
@@ -2103,7 +2103,7 @@ def test_a_saved_destination_is_confirmed_in_view_at_the_bottom_of_the_tab(
     _show_short_page(qtbot, window, settings_window.SETTINGS_TAB_LIBRARY)
     qtbot.waitUntil(
         lambda: window.destinations_playlist_list.count() == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     window.destinations_playlist_list.setCurrentRow(0)
     window.destination_location_combo.setCurrentIndex(
@@ -2115,7 +2115,7 @@ def test_a_saved_destination_is_confirmed_in_view_at_the_bottom_of_the_tab(
     window.save_destination_button.click()
 
     qtbot.waitUntil(
-        lambda: not window.library_notice.isHidden(), timeout=2000,
+        lambda: not window.library_notice.isHidden(), timeout=WAIT_MS,
     )
     assert _in_view(window.library_notice)
 
@@ -2187,7 +2187,7 @@ def test_a_tab_with_no_notice_showing_keeps_no_gap_above_its_body(
     qtbot.waitUntil(
         lambda: first_card.mapTo(window, first_card.rect().topLeft()).y()
         == top_before,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -2238,7 +2238,7 @@ def test_the_data_folder_sentence_is_as_tall_as_its_lines(
 
     qtbot.waitUntil(
         lambda: label.height() == label.heightForWidth(label.width()),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 

@@ -4,7 +4,7 @@ import pytest
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from fakes import wait_for_workers
+from fakes import WAIT_MS, wait_for_workers
 from seeker.application import Application
 from seeker.models.slskd_start import SlskdStartResult
 from seeker.soulseek.docker_setup import (
@@ -184,7 +184,7 @@ def test_wizard_soulseek_step_checks_real_docker_state_on_entry(
 
     qtbot.waitUntil(
         lambda: wizard.docker_chip.text() == "Docker is running",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert wizard.docker_chip.lamp == status_lamp.PLAY
 
@@ -255,10 +255,10 @@ def test_connect_spotify_button_calls_connect_spotify_and_advances(
     wizard.client_id_field.setText("real-client-id")
     wizard.connect_button.click()
 
-    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    qtbot.waitUntil(lambda: calls != [], timeout=WAIT_MS)
     assert calls == ["real-client-id"]
 
-    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 1, timeout=2000)
+    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 1, timeout=WAIT_MS)
     assert wizard.spotify_status_label.text() == "Connected."
 
 
@@ -288,7 +288,7 @@ def test_client_id_return_pressed_connects_when_field_is_non_empty(
 
     wizard.client_id_field.returnPressed.emit()
 
-    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    qtbot.waitUntil(lambda: calls != [], timeout=WAIT_MS)
     assert calls == ["real-client-id"]
 
 
@@ -388,7 +388,7 @@ def test_soulseek_password_return_pressed_calls_bring_up_slskd(
     # and worth testing directly.
     wizard._library_location_path = str(tmp_path)
     qtbot.waitUntil(
-        lambda: wizard._docker_state == DockerState.RUNNING, timeout=2000,
+        lambda: wizard._docker_state == DockerState.RUNNING, timeout=WAIT_MS,
     )
 
     wizard.soulseek_username_field.setText("real-username")
@@ -396,7 +396,7 @@ def test_soulseek_password_return_pressed_calls_bring_up_slskd(
 
     wizard.soulseek_password_field.returnPressed.emit()
 
-    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    qtbot.waitUntil(lambda: calls != [], timeout=WAIT_MS)
     assert calls[0]["soulseek_username"] == "real-username"
     assert calls[0]["soulseek_password"] == "real-password"
 
@@ -430,7 +430,7 @@ def test_choose_library_folder_registers_location_and_advances(
     wizard._on_choose_library_folder_clicked()
     assert wizard.library_path_label.text() == str(chosen_path)
 
-    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=2000)
+    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=WAIT_MS)
     locations = application.library_service.list_locations()
     # Name comes from the picked folder's own basename now — no name
     # field anywhere in this flow, wizard included (roadmap item 5).
@@ -490,7 +490,7 @@ def test_unchecking_download_into_library_skips_the_default_destination(
     wizard.download_into_library_checkbox.setChecked(False)
     wizard._on_choose_library_folder_clicked()
 
-    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=2000)
+    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=WAIT_MS)
     assert application._config_store.default_download_location_id is None
 
 
@@ -519,7 +519,7 @@ def test_unchecking_subfolder_per_playlist_persists_false(
     wizard.subfolder_per_playlist_checkbox.setChecked(False)
     wizard._on_choose_library_folder_clicked()
 
-    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=2000)
+    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=WAIT_MS)
     assert application._config_store.default_download_location_id is not None
     assert (
         application._config_store.default_download_subfolder_per_playlist
@@ -602,21 +602,21 @@ def test_bring_up_soulseek_calls_bring_up_slskd_with_real_values(
     # worker triggered on step-3 entry — _on_bring_up_clicked's own guard
     # requires it to already be RUNNING.
     qtbot.waitUntil(
-        lambda: wizard._docker_state == DockerState.RUNNING, timeout=2000,
+        lambda: wizard._docker_state == DockerState.RUNNING, timeout=WAIT_MS,
     )
 
     wizard.soulseek_username_field.setText("realuser")
     wizard.soulseek_password_field.setText("realpass")
     wizard.bring_up_button.click()
 
-    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    qtbot.waitUntil(lambda: calls != [], timeout=WAIT_MS)
     assert calls[0]["soulseek_username"] == "realuser"
     assert calls[0]["soulseek_password"] == "realpass"
 
     qtbot.waitUntil(
         lambda: wizard.soulseek_status_label.text()
         == "Waiting for SoulSeek to connect…",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     # A real health-poll timer is now running — stop it so it doesn't
     # keep firing real (unmocked) network calls after this test ends.
@@ -819,7 +819,7 @@ def test_bring_up_soulseek_blocked_when_docker_not_running(
 
     qtbot.waitUntil(
         lambda: wizard._docker_state == DockerState.NOT_INSTALLED,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     wizard.soulseek_username_field.setText("realuser")
@@ -901,20 +901,20 @@ def test_resumed_soulseek_step_starts_slskd_sharing_nothing(
     assert wizard.share_library_checkbox.isHidden()
 
     qtbot.waitUntil(
-        lambda: wizard._docker_state == DockerState.RUNNING, timeout=2000,
+        lambda: wizard._docker_state == DockerState.RUNNING, timeout=WAIT_MS,
     )
 
     wizard.soulseek_username_field.setText("realuser")
     wizard.soulseek_password_field.setText("realpass")
     wizard.bring_up_button.click()
 
-    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    qtbot.waitUntil(lambda: calls != [], timeout=WAIT_MS)
     assert calls[0]["library_location_path"] == str(slskd_empty_share_dir())
 
     qtbot.waitUntil(
         lambda: wizard.soulseek_status_label.text()
         == "Waiting for SoulSeek to connect…",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     wizard._stop_health_poll()
 
@@ -950,9 +950,9 @@ def test_bring_up_shares_the_chosen_library_only_when_ticked(
     qtbot.addWidget(wizard)
 
     wizard._on_choose_library_folder_clicked()
-    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=2000)
+    qtbot.waitUntil(lambda: wizard.stack.currentIndex() == 2, timeout=WAIT_MS)
     qtbot.waitUntil(
-        lambda: wizard._docker_state == DockerState.RUNNING, timeout=2000,
+        lambda: wizard._docker_state == DockerState.RUNNING, timeout=WAIT_MS,
     )
 
     # Offered once a folder is chosen, never ticked for the person.
@@ -964,14 +964,14 @@ def test_bring_up_shares_the_chosen_library_only_when_ticked(
     wizard.soulseek_password_field.setText("realpass")
     wizard.bring_up_button.click()
 
-    qtbot.waitUntil(lambda: calls != [], timeout=2000)
+    qtbot.waitUntil(lambda: calls != [], timeout=WAIT_MS)
     expected = chosen_path if ticked else slskd_empty_share_dir()
     assert calls[0]["library_location_path"] == str(expected)
 
     qtbot.waitUntil(
         lambda: wizard.soulseek_status_label.text()
         == "Waiting for SoulSeek to connect…",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     wizard._stop_health_poll()
 
@@ -1006,7 +1006,7 @@ def test_bring_up_soulseek_real_compose_failure_surfaces_stderr(
     wizard._library_location_path = str(tmp_path)
 
     qtbot.waitUntil(
-        lambda: wizard._docker_state == DockerState.RUNNING, timeout=2000,
+        lambda: wizard._docker_state == DockerState.RUNNING, timeout=WAIT_MS,
     )
 
     wizard.soulseek_username_field.setText("realuser")
@@ -1016,7 +1016,7 @@ def test_bring_up_soulseek_real_compose_failure_surfaces_stderr(
     qtbot.waitUntil(
         lambda: "real docker compose error text"
         in wizard.soulseek_notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert wizard.slskd_chip.lamp == status_lamp.FAULT
     assert wizard.soulseek_progress.isHidden()
@@ -1069,7 +1069,7 @@ def test_render_docker_state_not_installed_offers_download_link(
 
     qtbot.waitUntil(
         lambda: wizard.docker_chip.text() == "Docker isn't installed",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert wizard.docker_chip.lamp == status_lamp.FAULT
     assert wizard.docker_action_button.text() == "Download Docker Desktop"
@@ -1098,7 +1098,7 @@ def test_render_docker_state_installed_not_running_offers_launch(
 
     qtbot.waitUntil(
         lambda: wizard.docker_chip.text() == "Docker isn't running",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     # A ring: Docker waits on the user to launch it.
     assert wizard.docker_chip.lamp == status_lamp.CUE_WAITING
@@ -1129,7 +1129,7 @@ def test_launch_docker_clicked_success_updates_status_and_button(
 
     qtbot.waitUntil(
         lambda: wizard.docker_action_button.text() == "Launch Docker Desktop",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     wizard._on_launch_docker_clicked()
@@ -1163,7 +1163,7 @@ def test_launch_docker_clicked_failure_shows_manual_instructions(
 
     qtbot.waitUntil(
         lambda: wizard.docker_action_button.text() == "Launch Docker Desktop",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     wizard._on_launch_docker_clicked()
@@ -1208,13 +1208,13 @@ def test_quit_ends_the_wait_for_spotify(
     wizard.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
     wizard.client_id_field.setText("client-id")
     wizard.connect_button.click()
-    qtbot.waitUntil(started.is_set, timeout=2000)
+    qtbot.waitUntil(started.is_set, timeout=WAIT_MS)
 
     getattr(wizard, quit_by)()
 
-    assert wizard.thread_pool.waitForDone(2000)
+    assert wizard.thread_pool.waitForDone(WAIT_MS)
     qtbot.waitUntil(
-        wizard.spotify_authorization_wait.isHidden, timeout=2000,
+        wizard.spotify_authorization_wait.isHidden, timeout=WAIT_MS,
     )
 
 
@@ -1242,7 +1242,7 @@ def test_waiting_for_spotify_offers_cancel_and_keeps_connect_disabled(
 
     wizard.client_id_field.setText("mistyped-client-id")
     wizard.connect_button.click()
-    qtbot.waitUntil(started.is_set, timeout=2000)
+    qtbot.waitUntil(started.is_set, timeout=WAIT_MS)
 
     assert not wait.isHidden()
     assert wait.cancel_button.isEnabled()
@@ -1258,7 +1258,7 @@ def test_waiting_for_spotify_offers_cancel_and_keeps_connect_disabled(
 
     wait.cancel_button.click()
 
-    qtbot.waitUntil(wizard.connect_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(wizard.connect_button.isEnabled, timeout=WAIT_MS)
     assert wait.isHidden()
     assert wizard.spotify_status_label.text() == "Authorization cancelled."
     assert wizard.stack.currentIndex() == 0
@@ -1278,7 +1278,7 @@ def test_wizard_content_is_one_centred_column(qtbot, tmp_path, monkeypatch):
     wizard = _built_wizard(qtbot, tmp_path, monkeypatch)
     wizard.resize(1280, 820)
     wizard.show()
-    qtbot.waitExposed(wizard)
+    qtbot.waitExposed(wizard, timeout=WAIT_MS)
 
     column = wizard.column
     left = column.mapTo(wizard, column.rect().topLeft()).x()
@@ -1499,7 +1499,7 @@ def _wizard_while_slskd_starts(
         wizard.application, "is_starting_slskd", lambda: state[0],
     )
     wizard.show()
-    qtbot.waitExposed(wizard)
+    qtbot.waitExposed(wizard, timeout=WAIT_MS)
     return wizard, state
 
 

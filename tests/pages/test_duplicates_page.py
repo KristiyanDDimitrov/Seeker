@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from chromaprint_gate import requires_chromaprint
 from fakes import (
+    WAIT_MS,
     FakeApplication,
     confirm_yes,
     make_duplicate_group,
@@ -191,7 +192,7 @@ def test_duplicates_scope_count_updates_from_the_real_service(qtbot):
         lambda: "42 files in scope" in (
             window._duplicates_page.duplicates_scope_count_label.text()
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert (
         application.duplicate_service.resolve_folder_scopes_calls
@@ -234,7 +235,7 @@ def test_compute_fingerprints_in_folder_mode_calls_service_per_location(
         lambda: len(
             application.duplicate_service.compute_fingerprints_calls
         ) == 2,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert sorted(
         application.duplicate_service.compute_fingerprints_calls
@@ -243,7 +244,7 @@ def test_compute_fingerprints_in_folder_mode_calls_service_per_location(
         lambda: "Fingerprinted: 2" in (
             window._duplicates_page.notice.text()
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -269,7 +270,7 @@ def test_find_duplicates_in_folder_mode_calls_across_scopes(qtbot):
             application.duplicate_service
             .find_duplicate_groups_across_scopes_calls
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert (
         application.duplicate_service
@@ -294,7 +295,7 @@ def test_switching_to_duplicates_tab_loads_locations_lazily(qtbot):
         lambda: (
             window._duplicates_page.duplicates_location_combo.count() == 1
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._duplicates_page.duplicates_location_combo.itemText(0) == "Main"
 
@@ -322,7 +323,7 @@ def test_switching_to_duplicates_tab_twice_refreshes_locations_each_time(
         lambda: (
             window._duplicates_page.duplicates_location_combo.count() == 1
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._duplicates_page.duplicates_location_combo.itemText(0) == "Main"
 
@@ -341,7 +342,7 @@ def test_switching_to_duplicates_tab_twice_refreshes_locations_each_time(
         lambda: (
             window._duplicates_page.duplicates_location_combo.count() == 2
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert {
         window._duplicates_page.duplicates_location_combo.itemText(i) for i in range(2)
@@ -368,7 +369,7 @@ def test_duplicates_location_refresh_preserves_the_current_selection(qtbot):
         lambda: (
             window._duplicates_page.duplicates_location_combo.count() == 2
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     window._duplicates_page.duplicates_location_combo.setCurrentIndex(1)
     assert window._duplicates_page._selected_duplicates_location() == "Second"
@@ -378,7 +379,7 @@ def test_duplicates_location_refresh_preserves_the_current_selection(qtbot):
         lambda: (
             window._duplicates_page.duplicates_location_combo.count() == 2
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._duplicates_page._selected_duplicates_location() == "Second"
 
@@ -414,13 +415,13 @@ def test_compute_fingerprints_calls_service_with_selected_location(qtbot):
     qtbot.waitUntil(
         lambda: application.duplicate_service.compute_fingerprints_calls
         == [("Main", None)],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     qtbot.waitUntil(
         lambda: "Fingerprinted: 3" in (
             window._duplicates_page.notice.text()
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -447,7 +448,7 @@ def test_compute_fingerprints_result_shows_failure_reason_breakdown(qtbot):
 
     qtbot.waitUntil(
         lambda: "Failed: 3" in window._duplicates_page.notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     status_text = window._duplicates_page.notice.text()
     assert "2 couldn't be decoded" in status_text
@@ -481,7 +482,7 @@ def test_find_duplicates_renders_no_duplicates_message(qtbot):
         lambda: "No duplicates found" in (
             window._duplicates_page.notice.text()
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._duplicates_page.duplicates_table.rowCount() == 0
 
@@ -601,7 +602,7 @@ def test_resolve_all_duplicates_uses_default_and_custom_keep_selections(
 
     qtbot.waitUntil(
         lambda: application.duplicate_service.resolve_groups_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     plans = application.duplicate_service.resolve_groups_calls[0]
     assert len(plans) == 2
@@ -641,7 +642,7 @@ def test_resolve_all_duplicates_skips_keep_all_groups(qtbot, monkeypatch):
 
     qtbot.waitUntil(
         lambda: application.duplicate_service.resolve_groups_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     plans = application.duplicate_service.resolve_groups_calls[0]
     # Only group_a's plan -- group_b (Keep all) was skipped entirely,
@@ -732,6 +733,7 @@ def test_resolve_all_duplicates_stays_disabled_while_it_runs(
         page.resolve_all_duplicates_button.click()
         qtbot.waitUntil(
             lambda: application.duplicate_service.resolve_groups_calls != [],
+            timeout=WAIT_MS,
         )
         # Another group's Delete finishing renders the groups again.
         page._render_duplicate_groups([group])
@@ -741,7 +743,7 @@ def test_resolve_all_duplicates_stays_disabled_while_it_runs(
         gate.set()
 
     # The group failed, so it stays and the button offers it again.
-    qtbot.waitUntil(page.resolve_all_duplicates_button.isEnabled)
+    qtbot.waitUntil(page.resolve_all_duplicates_button.isEnabled, timeout=WAIT_MS)
 
 
 def test_resolve_all_duplicates_on_no_groups_opens_no_dialog(
@@ -777,8 +779,10 @@ def test_a_failed_resolve_all_shows_its_error_and_offers_the_groups_again(
 
     page.resolve_all_duplicates_button.click()
 
-    qtbot.waitUntil(lambda: page.notice.text() == describe_error(error))
-    qtbot.waitUntil(page.resolve_all_duplicates_button.isEnabled)
+    qtbot.waitUntil(
+        lambda: page.notice.text() == describe_error(error), timeout=WAIT_MS,
+    )
+    qtbot.waitUntil(page.resolve_all_duplicates_button.isEnabled, timeout=WAIT_MS)
 
 
 def test_resolve_all_duplicates_drops_only_succeeded_groups_locally(
@@ -813,7 +817,8 @@ def test_resolve_all_duplicates_drops_only_succeeded_groups_locally(
     window._duplicates_page.resolve_all_duplicates_button.click()
 
     qtbot.waitUntil(
-        lambda: window._duplicates_page.duplicates_table.rowCount() == 2, timeout=2000,
+        lambda: window._duplicates_page.duplicates_table.rowCount() == 2,
+        timeout=WAIT_MS,
     )
     # group_a (succeeded, plan_outcomes[0]=True) is gone; group_b
     # (failed, plan_outcomes[1]=False) is still shown.
@@ -1244,7 +1249,7 @@ def test_delete_duplicates_with_confirm_checkbox_deletes_non_kept_files(
 
     qtbot.waitUntil(
         lambda: bool(application.duplicate_service.delete_local_files_calls),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     # location_id is the KEPT file's own local_file.location_id
     # (roadmap item 68 Phase 7.2) — resolved from the group itself, not
@@ -1286,7 +1291,7 @@ def test_delete_duplicates_respects_a_changed_keep_selection(
 
     qtbot.waitUntil(
         lambda: bool(application.duplicate_service.delete_local_files_calls),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.duplicate_service.delete_local_files_calls == [
             ([101], 102, 1)
@@ -1330,7 +1335,7 @@ def test_delete_duplicates_finished_removes_group_locally_without_refetch(
         lambda: "Deleted: 1, Failed: 0" in (
             window._duplicates_page.notice.text()
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.duplicate_service.find_duplicate_groups_calls == []
     assert window._duplicates_page.duplicates_table.rowCount() == 0
@@ -1368,7 +1373,7 @@ def test_delete_duplicates_partial_failure_keeps_group_visible(
         lambda: "Deleted: 0, Failed: 1" in (
             window._duplicates_page.notice.text()
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._duplicates_page.duplicates_table.rowCount() == 2
     assert len(window._duplicates_page._current_duplicate_groups) == 1
@@ -1467,7 +1472,7 @@ def test_delete_duplicates_group_of_three_deletes_exactly_two(
 
     qtbot.waitUntil(
         lambda: bool(application.duplicate_service.delete_local_files_calls),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     delete_ids, keep_id, _location_id = (
         application.duplicate_service.delete_local_files_calls[0]
@@ -1498,7 +1503,7 @@ def test_delete_duplicates_group_of_four_deletes_exactly_three(
 
     qtbot.waitUntil(
         lambda: bool(application.duplicate_service.delete_local_files_calls),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     delete_ids, keep_id, _location_id = (
         application.duplicate_service.delete_local_files_calls[0]
@@ -1521,7 +1526,7 @@ def test_found_groups_are_reported_on_the_notice_not_the_progress_line(qtbot):
     page._on_find_duplicates_clicked()
 
     qtbot.waitUntil(
-        lambda: page.notice.text() == "Found 1 duplicate group.", timeout=2000,
+        lambda: page.notice.text() == "Found 1 duplicate group.", timeout=WAIT_MS,
     )
     assert page.duplicates_status_label.text() == ""
 
@@ -1539,7 +1544,7 @@ def test_a_failed_search_for_duplicates_reports_on_the_notice(qtbot):
     page._on_find_duplicates_clicked()
 
     qtbot.waitUntil(
-        lambda: "could not be read" in page.notice.text(), timeout=2000,
+        lambda: "could not be read" in page.notice.text(), timeout=WAIT_MS,
     )
     assert page.duplicates_status_label.text() == ""
 
@@ -1563,7 +1568,7 @@ def test_a_resolved_group_says_how_many_are_left(qtbot, monkeypatch):
 
     qtbot.waitUntil(
         lambda: page.notice.text() == "Deleted: 1, Failed: 0. No groups left.",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -1658,6 +1663,7 @@ def test_a_group_rebuilt_while_its_delete_runs_keeps_delete_disabled(
     try:
         qtbot.waitUntil(
             lambda: bool(application.duplicate_service.delete_local_files_calls),
+            timeout=WAIT_MS,
         )
         page._render_duplicate_groups([group])
         delete_button = actions().findChildren(QPushButton)[0]
@@ -1672,7 +1678,9 @@ def test_a_group_rebuilt_while_its_delete_runs_keeps_delete_disabled(
     finally:
         gate.set()
 
-    qtbot.waitUntil(lambda: "Deleted: 0, Failed: 1" in page.notice.text())
+    qtbot.waitUntil(
+        lambda: "Deleted: 0, Failed: 1" in page.notice.text(), timeout=WAIT_MS,
+    )
     assert actions().findChildren(QPushButton)[0].isEnabled()
 
 
@@ -1739,12 +1747,14 @@ def test_only_groups_near_the_view_hold_cell_widgets(qtbot):
     confirm(0).setChecked(True)
 
     table.scrollToBottom()
-    qtbot.waitUntil(lambda: table.cellWidget(last_row, keep) is not None)
+    qtbot.waitUntil(
+        lambda: table.cellWidget(last_row, keep) is not None, timeout=WAIT_MS,
+    )
     assert table.cellWidget(1, keep) is None
     assert len(rows_with_widgets()) < 100
 
     table.scrollToTop()
-    qtbot.waitUntil(lambda: table.cellWidget(1, keep) is not None)
+    qtbot.waitUntil(lambda: table.cellWidget(1, keep) is not None, timeout=WAIT_MS)
     assert table.cellWidget(1, keep).isChecked()
     assert not table.cellWidget(0, keep).isChecked()
     assert confirm(0).isChecked()

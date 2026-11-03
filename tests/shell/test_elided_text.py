@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QToolTip,
 )
 
-from fakes import FakeApplication, make_duplicate_group
+from fakes import WAIT_MS, FakeApplication, make_duplicate_group
 from seeker.models.playlist import Playlist, PlaylistSummary
 from seeker.ui import theme
 from seeker.ui.main_window import MainWindow
@@ -37,7 +37,7 @@ def _tooltip_at(view: QAbstractItemView, index: QModelIndex) -> str:
 
 
 def _assert_elides(widget_list: QListWidget, qtbot) -> None:
-    qtbot.waitUntil(widget_list.isVisible)
+    qtbot.waitUntil(widget_list.isVisible, timeout=WAIT_MS)
     index = widget_list.model().index(0, 0)
     assert widget_list.horizontalScrollBar().isVisible() is False
     assert (
@@ -97,7 +97,7 @@ def _table(qtbot, text: str) -> QTableWidget:
     )
     table.resize(400, 120)
     table.show()
-    qtbot.waitUntil(table.isVisible)
+    qtbot.waitUntil(table.isVisible, timeout=WAIT_MS)
     return table
 
 
@@ -157,7 +157,7 @@ def test_a_badge_takes_its_width_from_the_text(qtbot):
     table.setItem(0, 0, item)
     table.resize(400, 120)
     table.show()
-    qtbot.waitExposed(table)
+    qtbot.waitExposed(table, timeout=WAIT_MS)
     index = table.model().index(0, 0)
     # Just wide enough for the text alone.
     table.setColumnWidth(

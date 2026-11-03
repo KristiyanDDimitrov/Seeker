@@ -20,7 +20,7 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, QItemSelectionModel, Qt
 from PySide6.QtWidgets import QDialog, QLabel, QPushButton
 
-from fakes import FakeApplication, FakeSyncService, make_track_status
+from fakes import WAIT_MS, FakeApplication, FakeSyncService, make_track_status
 from seeker.library.metadata_service import RenamePlan, RenameResult
 from seeker.models.playlist import Playlist
 from seeker.models.tag_result import FixArtResult, TagResult
@@ -33,7 +33,7 @@ from seeker.ui.main_window import MainWindow
 
 def _select_first_playlist(window, qtbot) -> None:
     qtbot.waitUntil(
-        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=WAIT_MS,
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
     # Selecting also kicks off the "next step" facts fetch
@@ -42,7 +42,7 @@ def _select_first_playlist(window, qtbot) -> None:
     # racing a click against a button that may still be disabled from
     # the pre-selection (no playlist selected) render.
     qtbot.waitUntil(
-        window._dashboard_page.download_button.isEnabled, timeout=2000,
+        window._dashboard_page.download_button.isEnabled, timeout=WAIT_MS,
     )
 
 
@@ -84,7 +84,7 @@ def test_retag_context_menu_forces_regardless_of_checkbox(qtbot):
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_tracks_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.metadata_service.tag_tracks_calls == [
         (["t5"], False, None, True),
@@ -126,21 +126,21 @@ def test_force_retag_checkbox_passed_through_all_three_triggers(qtbot):
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_tracks_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.metadata_service.tag_tracks_calls == [
         (["t7"], False, None, True),
     ]
 
     qtbot.waitUntil(
-        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=WAIT_MS,
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
     window._library_page._tagging_panel.tag_playlist_button.click()
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_playlist_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.metadata_service.tag_playlist_calls == [
         ("240KM/H", False, None, True),
@@ -161,7 +161,7 @@ def test_tag_track_button_calls_tag_tracks_with_correct_args(qtbot):
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_tracks_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.metadata_service.tag_tracks_calls == [
         (["t7"], False, None, False),
@@ -185,7 +185,7 @@ def test_tag_track_with_analyze_audio_and_bpm_range_passes_options(qtbot):
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_tracks_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.metadata_service.tag_tracks_calls == [
         (["t9"], True, (160.0, 180.0), False),
@@ -243,7 +243,7 @@ def test_tag_selected_calls_tag_tracks_with_selected_ids(qtbot):
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_tracks_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     track_ids, analyze_audio, bpm_range, force = (
         application.metadata_service.tag_tracks_calls[0]
@@ -283,7 +283,7 @@ def _window_with_three_tracks(qtbot, application):
     _select_first_playlist(window, qtbot)
     qtbot.waitUntil(
         lambda: window._dashboard_page.track_table.rowCount() == 3,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     return window
 
@@ -327,11 +327,11 @@ def test_tag_selected_shows_the_live_selection_after_a_run(qtbot):
     button.click()
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_tracks_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running("tag_selected"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     assert button.text() == "Tag 2 selected"
@@ -356,7 +356,7 @@ def test_tag_playlist_calls_tag_playlist_with_playlist_name(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=WAIT_MS,
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
 
@@ -364,7 +364,7 @@ def test_tag_playlist_calls_tag_playlist_with_playlist_name(qtbot):
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_playlist_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.metadata_service.tag_playlist_calls == [
         ("240KM/H", False, None, False),
@@ -470,7 +470,7 @@ def test_results_panel_failed_tag_row_offers_a_retry_that_re_tags(qtbot):
 
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_tracks_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     # retag_track always forces, regardless of the panel's
     # own checkbox — same "guaranteed real retry" semantics as the row-
@@ -665,7 +665,7 @@ def test_tag_result_notice_fix_art_action_triggers_fix_missing_art(
     qtbot.waitUntil(
         lambda: application.metadata_service
         .fix_missing_art_for_playlist_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.metadata_service.fix_missing_art_for_playlist_calls == [
         "Test",
@@ -708,7 +708,7 @@ def test_fix_missing_art_button_calls_service_and_shows_result(qtbot):
     qtbot.waitUntil(
         lambda: application.metadata_service
         .fix_missing_art_for_playlist_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.metadata_service.fix_missing_art_for_playlist_calls == [
         "Test",
@@ -716,7 +716,7 @@ def test_fix_missing_art_button_calls_service_and_shows_result(qtbot):
     qtbot.waitUntil(
         lambda: not window._library_page.notice.isHidden()
         and "Fixed art for 3" in window._library_page.notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     text = window._library_page.notice.text()
     assert "2 already correct" in text
@@ -747,12 +747,12 @@ def test_fill_missing_art_urls_button_reports_the_real_count(qtbot):
 
     qtbot.waitUntil(
         lambda: application.sync_service.sync_playlist_tracks_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     qtbot.waitUntil(
         lambda: not window._library_page.notice.isHidden()
         and "7" in window._library_page.notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert (
         "Found cover art on Spotify for 7 tracks"
@@ -772,7 +772,7 @@ def test_fill_missing_art_urls_button_reports_zero_found(qtbot):
     qtbot.waitUntil(
         lambda: not window._library_page.notice.isHidden()
         and "No track was missing" in window._library_page.notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -809,7 +809,7 @@ def test_rename_files_button_plans_then_opens_dialog_and_cancels(
 
     qtbot.waitUntil(
         lambda: application.metadata_service.plan_renames_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.metadata_service.plan_renames_calls == ["Test"]
     # Cancelled -- apply_renames must never be called.
@@ -837,13 +837,13 @@ def test_rename_files_button_confirmed_calls_apply_and_shows_result(
 
     qtbot.waitUntil(
         lambda: application.metadata_service.apply_renames_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.metadata_service.apply_renames_calls == [plans]
     qtbot.waitUntil(
         lambda: not window._library_page.notice.isHidden()
         and "Renamed 1" in window._library_page.notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -872,7 +872,7 @@ def test_rename_result_notice_names_files_whose_written_name_differed(
     qtbot.waitUntil(
         lambda: not window._library_page.notice.isHidden()
         and "Renamed 2" in window._library_page.notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     text = window._library_page.notice.text()
     assert "1 file" in text
@@ -896,7 +896,7 @@ def test_context_header_shows_empty_state_and_offers_picker(qtbot):
     assert not window._library_page._playlist_picker.isHidden()
     qtbot.waitUntil(
         lambda: window._library_page._playlist_picker.count() == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -915,7 +915,7 @@ def test_context_header_counts_the_tracks_the_list_shows(qtbot):
     _select_first_playlist(window, qtbot)
     page = window._library_page
 
-    qtbot.waitUntil(lambda: page.track_table.rowCount() == 2, timeout=2000)
+    qtbot.waitUntil(lambda: page.track_table.rowCount() == 2, timeout=WAIT_MS)
 
     assert page._context_label.text() == (
         "Acting on 'Peak Time' — 2 of its 8 tracks are in your library."
@@ -942,11 +942,11 @@ def _select_playlist_by_row(window, qtbot, row: int, count: int) -> None:
     # unselected playlist available to pick from Library's own picker.
     qtbot.waitUntil(
         lambda: window._dashboard_page.playlist_list.count() == count,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     window._dashboard_page.playlist_list.setCurrentRow(row)
     qtbot.waitUntil(
-        window._dashboard_page.download_button.isEnabled, timeout=2000,
+        window._dashboard_page.download_button.isEnabled, timeout=WAIT_MS,
     )
 
 
@@ -966,7 +966,7 @@ def test_change_playlist_button_reveals_picker_populated_from_sync_service(
 
     qtbot.waitUntil(
         lambda: window._library_page._playlist_picker.count() == 2,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert not window._library_page._playlist_picker.isHidden()
 
@@ -986,7 +986,7 @@ def test_picking_a_playlist_in_library_updates_shared_selection_and_dashboard(
     window._library_page._change_playlist_button.setChecked(True)
     qtbot.waitUntil(
         lambda: window._library_page._playlist_picker.count() == 2,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     other_item = window._library_page._playlist_picker.item(1)
@@ -1002,7 +1002,7 @@ def test_picking_a_playlist_in_library_updates_shared_selection_and_dashboard(
             is not None
             and current.data(Qt.ItemDataRole.UserRole).name == "Other"
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._library_page._playlist_picker.isHidden()
     assert "Other" in window._library_page._context_label.text()
@@ -1057,7 +1057,7 @@ def test_library_lists_the_playlists_tracks_in_the_library_with_tag_state(
 
     qtbot.waitUntil(
         lambda: window._library_page.track_table.rowCount() == 4,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert _library_rows(window) == {
         "tagged": ("Tagged", "Embedded", ""),
@@ -1071,7 +1071,7 @@ def test_library_lists_the_playlists_tracks_in_the_library_with_tag_state(
 def test_library_states_sort_closest_to_done_first(qtbot):
     window = _window_on_library(qtbot, _tag_state_application())
     table = window._library_page.track_table
-    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=2000)
+    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=WAIT_MS)
 
     def column_after_sorting(column: int) -> list[str]:
         table.sortItems(column, Qt.SortOrder.AscendingOrder)
@@ -1089,7 +1089,7 @@ def test_library_track_selection_is_what_tag_selected_tags(qtbot):
     application = _tag_state_application()
     window = _window_on_library(qtbot, application)
     table = window._library_page.track_table
-    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=2000)
+    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=WAIT_MS)
     button = window._library_page._tagging_panel.tag_selected_button
 
     table.selectRow(0)
@@ -1106,7 +1106,7 @@ def test_library_track_selection_is_what_tag_selected_tags(qtbot):
     button.click()
     qtbot.waitUntil(
         lambda: application.metadata_service.tag_tracks_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.metadata_service.tag_tracks_calls[0][0] == selected
 
@@ -1114,10 +1114,10 @@ def test_library_track_selection_is_what_tag_selected_tags(qtbot):
 def test_a_dashboard_selection_shows_on_librarys_track_list(qtbot):
     window = _window_on_library(qtbot, _tag_state_application())
     table = window._library_page.track_table
-    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=2000)
+    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=WAIT_MS)
     qtbot.waitUntil(
         lambda: window._dashboard_page.track_table.rowCount() == 5,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     _select_rows(window, (1, 4))  # no-art, and a track not in the library
@@ -1128,17 +1128,17 @@ def test_a_dashboard_selection_shows_on_librarys_track_list(qtbot):
             for index in table.selectionModel().selectedRows()
         }
 
-    qtbot.waitUntil(lambda: selected_ids() == {"no-art"}, timeout=2000)
+    qtbot.waitUntil(lambda: selected_ids() == {"no-art"}, timeout=WAIT_MS)
 
 
 def test_library_track_list_refreshes_after_a_tag_run(qtbot):
     application = _tag_state_application()
     window = _window_on_library(qtbot, application)
     table = window._library_page.track_table
-    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=2000)
+    qtbot.waitUntil(lambda: table.rowCount() == 4, timeout=WAIT_MS)
     # Every load the selection and the page switch started has landed,
     # so only a load the tag run starts can show the change below.
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     QCoreApplication.processEvents()
     application.dashboard_service._statuses[3] = make_track_status(
         track_id="unread", tagged_at="2026-10-07", has_art=True,
@@ -1149,7 +1149,7 @@ def test_library_track_list_refreshes_after_a_tag_run(qtbot):
     qtbot.waitUntil(
         lambda: _library_rows(window).get("unread")
         == ("Tagged", "Embedded", ""),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -1159,8 +1159,8 @@ def test_library_track_list_keeps_the_latest_load_when_an_older_one_lands_last(
     application = _tag_state_application()
     window = _window_on_library(qtbot, application)
     page = window._library_page
-    qtbot.waitUntil(lambda: page.track_table.rowCount() == 4, timeout=2000)
-    assert window.thread_pool.waitForDone(2000)
+    qtbot.waitUntil(lambda: page.track_table.rowCount() == 4, timeout=WAIT_MS)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     QCoreApplication.processEvents()
 
     # The Dashboard's 2 s poll reads the same service method; stopped,
@@ -1191,10 +1191,10 @@ def test_library_track_list_keeps_the_latest_load_when_an_older_one_lands_last(
     qtbot.waitUntil(
         lambda: _library_rows(window).get("unread")
         == ("Tagged", "Embedded", ""),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     release_stale.set()
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     QCoreApplication.processEvents()
 
     assert _library_rows(window)["unread"] == ("Tagged", "Embedded", "")
@@ -1219,7 +1219,7 @@ def test_library_track_list_says_why_it_is_empty(qtbot):
     qtbot.waitUntil(
         lambda: page.track_empty_state.text()
         == help_text.LIBRARY_TRACKS_NONE_IN_LIBRARY_TEXT,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -1261,9 +1261,9 @@ def test_quit_stops_a_running_cover_art_refresh(qtbot):
     assert service.started.wait(2)
     window.cleanup_before_quit()
 
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     assert service.stopped
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running("fill_missing_art_urls"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )

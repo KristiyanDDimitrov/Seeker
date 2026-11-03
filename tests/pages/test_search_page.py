@@ -7,7 +7,7 @@ import threading
 
 from PySide6.QtWidgets import QPushButton
 
-from fakes import FakeApplication, FakeDownloadService
+from fakes import WAIT_MS, FakeApplication, FakeDownloadService
 from seeker.models.download_result import ManualDownloadResult
 from seeker.ui import help_text
 from seeker.ui.main_window import MainWindow
@@ -62,7 +62,8 @@ def test_search_renders_results_ranked_best_first(qtbot):
     window._search_page._on_search_clicked()
 
     qtbot.waitUntil(
-        lambda: window._search_page.search_results_table.rowCount() == 2, timeout=2000,
+        lambda: window._search_page.search_results_table.rowCount() == 2,
+        timeout=WAIT_MS,
     )
     assert application.download_service.search_manual_calls == [
         ("Dom Dolla", "Rhyme Dust")
@@ -89,7 +90,7 @@ def test_search_no_results_shows_a_clear_message(qtbot):
     window._search_page._on_search_clicked()
 
     empty = window._search_page.search_results_empty
-    qtbot.waitUntil(lambda: "Nobody - Nothing" in empty.text(), timeout=2000)
+    qtbot.waitUntil(lambda: "Nobody - Nothing" in empty.text(), timeout=WAIT_MS)
     assert empty.text() == help_text.format_search_no_results(
         "Nobody", "Nothing",
     )
@@ -131,7 +132,7 @@ def test_search_download_best_passes_the_already_fetched_results(qtbot):
     window._search_page.search_title_edit.setText("Rhyme Dust")
     window._search_page._on_search_clicked()
     qtbot.waitUntil(
-        window._search_page.download_best_button.isEnabled, timeout=2000,
+        window._search_page.download_best_button.isEnabled, timeout=WAIT_MS,
     )
 
     # The fake records its call on the worker thread before the finish
@@ -144,7 +145,7 @@ def test_search_download_best_passes_the_already_fetched_results(qtbot):
 
         qtbot.waitUntil(
             lambda: bool(application.download_service.download_manual_calls),
-            timeout=2000,
+            timeout=WAIT_MS,
         )
         artist, title, chosen, files = (
             application.download_service.download_manual_calls[0]
@@ -160,7 +161,7 @@ def test_search_download_best_passes_the_already_fetched_results(qtbot):
 
     qtbot.waitUntil(
         lambda: "Requested from peer1" in window._search_page.notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._search_page.search_status_label.text() == ""
 
@@ -189,7 +190,8 @@ def test_search_download_this_one_passes_the_explicit_pick(qtbot):
     window._search_page.search_title_edit.setText("Rhyme Dust")
     window._search_page._on_search_clicked()
     qtbot.waitUntil(
-        lambda: window._search_page.search_results_table.rowCount() == 1, timeout=2000,
+        lambda: window._search_page.search_results_table.rowCount() == 1,
+        timeout=WAIT_MS,
     )
 
     actions_col = _search_column(window, "Actions")
@@ -201,7 +203,7 @@ def test_search_download_this_one_passes_the_explicit_pick(qtbot):
 
     qtbot.waitUntil(
         lambda: bool(application.download_service.download_manual_calls),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     artist, title, chosen, files = (
         application.download_service.download_manual_calls[0]
@@ -235,14 +237,14 @@ def test_search_no_destination_shows_settings_guidance(qtbot):
     window._search_page.search_title_edit.setText("Rhyme Dust")
     window._search_page._on_search_clicked()
     qtbot.waitUntil(
-        window._search_page.download_best_button.isEnabled, timeout=2000,
+        window._search_page.download_best_button.isEnabled, timeout=WAIT_MS,
     )
 
     window._search_page.download_best_button.click()
 
     qtbot.waitUntil(
         lambda: "Settings" in window._search_page.notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -330,7 +332,7 @@ def test_return_in_a_field_searches(qtbot):
 
     qtbot.waitUntil(
         lambda: bool(application.download_service.search_manual_calls),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.download_service.search_manual_calls == [
         ("Dom Dolla", "Rhyme Dust"),
@@ -369,7 +371,7 @@ def test_a_failed_search_reports_on_the_notice(qtbot):
     page._on_search_clicked()
 
     qtbot.waitUntil(
-        lambda: "SoulSeek search failed" in page.notice.text(), timeout=2000,
+        lambda: "SoulSeek search failed" in page.notice.text(), timeout=WAIT_MS,
     )
 
 
@@ -403,7 +405,7 @@ def test_a_new_search_while_a_pick_downloads_keeps_its_row_disabled(qtbot):
     page.search_artist_edit.setText("Dom Dolla")
     page.search_title_edit.setText("Rhyme Dust")
     page._on_search_clicked()
-    qtbot.waitUntil(lambda: table.rowCount() == 1)
+    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=WAIT_MS)
 
     def download_button(username: str) -> QPushButton:
         peer_column = _search_column(window, "Peer")
@@ -423,14 +425,16 @@ def test_a_new_search_while_a_pick_downloads_keeps_its_row_disabled(qtbot):
             peer_file("peer1"), peer_file("peer2"),
         ]
         page._on_search_clicked()
-        qtbot.waitUntil(lambda: table.rowCount() == 2)
+        qtbot.waitUntil(lambda: table.rowCount() == 2, timeout=WAIT_MS)
 
         assert not download_button("peer1").isEnabled()
         assert download_button("peer2").isEnabled()
     finally:
         gate.set()
 
-    qtbot.waitUntil(lambda: "Requested from peer1" in page.notice.text())
+    qtbot.waitUntil(
+        lambda: "Requested from peer1" in page.notice.text(), timeout=WAIT_MS,
+    )
     assert download_button("peer1").isEnabled()
 
 
@@ -464,9 +468,9 @@ def test_quit_stops_a_running_search(qtbot):
     assert service.started.wait(2)
     window.cleanup_before_quit()
 
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     assert service.stopped
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running("search_manual"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )

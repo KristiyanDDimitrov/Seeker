@@ -20,6 +20,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
     force_tray_available,
     make_history_event,
@@ -316,7 +317,7 @@ def test_download_notifications_fire_after_seeding_found_no_history(
     qtbot.addWidget(window)
     qtbot.waitUntil(
         lambda: window._tray._last_notified_download_at is not None,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     messages = []
@@ -332,7 +333,7 @@ def test_download_notifications_fire_after_seeding_found_no_history(
 
     window._tray.check_for_download_notifications()
 
-    qtbot.waitUntil(lambda: len(messages) == 1, timeout=2000)
+    qtbot.waitUntil(lambda: len(messages) == 1, timeout=WAIT_MS)
     assert "A: 1 track downloaded" in messages[0]
 
 

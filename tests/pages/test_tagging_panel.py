@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton,
 )
 
-from fakes import FakeApplication
+from fakes import WAIT_MS, FakeApplication
 from seeker.library.metadata_service import RenamePlan
 from seeker.ui.dialogs import RenamePreviewDialog
 from seeker.ui.main_window import MainWindow
@@ -81,7 +81,7 @@ def test_the_library_page_scrolls_rather_than_squeezing_its_buttons(qtbot):
     window.resize(960, 640)
     window.show()
     window._show_page("library")
-    qtbot.waitExposed(window)
+    qtbot.waitExposed(window, timeout=WAIT_MS)
     QApplication.processEvents()
     panel = window._library_page._tagging_panel
 

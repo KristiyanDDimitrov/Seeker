@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from fakes import WAIT_MS
 from seeker.ui import theme
 from seeker.ui.elided_text import (
     SECONDARY_ROLE,
@@ -94,7 +95,7 @@ def test_make_card_leaves_a_real_margin_between_inner_and_the_frame(qtbot):
     qtbot.addWidget(card)
     card.resize(200, 200)
     card.show()
-    qtbot.waitExposed(card)
+    qtbot.waitExposed(card, timeout=WAIT_MS)
 
     margins = card.layout().contentsMargins()
     assert margins.left() > 0
@@ -110,7 +111,7 @@ def test_cell_widget_packs_widgets_with_a_real_gap(qtbot):
     qtbot.addWidget(container)
     container.resize(400, 40)
     container.show()
-    qtbot.waitExposed(container)
+    qtbot.waitExposed(container, timeout=WAIT_MS)
 
     assert button_b.x() - (button_a.x() + button_a.width()) >= theme.SPACING_SM
 
@@ -127,7 +128,7 @@ def test_cell_widget_does_not_stretch_a_lone_widget_to_fill_the_container(
     qtbot.addWidget(container)
     container.resize(800, 40)
     container.show()
-    qtbot.waitExposed(container)
+    qtbot.waitExposed(container, timeout=WAIT_MS)
 
     assert button.width() <= button.sizeHint().width() + 2
     assert button.width() < container.width() / 2
@@ -156,7 +157,7 @@ def test_cell_widget_button_does_not_steal_tab_focus_when_disabled(qtbot):
     qtbot.addWidget(table)
     table.resize(400, 100)
     table.show()
-    qtbot.waitExposed(table)
+    qtbot.waitExposed(table, timeout=WAIT_MS)
 
     table.setCurrentCell(0, 0)
     qtbot.mouseClick(button, Qt.MouseButton.LeftButton)
@@ -240,7 +241,7 @@ def test_a_table_refits_its_columns_when_it_narrows(qtbot):
     wide_status = header.sectionSize(1)
 
     table.resize(500, 200)
-    qtbot.waitUntil(lambda: header.sectionSize(1) < wide_status)
+    qtbot.waitUntil(lambda: header.sectionSize(1) < wide_status, timeout=WAIT_MS)
 
     assert header.sectionSize(0) >= theme.STRETCH_COLUMN_FLOOR
     assert not table.horizontalScrollBar().isVisible()
@@ -283,7 +284,7 @@ def test_a_resize_refits_without_measuring_a_row(qtbot, monkeypatch):
     measured.clear()
 
     table.resize(500, 300)
-    qtbot.waitUntil(lambda: header.sectionSize(2) < wide_detail)
+    qtbot.waitUntil(lambda: header.sectionSize(2) < wide_detail, timeout=WAIT_MS)
 
     assert measured == Counter()
 
@@ -577,7 +578,7 @@ def _grab_card(qtbot, inner):
     qtbot.addWidget(card)
     card.resize(640, 240)
     card.show()
-    qtbot.waitExposed(card)
+    qtbot.waitExposed(card, timeout=WAIT_MS)
     image = card.grab().toImage()
     dpr = image.width() / card.width()
 
@@ -826,7 +827,7 @@ def test_selected_text_reads_on_a_selection_that_stands_off_the_field(
     qtbot.addWidget(card)
     card.resize(640, 240)
     card.show()
-    qtbot.waitExposed(card)
+    qtbot.waitExposed(card, timeout=WAIT_MS)
     # Focus, the user's case, arrives only if the window wins
     # activation: on Cocoa that is timing-dependent (another pytest
     # process can hold it), offscreen it never happens. So never wait

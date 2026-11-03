@@ -22,6 +22,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QDialog, QMessageBox, QPushButton
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
     make_needs_review_match,
     make_review_candidate,
@@ -144,7 +145,7 @@ def test_review_tab_confirm_button_calls_confirm_review_candidate(qtbot):
 
     qtbot.waitUntil(
         lambda: application.review_service.confirm_review_candidate_calls == ["t7"],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.review_service.reject_review_candidate_calls == []
 
@@ -180,7 +181,7 @@ def test_review_tab_confirm_failure_shows_error_on_notice_and_leaves_row(
     qtbot.waitUntil(
         lambda: window._review_page.notice.text()
         == "User X appears to be offline",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._review_page.review_needs_table.rowCount() == 1
     assert (
@@ -205,7 +206,7 @@ def test_review_tab_reject_button_calls_reject_review_candidate(qtbot):
 
     qtbot.waitUntil(
         lambda: application.review_service.reject_review_candidate_calls == ["t9"],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.review_service.confirm_review_candidate_calls == []
 
@@ -266,7 +267,7 @@ def test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag
     qtbot.waitUntil(
         lambda: application.review_service.apply_upgrade_decision_calls
         == [(42, True, True)],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     # §1.2 — Review's own notice, not the Dashboard's status_label
     # (which this success message used to be silently wiped from by
@@ -278,7 +279,7 @@ def test_review_tab_replace_button_calls_apply_upgrade_decision_with_delete_flag
     qtbot.waitUntil(
         lambda: window._review_page.notice.text()
         == "Replaced with /new/path",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -357,7 +358,7 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
     qtbot.waitUntil(
         lambda: application.review_service.apply_upgrade_decision_calls
         == [(99, False, False)],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     # A decline returns None from apply_upgrade_decision — no status
     # message should be surfaced, unlike a real replace. Wait on proof
@@ -369,7 +370,7 @@ def test_review_tab_decline_button_calls_apply_upgrade_decision_with_replace_fal
     qtbot.waitUntil(
         lambda: application.review_service.get_pending_upgrade_reviews_calls
         > baseline_reviews_calls,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._review_page.notice.text() == ""
     assert window._review_page.notice.isVisible() is False
@@ -387,7 +388,7 @@ def test_a_failed_upgrade_replace_shows_its_error_on_review(qtbot):
     actions = page.review_upgrades_table.cellWidget(0, 3)
     buttons = {b.text(): b for b in actions.findChildren(QPushButton)}
     buttons["Replace"].click()
-    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=2000)
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=WAIT_MS)
 
     assert page.notice.text() == describe_error(error)
     assert page.notice.property("variant") == "error"
@@ -448,7 +449,7 @@ def test_replace_all_upgrades_button_calls_batch_with_every_request_id(
     qtbot.waitUntil(
         lambda: application.review_service.apply_upgrade_decisions_batch_calls
         != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.review_service.apply_upgrade_decisions_batch_calls == [
         ([1, 2], True),
@@ -503,7 +504,7 @@ def test_replace_all_upgrades_stays_disabled_while_it_runs(qtbot, monkeypatch):
         page.replace_all_upgrades_button.click()
         qtbot.waitUntil(
             lambda: application.review_service
-            .apply_upgrade_decisions_batch_calls != [],
+            .apply_upgrade_decisions_batch_calls != [], timeout=WAIT_MS,
         )
         # The poll renders the same rows again while the batch runs.
         page._render_pending_upgrades(details)
@@ -512,7 +513,7 @@ def test_replace_all_upgrades_stays_disabled_while_it_runs(qtbot, monkeypatch):
     finally:
         gate.set()
 
-    qtbot.waitUntil(page.replace_all_upgrades_button.isEnabled)
+    qtbot.waitUntil(page.replace_all_upgrades_button.isEnabled, timeout=WAIT_MS)
 
 
 def test_a_failed_replace_all_shows_its_error_and_offers_the_rows_again(
@@ -531,8 +532,10 @@ def test_a_failed_replace_all_shows_its_error_and_offers_the_rows_again(
 
     page.replace_all_upgrades_button.click()
 
-    qtbot.waitUntil(lambda: page.notice.text() == describe_error(error))
-    qtbot.waitUntil(page.replace_all_upgrades_button.isEnabled)
+    qtbot.waitUntil(
+        lambda: page.notice.text() == describe_error(error), timeout=WAIT_MS,
+    )
+    qtbot.waitUntil(page.replace_all_upgrades_button.isEnabled, timeout=WAIT_MS)
 
 
 def test_replace_all_upgrades_result_shown_in_message_box(qtbot, monkeypatch):
@@ -561,7 +564,7 @@ def test_replace_all_upgrades_result_shown_in_message_box(qtbot, monkeypatch):
 
     window._review_page.replace_all_upgrades_button.click()
 
-    qtbot.waitUntil(lambda: info_calls != [], timeout=2000)
+    qtbot.waitUntil(lambda: info_calls != [], timeout=WAIT_MS)
     assert "Replaced: 1, Failed: 0" in info_calls[0][2]
 
 
@@ -580,7 +583,7 @@ def test_review_tab_populates_both_sections_on_construction(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window._review_page.review_needs_table.rowCount() == 1, timeout=2000,
+        lambda: window._review_page.review_needs_table.rowCount() == 1, timeout=WAIT_MS,
     )
     assert window._review_page.review_upgrades_table.rowCount() == 1
 
@@ -592,7 +595,7 @@ def test_review_tab_renders_local_needs_review_matches(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=2000,
+        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=WAIT_MS,
     )
     assert window._review_page.review_local_table.item(0, 0).text() == "Artist - Title"
     assert window._review_page.review_local_table.item(0, 1).text() == "Music/song.mp3"
@@ -609,7 +612,7 @@ def test_review_tab_confirm_local_match_calls_confirm_match(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=2000,
+        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=WAIT_MS,
     )
     confirm_button = window._review_page.review_local_table.cellWidget(
         0, 4
@@ -618,7 +621,7 @@ def test_review_tab_confirm_local_match_calls_confirm_match(qtbot):
 
     qtbot.waitUntil(
         lambda: application.library_service.confirm_match_calls == ["tc"],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -630,7 +633,7 @@ def test_review_tab_reject_local_match_calls_reject_match(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=2000,
+        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=WAIT_MS,
     )
     reject_button = window._review_page.review_local_table.cellWidget(
         0, 4
@@ -639,7 +642,7 @@ def test_review_tab_reject_local_match_calls_reject_match(qtbot):
 
     qtbot.waitUntil(
         lambda: application.library_service.reject_match_calls == ["tc"],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -686,7 +689,7 @@ def test_a_local_match_shows_the_tags_it_was_judged_on(qtbot):
     qtbot.addWidget(window)
     table = window._review_page.review_local_table
 
-    qtbot.waitUntil(lambda: table.rowCount() == 2, timeout=2000)
+    qtbot.waitUntil(lambda: table.rowCount() == 2, timeout=WAIT_MS)
     secondary = {
         table.item(row, 0).data(Qt.ItemDataRole.UserRole):
             table.item(row, 1).data(SECONDARY_ROLE)
@@ -707,7 +710,7 @@ def test_each_review_section_title_counts_its_rows(qtbot):
     page = window._review_page
 
     qtbot.waitUntil(
-        lambda: page.review_needs_title.text().endswith("(2)"), timeout=2000,
+        lambda: page.review_needs_title.text().endswith("(2)"), timeout=WAIT_MS,
     )
     assert page.review_needs_title.text() == (
         "SoulSeek candidates to confirm (2)"
@@ -742,10 +745,10 @@ def test_review_rows_stay_one_line_when_rendered_before_first_shown(qtbot):
     qtbot.addWidget(window)
     window.resize(1280, 820)
     window.show()
-    qtbot.waitExposed(window)
+    qtbot.waitExposed(window, timeout=WAIT_MS)
     page = window._review_page
     page.poll_review_items()
-    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1)
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1, timeout=WAIT_MS)
     assert not page.isVisible()
 
     window._show_page("review")
@@ -774,14 +777,14 @@ def test_a_poll_with_unchanged_rows_keeps_their_buttons(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1)
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1, timeout=WAIT_MS)
     confirm = _action_button(page.review_needs_table, "Confirm")
     local_confirm = _action_button(page.review_local_table, "Confirm")
 
     # The upgrades table changes, so the render's real end is visible.
     application.review_service._pending_upgrades = [make_upgrade_details()]
     page.poll_review_items()
-    qtbot.waitUntil(lambda: page.review_upgrades_table.rowCount() == 1)
+    qtbot.waitUntil(lambda: page.review_upgrades_table.rowCount() == 1, timeout=WAIT_MS)
 
     assert _action_button(page.review_needs_table, "Confirm") is confirm
     assert _action_button(page.review_local_table, "Confirm") is local_confirm
@@ -792,14 +795,14 @@ def test_a_poll_with_unchanged_upgrades_keeps_their_buttons(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_upgrades_table.rowCount() == 1)
+    qtbot.waitUntil(lambda: page.review_upgrades_table.rowCount() == 1, timeout=WAIT_MS)
     replace_button = _action_button(page.review_upgrades_table, "Replace")
 
     application.review_service._review_candidates = [
         (make_track("t1"), make_review_candidate("t1")),
     ]
     page.poll_review_items()
-    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1)
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1, timeout=WAIT_MS)
 
     assert (
         _action_button(page.review_upgrades_table, "Replace")
@@ -816,7 +819,7 @@ def test_a_poll_with_a_changed_row_rebuilds_its_table(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1)
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1, timeout=WAIT_MS)
 
     application.review_service._review_candidates = [
         (make_track("t1"), make_review_candidate("t1", score=70.0)),
@@ -824,7 +827,7 @@ def test_a_poll_with_a_changed_row_rebuilds_its_table(qtbot):
     page.poll_review_items()
 
     qtbot.waitUntil(
-        lambda: page.review_needs_table.item(0, 1).text() == "70.0",
+        lambda: page.review_needs_table.item(0, 1).text() == "70.0", timeout=WAIT_MS,
     )
 
 
@@ -893,13 +896,13 @@ def test_a_row_rebuilt_while_its_decision_runs_stays_disabled(
     qtbot.addWidget(window)
     page = window._review_page
     table = getattr(page, table_name)
-    qtbot.waitUntil(lambda: table.rowCount() == 1)
+    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=WAIT_MS)
 
     try:
         _row_buttons(table, "t1")[click].click()
         seed(application, ["t1", "t2"])
         page.poll_review_items()
-        qtbot.waitUntil(lambda: table.rowCount() == 2)
+        qtbot.waitUntil(lambda: table.rowCount() == 2, timeout=WAIT_MS)
 
         running = _row_buttons(table, "t1")
         assert not running[click].isEnabled()
@@ -913,7 +916,7 @@ def test_a_row_rebuilt_while_its_decision_runs_stays_disabled(
     def settled() -> bool:
         return _row_buttons(table, "t1")[click].isEnabled()
 
-    qtbot.waitUntil(settled)
+    qtbot.waitUntil(settled, timeout=WAIT_MS)
     wait_for_workers(window)
 
 
@@ -944,7 +947,7 @@ def test_confirm_all_matches_counts_the_rows_and_is_disabled_at_none(qtbot):
 
     _seed_matches(application, ["t1", "t2"])
     page.poll_review_items()
-    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 2)
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 2, timeout=WAIT_MS)
 
     assert page.confirm_all_matches_button.isEnabled()
     assert page.confirm_all_matches_button.text() == "Confirm all (2)"
@@ -959,11 +962,11 @@ def test_confirm_all_matches_asks_then_confirms_the_rows_shown(
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 2)
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 2, timeout=WAIT_MS)
 
     page.confirm_all_matches_button.click()
 
-    qtbot.waitUntil(lambda: page.notice.text() != "")
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=WAIT_MS)
     assert application.library_service.confirm_matches_calls == [["t1", "t2"]]
     [(_title, text)] = asked
     assert "2 matches will be kept" in text
@@ -977,7 +980,7 @@ def test_confirm_all_matches_declined_confirms_nothing(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1)
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1, timeout=WAIT_MS)
 
     page.confirm_all_matches_button.click()
     wait_for_workers(window)
@@ -998,11 +1001,11 @@ def test_confirm_all_matches_names_each_failure_on_the_notice(
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 2)
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 2, timeout=WAIT_MS)
 
     page.confirm_all_matches_button.click()
 
-    qtbot.waitUntil(lambda: page.notice.text() != "")
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=WAIT_MS)
     text = page.notice.text()
     assert text.startswith("Confirmed 1 local match. 1 failed")
     assert "Artist - Title: It changed." in text
@@ -1020,24 +1023,27 @@ def test_confirm_all_matches_stays_disabled_while_it_runs(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1)
+    qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 1, timeout=WAIT_MS)
 
     try:
         page.confirm_all_matches_button.click()
         qtbot.waitUntil(
             lambda: application.library_service.confirm_matches_calls != [],
+            timeout=WAIT_MS,
         )
         _seed_matches(application, ["t1", "t2"])
         page.poll_review_items()
-        qtbot.waitUntil(lambda: page.review_local_table.rowCount() == 2)
+        qtbot.waitUntil(
+            lambda: page.review_local_table.rowCount() == 2, timeout=WAIT_MS,
+        )
 
         assert not page.confirm_all_matches_button.isEnabled()
         assert page.confirm_all_matches_button.text() == "Confirm all (2)"
     finally:
         gate.set()
 
-    qtbot.waitUntil(lambda: page.notice.text() != "")
-    qtbot.waitUntil(page.confirm_all_matches_button.isEnabled)
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=WAIT_MS)
+    qtbot.waitUntil(page.confirm_all_matches_button.isEnabled, timeout=WAIT_MS)
 
 
 # --- "Confirm all" SoulSeek candidates ---------------------------------------
@@ -1054,7 +1060,7 @@ def test_confirm_all_candidates_counts_the_rows_and_is_disabled_at_none(qtbot):
 
     _seed_candidates(application, ["t1", "t2"])
     page.poll_review_items()
-    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2)
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2, timeout=WAIT_MS)
 
     assert page.confirm_all_candidates_button.isEnabled()
     assert page.confirm_all_candidates_button.text() == "Confirm all (2)"
@@ -1069,11 +1075,11 @@ def test_confirm_all_candidates_asks_then_requests_the_rows_shown(
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2)
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2, timeout=WAIT_MS)
 
     page.confirm_all_candidates_button.click()
 
-    qtbot.waitUntil(lambda: page.notice.text() != "")
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=WAIT_MS)
     assert application.review_service.confirm_review_candidates_calls == [
         ["t1", "t2"],
     ]
@@ -1093,7 +1099,7 @@ def test_confirm_all_candidates_declined_requests_nothing(qtbot, monkeypatch):
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1)
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1, timeout=WAIT_MS)
 
     page.confirm_all_candidates_button.click()
     wait_for_workers(window)
@@ -1116,11 +1122,11 @@ def test_confirm_all_candidates_names_each_failure_on_the_notice(
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2)
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2, timeout=WAIT_MS)
 
     page.confirm_all_candidates_button.click()
 
-    qtbot.waitUntil(lambda: page.notice.text() != "")
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=WAIT_MS)
     text = page.notice.text()
     assert text.startswith(
         "Confirmed 1 SoulSeek candidate. Its download is on the Downloads "
@@ -1142,11 +1148,11 @@ def test_confirm_all_candidates_reports_an_outage_as_an_error(
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2)
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2, timeout=WAIT_MS)
 
     page.confirm_all_candidates_button.click()
 
-    qtbot.waitUntil(lambda: page.notice.text() != "")
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=WAIT_MS)
     assert page.notice.text() == (
         "Confirmed 0 SoulSeek candidates. SoulSeek isn't reachable. The "
         "rest stayed for review."
@@ -1165,22 +1171,24 @@ def test_confirm_all_candidates_stays_disabled_while_it_runs(
     window = MainWindow(application)
     qtbot.addWidget(window)
     page = window._review_page
-    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1)
+    qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 1, timeout=WAIT_MS)
 
     try:
         page.confirm_all_candidates_button.click()
         qtbot.waitUntil(
             lambda: application.review_service
-            .confirm_review_candidates_calls != [],
+            .confirm_review_candidates_calls != [], timeout=WAIT_MS,
         )
         _seed_candidates(application, ["t1", "t2"])
         page.poll_review_items()
-        qtbot.waitUntil(lambda: page.review_needs_table.rowCount() == 2)
+        qtbot.waitUntil(
+            lambda: page.review_needs_table.rowCount() == 2, timeout=WAIT_MS,
+        )
 
         assert not page.confirm_all_candidates_button.isEnabled()
         assert page.confirm_all_candidates_button.text() == "Confirm all (2)"
     finally:
         gate.set()
 
-    qtbot.waitUntil(lambda: page.notice.text() != "")
-    qtbot.waitUntil(page.confirm_all_candidates_button.isEnabled)
+    qtbot.waitUntil(lambda: page.notice.text() != "", timeout=WAIT_MS)
+    qtbot.waitUntil(page.confirm_all_candidates_button.isEnabled, timeout=WAIT_MS)

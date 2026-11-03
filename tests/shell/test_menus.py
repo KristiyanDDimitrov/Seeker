@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
 )
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
 )
 from seeker.formatting import format_timestamp
@@ -84,9 +85,9 @@ def test_check_for_updates_click_runs_check_for_update_via_worker(
 
     window.check_for_updates_action.trigger()
 
-    qtbot.waitUntil(lambda: calls == [None], timeout=2000)
+    qtbot.waitUntil(lambda: calls == [None], timeout=WAIT_MS)
     qtbot.waitUntil(
-        window.check_for_updates_action.isEnabled, timeout=2000,
+        window.check_for_updates_action.isEnabled, timeout=WAIT_MS,
     )
 
 
@@ -110,7 +111,7 @@ def test_up_to_date_dialog_shows_installed_version(qtbot, monkeypatch):
     qtbot.addWidget(window)
 
     window.check_for_updates_action.trigger()
-    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=WAIT_MS)
 
     assert "up to date" in shown[0].text().lower()
     assert "1.0.0" in shown[0].text()
@@ -139,7 +140,7 @@ def test_update_available_dialog_shows_both_versions_and_link(
     qtbot.addWidget(window)
 
     window.check_for_updates_action.trigger()
-    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=WAIT_MS)
 
     text = shown[0].text()
     assert "v1.3.0" in text
@@ -171,7 +172,7 @@ def test_update_available_dialog_escapes_the_release_data(
     qtbot.addWidget(window)
 
     window.check_for_updates_action.trigger()
-    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=WAIT_MS)
 
     rendered = QTextDocument()
     rendered.setHtml(shown[0].text())
@@ -200,7 +201,7 @@ def test_unavailable_dialog_shows_the_reason_as_plain_text(
     qtbot.addWidget(window)
 
     window.check_for_updates_action.trigger()
-    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=WAIT_MS)
 
     assert shown[0].textFormat() == Qt.TextFormat.PlainText
 
@@ -225,7 +226,7 @@ def test_unavailable_dialog_shows_the_reason(qtbot, monkeypatch):
     qtbot.addWidget(window)
 
     window.check_for_updates_action.trigger()
-    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=WAIT_MS)
 
     assert "Couldn't reach GitHub: connection refused." in shown[0].text()
     assert shown[0].icon() == QMessageBox.Icon.Warning
@@ -259,7 +260,7 @@ def test_no_releases_published_dialog_is_honest_and_un_alarming(
     qtbot.addWidget(window)
 
     window.check_for_updates_action.trigger()
-    qtbot.waitUntil(lambda: len(shown) == 1, timeout=2000)
+    qtbot.waitUntil(lambda: len(shown) == 1, timeout=WAIT_MS)
 
     assert shown[0].text() == "No releases have been published yet."
     assert shown[0].icon() == QMessageBox.Icon.Information
@@ -282,7 +283,7 @@ def test_check_for_updates_action_disabled_while_running_and_reenabled(
     assert window.check_for_updates_action.isEnabled()
     window.check_for_updates_action.trigger()
     qtbot.waitUntil(
-        window.check_for_updates_action.isEnabled, timeout=2000,
+        window.check_for_updates_action.isEnabled, timeout=WAIT_MS,
     )
 
 

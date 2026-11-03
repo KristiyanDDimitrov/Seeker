@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog, QLabel, QProgressBar, QPushButton
 
 from fakes import (
+    WAIT_MS,
     FakeApplication,
     FakeSyncService,
     make_needs_review_match,
@@ -45,7 +46,7 @@ from seeker.ui.main_window import MainWindow
 
 def _select_first_playlist(window, qtbot) -> None:
     qtbot.waitUntil(
-        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=WAIT_MS,
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
     # Selecting also kicks off the "next step" facts fetch
@@ -54,7 +55,7 @@ def _select_first_playlist(window, qtbot) -> None:
     # racing a click against a button that may still be disabled from
     # the pre-selection (no playlist selected) render.
     qtbot.waitUntil(
-        window._dashboard_page.download_button.isEnabled, timeout=2000,
+        window._dashboard_page.download_button.isEnabled, timeout=WAIT_MS,
     )
 
 
@@ -172,7 +173,7 @@ def test_next_step_notice_hidden_when_nothing_selected_and_all_set_up(qtbot):
     # has run: with nothing selected, it disables Download.
     qtbot.waitUntil(
         lambda: not window._dashboard_page.download_button.isEnabled(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._dashboard_page.next_step_notice.isHidden()
 
@@ -202,14 +203,14 @@ def test_next_step_says_a_selected_playlist_changed_on_spotify(qtbot):
     qtbot.addWidget(window)
     window.show()
     qtbot.waitUntil(
-        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=WAIT_MS,
     )
 
     window._dashboard_page.playlist_list.setCurrentRow(0)
 
     notice = window._dashboard_page.next_step_notice
     qtbot.waitUntil(
-        lambda: "changed on Spotify" in notice.text(), timeout=2000,
+        lambda: "changed on Spotify" in notice.text(), timeout=WAIT_MS,
     )
     assert "'Peak Time' changed on Spotify" in notice.text()
     assert "all set" not in notice.text()
@@ -229,7 +230,7 @@ def test_next_step_names_a_stale_playlist_with_nothing_selected(qtbot):
     qtbot.addWidget(window)
 
     notice = window._dashboard_page.next_step_notice
-    qtbot.waitUntil(lambda: not notice.isHidden(), timeout=2000)
+    qtbot.waitUntil(lambda: not notice.isHidden(), timeout=WAIT_MS)
     assert "'Warmup' changed on Spotify" in notice.text()
 
 
@@ -250,7 +251,7 @@ def test_refresh_playlists_reports_the_playlists_it_updated(qtbot):
     window._dashboard_page.sync_button.click()
 
     notice = window._dashboard_page.dashboard_notice
-    qtbot.waitUntil(lambda: not notice.isHidden(), timeout=2000)
+    qtbot.waitUntil(lambda: not notice.isHidden(), timeout=WAIT_MS)
     assert notice.text() == (
         "Refreshed 2 playlists. Updated tracks for 1 that changed on "
         "Spotify."
@@ -266,7 +267,7 @@ def test_next_step_notice_shows_connect_spotify_first(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: not window._dashboard_page.next_step_notice.isHidden(), timeout=2000,
+        lambda: not window._dashboard_page.next_step_notice.isHidden(), timeout=WAIT_MS,
     )
     assert "spotify" in window._dashboard_page.next_step_notice.text().lower()
 
@@ -424,7 +425,7 @@ def test_next_step_notice_shows_download_count_and_triggers_download_flow(
     _select_first_playlist(window, qtbot)
 
     qtbot.waitUntil(
-        lambda: "2" in window._dashboard_page.next_step_notice.text(), timeout=2000,
+        lambda: "2" in window._dashboard_page.next_step_notice.text(), timeout=WAIT_MS,
     )
     assert (
         window._dashboard_page.next_step_notice.text()
@@ -435,7 +436,7 @@ def test_next_step_notice_shows_download_count_and_triggers_download_flow(
 
     qtbot.waitUntil(
         lambda: application.download_service.download_playlist_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -460,7 +461,7 @@ def test_action_row_download_button_hides_while_cta_offers_the_same_action(
     _select_first_playlist(window, qtbot)
 
     qtbot.waitUntil(
-        window._dashboard_page.download_button.isHidden, timeout=2000,
+        window._dashboard_page.download_button.isHidden, timeout=WAIT_MS,
     )
 
 
@@ -486,7 +487,7 @@ def test_download_button_disabled_with_no_playlist_selected(qtbot):
     # Enabled is Qt's default; the disable comes from the next-step
     # facts, fetched on a worker, so wait for it rather than a fixed time.
     download_button = window._dashboard_page.download_button
-    qtbot.waitUntil(lambda: not download_button.isEnabled(), timeout=2000)
+    qtbot.waitUntil(lambda: not download_button.isEnabled(), timeout=WAIT_MS)
 
 
 def test_sync_button_disabled_when_spotify_not_connected(qtbot):
@@ -495,7 +496,7 @@ def test_sync_button_disabled_when_spotify_not_connected(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: not window._dashboard_page.sync_button.isEnabled(), timeout=2000,
+        lambda: not window._dashboard_page.sync_button.isEnabled(), timeout=WAIT_MS,
     )
 
 
@@ -505,7 +506,7 @@ def test_scan_button_disabled_with_no_library_location(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: not window._dashboard_page.scan_button.isEnabled(), timeout=2000,
+        lambda: not window._dashboard_page.scan_button.isEnabled(), timeout=WAIT_MS,
     )
 
 
@@ -515,7 +516,7 @@ def test_match_button_disabled_with_nothing_to_match(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: not window._dashboard_page.match_button.isEnabled(), timeout=2000,
+        lambda: not window._dashboard_page.match_button.isEnabled(), timeout=WAIT_MS,
     )
 
 
@@ -534,7 +535,7 @@ def test_all_action_buttons_enabled_once_everything_is_set_up(qtbot):
         lambda: window._dashboard_page.sync_button.isEnabled()
         and window._dashboard_page.scan_button.isEnabled()
         and window._dashboard_page.match_button.isEnabled(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     _select_first_playlist(window, qtbot)
     assert window._dashboard_page.download_button.isEnabled()
@@ -571,7 +572,7 @@ def test_playlist_selected_no_tracks_shows_empty_panel_with_load_button(qtbot):
     # current (already true before selection even happens).
     qtbot.waitUntil(
         lambda: "test" in window._dashboard_page.track_empty_label.text().lower(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert (
         window._dashboard_page.track_area_stack.currentWidget()
@@ -594,7 +595,7 @@ def test_playlist_with_tracks_shows_the_real_table(qtbot):
             window._dashboard_page.track_area_stack.currentWidget()
             is window._dashboard_page.track_table_card
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._dashboard_page.track_table.rowCount() == 1
 
@@ -606,7 +607,7 @@ def test_main_window_populates_playlist_list_from_service(qtbot):
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=WAIT_MS,
     )
 
     assert "Test Playlist" in window._dashboard_page.playlist_list.item(0).text()
@@ -639,7 +640,7 @@ def test_a_playlist_row_shows_its_counts_beside_its_name(qtbot):
 
     qtbot.waitUntil(
         lambda: window._dashboard_page.playlist_list.count() == 2,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     assert window._dashboard_page.playlist_list.item(0).text() == "Peak Time"
@@ -657,7 +658,7 @@ def test_a_playlist_with_nothing_missing_says_so(qtbot):
 
     qtbot.waitUntil(
         lambda: window._dashboard_page.playlist_list.count() == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     assert _counts(window, 0) == "1 · complete"
@@ -679,7 +680,7 @@ def test_the_selected_playlists_counts_follow_the_poll(qtbot):
     window._dashboard_page.poll_selected_playlist()
 
     qtbot.waitUntil(
-        lambda: _counts(window, 0) == "2 · 1 missing", timeout=2000,
+        lambda: _counts(window, 0) == "2 · 1 missing", timeout=WAIT_MS,
     )
 
 
@@ -696,7 +697,7 @@ def test_a_scan_refreshes_the_counts_and_keeps_the_selection(qtbot):
     window._dashboard_page._on_scan_clicked()
 
     qtbot.waitUntil(
-        lambda: _counts(window, 0) == "1 · complete", timeout=2000,
+        lambda: _counts(window, 0) == "1 · complete", timeout=WAIT_MS,
     )
     assert window._dashboard_page.selected_playlist.id == "p1"
 
@@ -723,19 +724,19 @@ def test_next_step_shows_no_missing_count_while_a_scan_runs(qtbot):
     _select_first_playlist(window, qtbot)
     qtbot.waitUntil(
         lambda: page.next_step_notice.text().startswith("Scan your library"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     try:
         page._on_scan_clicked()
-        qtbot.waitUntil(library_service.has_scanned_library, timeout=2000)
+        qtbot.waitUntil(library_service.has_scanned_library, timeout=WAIT_MS)
         page.poll_next_step()
 
         qtbot.waitUntil(
             lambda: not page.next_step_notice.text().startswith(
                 "Scan your library",
             ),
-            timeout=2000,
+            timeout=WAIT_MS,
         )
         assert "missing" not in page.next_step_notice.text()
     finally:
@@ -743,13 +744,13 @@ def test_next_step_shows_no_missing_count_while_a_scan_runs(qtbot):
 
     # The flow's real end: the scan's finish handler frees its button.
     qtbot.waitUntil(
-        lambda: page.scan_button.text() == "Scan library", timeout=2000,
+        lambda: page.scan_button.text() == "Scan library", timeout=WAIT_MS,
     )
     page.poll_next_step()
     qtbot.waitUntil(
         lambda: page.next_step_notice.text()
         == "2 tracks missing from 'Peak Time'.",
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
 
@@ -765,12 +766,12 @@ def test_main_window_shows_sync_tracks_prompt_when_playlist_has_no_tracks(
     window.show()
 
     qtbot.waitUntil(
-        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=WAIT_MS,
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
 
     qtbot.waitUntil(
-        window._dashboard_page.sync_tracks_button.isVisible, timeout=2000,
+        window._dashboard_page.sync_tracks_button.isVisible, timeout=WAIT_MS,
     )
     assert application.sync_service.sync_playlist_tracks_calls == []
 
@@ -788,17 +789,17 @@ def test_load_tracks_warns_when_spotify_local_files_were_skipped(qtbot):
     window.show()
 
     qtbot.waitUntil(
-        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=WAIT_MS,
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
     qtbot.waitUntil(
-        window._dashboard_page.sync_tracks_button.isVisible, timeout=2000,
+        window._dashboard_page.sync_tracks_button.isVisible, timeout=WAIT_MS,
     )
 
     window._dashboard_page.sync_tracks_button.click()
 
     notice = window._dashboard_page.dashboard_notice
-    qtbot.waitUntil(lambda: not notice.isHidden(), timeout=2000)
+    qtbot.waitUntil(lambda: not notice.isHidden(), timeout=WAIT_MS)
     assert "2 Spotify local files" in notice.text()
     assert "Bootlegs" in notice.text()
 
@@ -814,11 +815,11 @@ def test_load_tracks_shows_no_notice_when_nothing_was_skipped(qtbot):
     window.show()
 
     qtbot.waitUntil(
-        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=WAIT_MS,
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
     qtbot.waitUntil(
-        window._dashboard_page.sync_tracks_button.isVisible, timeout=2000,
+        window._dashboard_page.sync_tracks_button.isVisible, timeout=WAIT_MS,
     )
 
     window._dashboard_page.sync_tracks_button.click()
@@ -828,7 +829,7 @@ def test_load_tracks_shows_no_notice_when_nothing_was_skipped(qtbot):
     qtbot.waitUntil(
         lambda: application.sync_service.sync_playlist_tracks_calls != []
         and not window.busy_actions.is_running("sync_tracks"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._dashboard_page.dashboard_notice.isHidden()
 
@@ -846,7 +847,7 @@ def test_dashboard_reflects_a_selection_write_that_originates_elsewhere(
     qtbot.addWidget(window)
 
     qtbot.waitUntil(
-        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=WAIT_MS,
     )
     assert window._dashboard_page.playlist_list.currentItem() is None
 
@@ -860,7 +861,7 @@ def test_dashboard_reflects_a_selection_write_that_originates_elsewhere(
             is not None
             and current.data(Qt.ItemDataRole.UserRole) == playlists[0]
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert "Elsewhere" in application.dashboard_service.calls
 
@@ -878,7 +879,7 @@ def test_needs_review_status_cell_has_tooltip_other_states_dont(qtbot):
     _select_first_playlist(window, qtbot)
 
     qtbot.waitUntil(
-        lambda: window._dashboard_page.track_table.rowCount() == 2, timeout=2000,
+        lambda: window._dashboard_page.track_table.rowCount() == 2, timeout=WAIT_MS,
     )
     assert window._dashboard_page.track_table.item(0, 1).toolTip() != ""
     assert window._dashboard_page.track_table.item(1, 1).toolTip() == ""
@@ -1175,7 +1176,7 @@ def _run_one_poll_tick(window, qtbot) -> None:
     calls = window._dashboard_page._context.application.dashboard_service.calls
     before = len(calls)
     window._dashboard_page.poll_selected_playlist()
-    qtbot.waitUntil(lambda: len(calls) > before, timeout=2000)
+    qtbot.waitUntil(lambda: len(calls) > before, timeout=WAIT_MS)
     qtbot.wait(50)
 
 
@@ -1191,9 +1192,9 @@ def test_scan_summary_stays_readable_after_the_next_poll_tick(qtbot):
     window._dashboard_page.scan_button.click()
     qtbot.waitUntil(
         lambda: application.library_service.scan_and_match_calls == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
-    qtbot.waitUntil(window._dashboard_page.scan_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(window._dashboard_page.scan_button.isEnabled, timeout=WAIT_MS)
     _run_one_poll_tick(window, qtbot)
 
     notice = window._dashboard_page.dashboard_notice
@@ -1218,9 +1219,9 @@ def test_failed_refresh_playlists_error_stays_readable(qtbot):
     window._dashboard_page.sync_button.click()
     qtbot.waitUntil(
         lambda: application.sync_service.refresh_playlists_calls == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
-    qtbot.waitUntil(window._dashboard_page.sync_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(window._dashboard_page.sync_button.isEnabled, timeout=WAIT_MS)
     _run_one_poll_tick(window, qtbot)
 
     notice = window._dashboard_page.dashboard_notice
@@ -1248,7 +1249,7 @@ def test_tag_from_a_dashboard_row_reports_on_the_dashboard(qtbot):
     button.click()
 
     dashboard_notice = window._dashboard_page.dashboard_notice
-    qtbot.waitUntil(lambda: not dashboard_notice.isHidden(), timeout=2000)
+    qtbot.waitUntil(lambda: not dashboard_notice.isHidden(), timeout=WAIT_MS)
     assert "failed" in dashboard_notice.text().lower()
     assert window._library_page.notice.isHidden()
 
@@ -1264,12 +1265,12 @@ def test_scan_button_click_calls_scan_and_match_not_scan_all(qtbot):
     window = MainWindow(application)
     qtbot.addWidget(window)
 
-    qtbot.waitUntil(window._dashboard_page.scan_button.isEnabled, timeout=2000)
+    qtbot.waitUntil(window._dashboard_page.scan_button.isEnabled, timeout=WAIT_MS)
     window._dashboard_page.scan_button.click()
 
     qtbot.waitUntil(
         lambda: application.library_service.scan_and_match_calls == 1,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.library_service.scan_all_calls == 0
 
@@ -1311,7 +1312,7 @@ def test_download_with_its_own_destination_skips_the_dialog(qtbot):
 
     qtbot.waitUntil(
         lambda: application.download_service.download_playlist_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.download_service.download_playlist_calls == ["Test"]
     # No destination needed setting — it was already the playlist's own.
@@ -1348,7 +1349,7 @@ def test_download_with_a_resolvable_default_still_prompts_once(
 
     window._dashboard_page.download_button.click()
 
-    qtbot.waitUntil(lambda: opened_dialogs != [], timeout=2000)
+    qtbot.waitUntil(lambda: opened_dialogs != [], timeout=WAIT_MS)
     dialog = opened_dialogs[0]
     assert dialog.selected_location_id() == 1
     assert dialog.subfolder_field.text() == "Test"
@@ -1385,14 +1386,14 @@ def test_download_button_shows_starting_immediately_on_click(qtbot):
 
     qtbot.waitUntil(
         lambda: application.download_service.download_playlist_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     qtbot.waitUntil(
         lambda: (
             window._dashboard_page.download_button.text()
             == "Download selected playlist"
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._dashboard_page.download_button.isEnabled()
 
@@ -1422,7 +1423,7 @@ def test_download_button_resets_when_dialog_is_cancelled(qtbot, monkeypatch):
             window._dashboard_page.download_button.text()
             == "Download selected playlist"
         ),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._dashboard_page.download_button.isEnabled()
     assert application.download_service.download_playlist_calls == []
@@ -1459,7 +1460,7 @@ def test_download_result_notice_reports_already_in_progress_tracks(qtbot):
     qtbot.waitUntil(
         lambda: not window._dashboard_page.dashboard_notice.isHidden()
         and "Requested 2" in window._dashboard_page.dashboard_notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert (
         "3 already downloading/downloaded"
@@ -1493,7 +1494,7 @@ def test_download_result_notice_warns_and_lists_failed_tracks(qtbot):
     notice = window._dashboard_page.dashboard_notice
     qtbot.waitUntil(
         lambda: not notice.isHidden() and "1 failed" in notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert "Artist A - Title A: Search timed out." in notice.text()
     assert notice.property("variant") == "warning"
@@ -1533,7 +1534,7 @@ def test_download_result_notice_reports_needs_review_separately_from_skipped(
     qtbot.waitUntil(
         lambda: not window._dashboard_page.dashboard_notice.isHidden()
         and "Requested 4" in window._dashboard_page.dashboard_notice.text(),
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     text = window._dashboard_page.dashboard_notice.text()
     assert "2 sent to Review" in text
@@ -1567,7 +1568,7 @@ def test_download_with_no_destination_opens_dialog_prefilled_with_playlist_name(
 
     window._dashboard_page.download_button.click()
 
-    qtbot.waitUntil(lambda: opened_dialogs != [], timeout=2000)
+    qtbot.waitUntil(lambda: opened_dialogs != [], timeout=WAIT_MS)
     dialog = opened_dialogs[0]
     # Prefilled: the only real location, and the subfolder defaults to
     # the playlist's own name.
@@ -1609,7 +1610,7 @@ def test_download_dialog_prefills_the_configured_default_location(
 
     window._dashboard_page.download_button.click()
 
-    qtbot.waitUntil(lambda: opened_dialogs != [], timeout=2000)
+    qtbot.waitUntil(lambda: opened_dialogs != [], timeout=WAIT_MS)
     assert opened_dialogs[0].selected_location_id() == 2
 
 
@@ -1638,7 +1639,7 @@ def test_download_dialog_confirmed_with_remember_calls_set_destination_then_down
 
     qtbot.waitUntil(
         lambda: application.download_service.download_playlist_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.download_service.set_destination_calls == [
         ("Test", "Main", "Test"),
@@ -1673,7 +1674,7 @@ def test_download_dialog_confirmed_without_remember_persists_the_default(
 
     qtbot.waitUntil(
         lambda: application.download_service.download_playlist_calls != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert application.download_service.set_destination_calls == []
     assert application.persist_default_destination_calls == [(1, True)]
@@ -1694,7 +1695,7 @@ def test_download_with_no_locations_at_all_shows_a_notice_not_an_empty_dialog(
     window._dashboard_page.download_button.click()
 
     qtbot.waitUntil(
-        lambda: not window._dashboard_page.dashboard_notice.isHidden(), timeout=2000,
+        lambda: not window._dashboard_page.dashboard_notice.isHidden(), timeout=WAIT_MS,
     )
     assert "location" in window._dashboard_page.dashboard_notice.text().lower()
 
@@ -1715,7 +1716,7 @@ def test_double_clicking_needs_review_row_navigates_to_review_and_selects_it(
     _select_first_playlist(window, qtbot)
 
     qtbot.waitUntil(
-        lambda: window._dashboard_page.track_table.rowCount() == 1, timeout=2000,
+        lambda: window._dashboard_page.track_table.rowCount() == 1, timeout=WAIT_MS,
     )
     window._dashboard_page._on_track_table_cell_double_clicked(0, 1)
 
@@ -1724,11 +1725,11 @@ def test_double_clicking_needs_review_row_navigates_to_review_and_selects_it(
         == window._page_indices["review"]
     )
     qtbot.waitUntil(
-        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=2000,
+        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=WAIT_MS,
     )
     qtbot.waitUntil(
         lambda: window._review_page.review_local_table.selectedItems() != [],
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert window._review_page.review_local_table.currentRow() == 0
 
@@ -1744,7 +1745,7 @@ def test_double_clicking_in_library_row_is_a_no_op(qtbot):
     _select_first_playlist(window, qtbot)
 
     qtbot.waitUntil(
-        lambda: window._dashboard_page.track_table.rowCount() == 1, timeout=2000,
+        lambda: window._dashboard_page.track_table.rowCount() == 1, timeout=WAIT_MS,
     )
     window._dashboard_page._on_track_table_cell_double_clicked(0, 1)
 
@@ -1786,7 +1787,7 @@ def test_double_click_after_sorting_the_track_table_navigates_to_the_right_row(
     _select_first_playlist(window, qtbot)
 
     qtbot.waitUntil(
-        lambda: window._dashboard_page.track_table.rowCount() == 2, timeout=2000,
+        lambda: window._dashboard_page.track_table.rowCount() == 2, timeout=WAIT_MS,
     )
     # Sort ascending by the Track column — "Aaa Artist..." (status_b,
     # inserted second) now sits at row 0.
@@ -1803,7 +1804,7 @@ def test_double_click_after_sorting_the_track_table_navigates_to_the_right_row(
         == window._page_indices["review"]
     )
     qtbot.waitUntil(
-        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=2000,
+        lambda: window._review_page.review_local_table.rowCount() == 1, timeout=WAIT_MS,
     )
 
 
@@ -2060,7 +2061,7 @@ def test_a_row_rebuilt_while_its_tag_runs_keeps_tag_disabled(qtbot):
     page = window._dashboard_page
     table = page.track_table
     window.playlist_selection.set_playlist(playlist)
-    qtbot.waitUntil(lambda: table.rowCount() == 1)
+    qtbot.waitUntil(lambda: table.rowCount() == 1, timeout=WAIT_MS)
 
     try:
         _tag_button(table, "t1").click()
@@ -2069,7 +2070,7 @@ def test_a_row_rebuilt_while_its_tag_runs_keeps_tag_disabled(qtbot):
             make_track_status(track_id="t2", state=IN_LIBRARY),
         ]
         page.poll_selected_playlist()
-        qtbot.waitUntil(lambda: table.rowCount() == 2)
+        qtbot.waitUntil(lambda: table.rowCount() == 2, timeout=WAIT_MS)
 
         assert not _tag_button(table, "t1").isEnabled()
         assert _tag_button(table, "t2").isEnabled()
@@ -2080,7 +2081,7 @@ def test_a_row_rebuilt_while_its_tag_runs_keeps_tag_disabled(qtbot):
     def settled() -> bool:
         return _tag_button(table, "t1").isEnabled()
 
-    qtbot.waitUntil(settled)
+    qtbot.waitUntil(settled, timeout=WAIT_MS)
     wait_for_workers(window)
 
 
@@ -2123,10 +2124,10 @@ def test_quit_stops_a_running_playlist_refresh(qtbot):
     assert service.started.wait(2)
     window.cleanup_before_quit()
 
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     assert service.stopped
     qtbot.waitUntil(
-        lambda: not window.busy_actions.is_running("sync"), timeout=2000,
+        lambda: not window.busy_actions.is_running("sync"), timeout=WAIT_MS,
     )
 
 
@@ -2139,20 +2140,20 @@ def test_quit_stops_a_running_track_load(qtbot):
     qtbot.addWidget(window)
     window.show()
     qtbot.waitUntil(
-        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=2000,
+        lambda: window._dashboard_page.playlist_list.count() == 1, timeout=WAIT_MS,
     )
     window._dashboard_page.playlist_list.setCurrentRow(0)
     qtbot.waitUntil(
-        window._dashboard_page.sync_tracks_button.isVisible, timeout=2000,
+        window._dashboard_page.sync_tracks_button.isVisible, timeout=WAIT_MS,
     )
 
     window._dashboard_page.sync_tracks_button.click()
     assert service.started.wait(2)
     window.cleanup_before_quit()
 
-    assert window.thread_pool.waitForDone(2000)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     assert service.stopped
     qtbot.waitUntil(
         lambda: not window.busy_actions.is_running("sync_tracks"),
-        timeout=2000,
+        timeout=WAIT_MS,
     )

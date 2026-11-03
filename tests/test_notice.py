@@ -2,6 +2,7 @@ import pytest
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
 
+from fakes import WAIT_MS
 from seeker.ui import theme
 from seeker.ui.notice import InlineNotice, pinned_notices
 from seeker.ui.widgets import CloseButton
@@ -152,7 +153,7 @@ def test_a_notice_lights_only_its_left_edge(qtbot, palette, kind):
     notice.resize(400, 48)
     host.resize(400, 48)
     host.show()
-    qtbot.waitExposed(host)
+    qtbot.waitExposed(host, timeout=WAIT_MS)
 
     image = notice.grab().toImage()
     scale = image.width() / notice.width()
@@ -178,7 +179,7 @@ def test_a_pinned_notice_ends_where_the_body_does(qtbot, body_height):
     qtbot.addWidget(page)
     page.resize(600, 300)
     page.show()
-    qtbot.waitExposed(page)
+    qtbot.waitExposed(page, timeout=WAIT_MS)
     notice.show_message("An outcome to read.")
     bar = page.findChild(QScrollArea).verticalScrollBar()
     assert bar.isVisible() == (body_height > 300)
@@ -191,4 +192,4 @@ def test_a_pinned_notice_ends_where_the_body_does(qtbot, body_height):
         return notice_left - body_left, body_right - notice_right
 
     # The notice's own margins inset it equally on both sides.
-    qtbot.waitUntil(lambda: insets()[0] == insets()[1])
+    qtbot.waitUntil(lambda: insets()[0] == insets()[1], timeout=WAIT_MS)

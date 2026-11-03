@@ -11,7 +11,7 @@ import threading
 from PySide6.QtCore import Qt
 from pytestqt.exceptions import TimeoutError as QtBotTimeoutError
 
-from fakes import FakeApplication, make_history_event
+from fakes import WAIT_MS, FakeApplication, make_history_event
 from seeker.models.history_event import DOWNLOADED, TAGGED
 from seeker.ui import help_text, workers
 from seeker.ui.elided_text import SECONDARY_ROLE
@@ -33,7 +33,7 @@ def test_history_table_sorts_the_when_column_chronologically(qtbot):
     window._show_page("history")
 
     qtbot.waitUntil(
-        lambda: window._history_page.history_table.rowCount() == 2, timeout=2000,
+        lambda: window._history_page.history_table.rowCount() == 2, timeout=WAIT_MS,
     )
 
     window._history_page.history_table.sortItems(0, Qt.SortOrder.AscendingOrder)
@@ -70,7 +70,7 @@ def test_history_page_fetches_and_renders_events_on_first_visit(qtbot):
     window._show_page("history")
 
     history_table = window._history_page.history_table
-    qtbot.waitUntil(lambda: history_table.rowCount() == 2, timeout=2000)
+    qtbot.waitUntil(lambda: history_table.rowCount() == 2, timeout=WAIT_MS)
     # Roadmap item R7.5 — MainWindow's own construction already makes
     # one real get_recent_events(limit=1) call to silently seed the
     # download-notification cutoff (see _seed_notification_cutoff), so
@@ -101,7 +101,7 @@ def test_history_filter_combo_filters_by_event_type(qtbot):
     history_table = window._history_page.history_table
     filter_combo = window._history_page.history_filter_combo
     window._show_page("history")
-    qtbot.waitUntil(lambda: history_table.rowCount() == 2, timeout=2000)
+    qtbot.waitUntil(lambda: history_table.rowCount() == 2, timeout=WAIT_MS)
 
     downloaded_index = filter_combo.findData(DOWNLOADED)
     filter_combo.setCurrentIndex(downloaded_index)
@@ -153,7 +153,7 @@ def test_history_refresh_button_refetches(qtbot):
         window._show_page("history")
         qtbot.waitUntil(
             lambda: application.history_service.get_recent_events_calls == 2,
-            timeout=2000,
+            timeout=WAIT_MS,
         )
         # Repro: the page's own fetch (limit=50) is recorded but still
         # blocked inside get_recent_events, so on_finished provably has
@@ -168,7 +168,7 @@ def test_history_refresh_button_refetches(qtbot):
     # actually depends on, not just the worker-thread call counter.
     qtbot.waitUntil(
         window._history_page.history_refresh_button.isEnabled,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
 
     window._history_page.history_refresh_button.click()
@@ -179,7 +179,7 @@ def test_history_refresh_button_refetches(qtbot):
     try:
         qtbot.waitUntil(
             lambda: application.history_service.get_recent_events_calls == 3,
-            timeout=2000,
+            timeout=WAIT_MS,
         )
     except QtBotTimeoutError:
         print(
@@ -198,7 +198,7 @@ def test_an_empty_history_invites_a_first_download(qtbot):
     page = window._history_page
     qtbot.waitUntil(
         lambda: page.history_empty.text() == help_text.HISTORY_EMPTY,
-        timeout=2000,
+        timeout=WAIT_MS,
     )
     assert page.history_status_label.text() == ""
     assert page.history_empty.isVisibleTo(page)
@@ -214,7 +214,7 @@ def test_a_filter_with_no_matches_says_so_and_offers_no_action(qtbot):
     qtbot.addWidget(window)
     window._show_page("history")
     page = window._history_page
-    qtbot.waitUntil(lambda: page.history_table.rowCount() == 1, timeout=2000)
+    qtbot.waitUntil(lambda: page.history_table.rowCount() == 1, timeout=WAIT_MS)
 
     page.history_filter_combo.setCurrentIndex(
         page.history_filter_combo.findData(TAGGED)
@@ -238,6 +238,6 @@ def test_a_failed_refresh_reports_on_the_notice(qtbot):
 
     page = window._history_page
     qtbot.waitUntil(
-        lambda: "could not be read" in page.notice.text(), timeout=2000,
+        lambda: "could not be read" in page.notice.text(), timeout=WAIT_MS,
     )
     assert page.history_status_label.text() == ""

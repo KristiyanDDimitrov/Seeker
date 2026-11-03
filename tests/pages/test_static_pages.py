@@ -7,7 +7,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QPushButton
 
-from fakes import FakeApplication
+from fakes import WAIT_MS, FakeApplication
 from seeker.ui import help_text
 from seeker.ui.main_window import MainWindow
 from seeker.ui.plain_text import RichLabel
@@ -289,7 +289,7 @@ def test_prose_is_never_clipped_by_its_reading_measure(qtbot, page):
     qtbot.addWidget(window)
     window.resize(1280, 820)
     window.show()
-    qtbot.waitExposed(window)
+    qtbot.waitExposed(window, timeout=WAIT_MS)
     window._nav_buttons[page].click()
     qtbot.wait(20)
 
@@ -312,7 +312,7 @@ def test_support_page_leads_with_support_the_artists(qtbot):
     qtbot.addWidget(window)
     window.resize(1280, 820)
     window.show()
-    qtbot.waitExposed(window)
+    qtbot.waitExposed(window, timeout=WAIT_MS)
     window._nav_buttons["support"].click()
     qtbot.wait(20)
 

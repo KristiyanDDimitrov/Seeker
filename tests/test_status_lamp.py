@@ -5,6 +5,7 @@ import pytest
 from PySide6.QtCore import QSize
 from PySide6.QtGui import QColor
 
+from fakes import WAIT_MS
 from seeker.models import track_status
 from seeker.models.download_request import DownloadStatus
 from seeker.ui import status_lamp, theme
@@ -115,7 +116,7 @@ def test_a_lamp_widget_paints_its_lamp_in_the_active_palette(
     widget = status_lamp.StatusLamp(status_lamp.CUE)
     qtbot.addWidget(widget)
     widget.show()
-    qtbot.waitExposed(widget)
+    qtbot.waitExposed(widget, timeout=WAIT_MS)
 
     image = widget.grab().toImage()
     centre = image.pixelColor(image.width() // 2, image.height() // 2)
