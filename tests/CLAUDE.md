@@ -17,10 +17,11 @@ linked to the HISTORY entry holding its investigation;
   session-wide, so `grab()` assertions see the shipped style.
   [§103](../docs/history/072-107.md#103)
 - **Every run is offscreen unless its caller names a platform.**
-  `conftest.py` sets `QT_QPA_PLATFORM=offscreen` before any
-  `QApplication` exists (an 800×800 screen that fits restored windows
-  to it), so a bare `uv run pytest`, CI and every process a test
-  starts agree. `QT_QPA_PLATFORM=cocoa uv run pytest` puts the windows
+  `conftest.py` sets `QT_QPA_PLATFORM=offscreen` (an 800×800 screen
+  that fits restored windows to it) before any `QApplication` exists,
+  over an empty value too, which Qt reads as Cocoa. So a bare `uv run
+  pytest`, CI and every process a test starts agree.
+  `QT_QPA_PLATFORM=cocoa uv run pytest` puts the windows
   on the desktop; only Kris runs that, by typing it. Offscreen never
   fires `colorSchemeChanged`, and
   `processEvents()` does not flush deferred deletes:
@@ -49,12 +50,18 @@ linked to the HISTORY entry holding its investigation;
   [§213](../docs/history/211-240.md#213), [§243](../docs/history/241-270.md#243)
 - **Nothing a test runs opens on the desktop.** The same guard refuses
   `open`, `osascript` (which `webbrowser.open` runs on macOS through
-  `os.popen`), `explorer`, `xdg-open` and `cmd /c start`, and fails the
-  test that tried: fake `subprocess.run` or `webbrowser.open`.
-  `tests/test_headless.py` reads every `subprocess` spawn in `src/` and
-  runs each against a stand-in; a new program fails it until it joins
-  conftest's `_DESKTOP_PROGRAMS` or the test's `OPENS_NOTHING`, with
-  what it does.
+  `os.popen`), `explorer`, `xdg-open` and `cmd /c start`, and a
+  recording `QDesktopServices` handler takes every http, https, mailto
+  and file link (a `setOpenExternalLinks` label's click); either fails
+  the test that tried: fake `subprocess.run`, `webbrowser.open` or
+  `QDesktopServices.openUrl`. A link of a new scheme joins conftest's
+  `_URL_SCHEMES`. `tests/test_headless.py` reads every `subprocess`
+  spawn in `src/` and runs each against a stand-in; a new program fails
+  it until it joins conftest's `_DESKTOP_PROGRAMS` or the test's
+  `OPENS_NOTHING`, with what it does. A spawn it cannot read (a computed
+  command, `os.system`, `from subprocess import Popen`, an alias,
+  asyncio's, `QProcess`) fails it too: such a spawn may bind the real
+  `Popen` before the guard, or never reach it.
 - **Skips:** `tests/test_stress_e2e.py` (`requires_stress_opt_in`) runs
   only with `SEEKER_RUN_STRESS_TEST=1`: it drives real Spotify, slskd and
   the X9 Pro for minutes and mutates the production DB. Run it
