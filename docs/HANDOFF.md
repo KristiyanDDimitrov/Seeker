@@ -15,14 +15,18 @@ run), with status in `tasks.json` beside it, changed only through
 - **Released: v0.1.1** (2026-10-26, §247). **Main says 0.2.0**
   (R13-S10a, §266): version, lock, CHANGELOG `[0.2.0] - 2026-11-03`,
   README → License "LGPL-2.1-or-later". Not tagged.
-- **HEAD is R13-S10a's close-out.** Kris's libchromaprint is built
+- **HEAD is H1's close-out (§267):** tests are offscreen by default
+  (an empty `QT_QPA_PLATFORM` too); conftest refuses desktop openers
+  (`open`, `osascript`, …) and takes every `QDesktopServices` link;
+  `tests/test_headless.py` sweeps `src/`'s spawns; the 28 X9 Pro tests
+  are opt-in (`SEEKER_RUN_X9_PRO_TESTS=1`). Kris's libchromaprint is built
   (`.chromaprint/lib`, 1.6.2); an x86_64 one is also in `/usr/local/lib`
   (dated 2026-11-03 10:41), so a Rosetta run here runs the 25
   real-chromaprint tests (root `CLAUDE.md` → Platforms).
-- **The three numbers on main (offscreen, before H1):** pytest `2575
-  passed, 1 skipped` (x86_64 the same); mypy `--strict src/` clean, 149
-  files; ruff 0. H1 changes the baseline (Kris: `2568 passed, 29
-  skipped`, the X9 Pro tests opt-in).
+- **The three numbers on main (a bare run, offscreen, X9 Pro opt-in
+  unset):** pytest `2596 passed, 29 skipped`; mypy `--strict src/`
+  clean, 149 files; ruff 0. Before H1: `2575 passed, 1 skipped`. The
+  x86_64 suite was not re-run for H1 (tests only; no `src/` change).
 - **CI:** read the latest run by full SHA (`gh run list --commit`).
 
 ## 2. Where we are
@@ -31,13 +35,17 @@ Phase 02's rest is one autodev plan (2026-11-03): round 13's release
 (tag first, both images built from the tag, then Kris's checklist; the
 old `826608b` candidate in `dist/` is superseded), round 14 whole (S13
 skipped, S10 option a), round 15's re-plan, plus H1 (headless tests)
-and H2 (one wait bound). Done: GH-1, R13-S10a. In flight: H1, R14-S1
+and H2 (one wait bound). Done: GH-1, R13-S10a, H1. In flight: R14-S1
 (`python3 ~/.claude/skills/autonomous-development/scripts/autodev.py
 status`).
 
 ## 3. Next steps
 
-1. Integrate H1 and R14-S1 when reviewed; then H2 (after H1).
+1. H2 (unblocked by H1); integrate R14-S1 when reviewed. R14-S1 also
+   edits `tests/conftest.py` and rebases onto H1: expect a conflict
+   around `_refuse_real_spawns`, `_docker_attempts`/`_desktop_attempts`
+   and `_refuse_desktop_urls`; losing the URL handler fails the
+   offscreen link test.
 2. R13-S9 tags v0.2.0 once R13-S10a and H2 are in and CI is green.
    **Re-date CHANGELOG's `[0.2.0] - 2026-11-03` first if the tag lands
    on a later day** (RELEASING: "today's date").
@@ -56,6 +64,10 @@ status`).
   published…`).
 - `packaging/seeker.iss` still says MyAppVersion "0.1.0": PF-36, owned
   by R14-S11.
+- H1's notes: R14-S2's stem compare should cover conftest's
+  `_opens_on_the_desktop` (cmd.exe, OPEN.EXE); a link of a new scheme
+  joins `_URL_SCHEMES` (nothing sweeps for that); `ci.yml`'s
+  `QT_QPA_PLATFORM: offscreen` is now redundant and stays.
 - Never `cmd | tail && git commit`: a pipe hides the gate's exit code.
 
 ## 5. Decisions made
@@ -75,10 +87,15 @@ None.
 
 ## 7. Files in progress
 
-H1 and R14-S1 in their worktrees under `.claude/worktrees/`. `dist/` and
+R14-S1 in its worktree under `.claude/worktrees/`. H1's branch
+`p02/H1` and worktree `agent-a12ba60fe9f01f418` are merged and left in
+place for Kris to remove. `dist/` and
 `.chromaprint/` hold gitignored build outputs.
 
 ## 8. Waiting on Kris
+
+- The X9 Pro opt-in path (`SEEKER_RUN_X9_PRO_TESTS=1`, drive mounted)
+  has not been run since H1 gated it (§267); it is Kris's to run.
 
 The plan's "Waiting on Kris": the §9 checklist after R13-S9b, the
 publish approval, the post-release checks, round 15's machine.
@@ -92,6 +109,12 @@ publish approval, the post-release checks, round 15's machine.
 - A Rosetta run on this Mac no longer covers a missing libchromaprint
   (`SEEKER_REQUIRE_CHROMAPRINT=1` covers only the reverse): does any
   run still need to?
+- H1 review nit, left open (§267): `tests/test_headless.py:131-133`
+  says a library's own spawn meets the guard; with `BROWSER` set to an
+  unregistered program, webbrowser's `GenericBrowser` spawns it
+  unrefused. Fix: `os.environ.pop("BROWSER", None)` in
+  `tests/conftest.py` beside the platform default, or narrow the
+  docstring to "with `BROWSER` unset".
 - PyInstaller's Intel-only libomp SDK warning (§262); where numba's cache
   lives; Module map lacks `ui/row_actions.py`, `soulseek/sweep.py`,
   `soulseek/leftovers.py` (older than round 13).

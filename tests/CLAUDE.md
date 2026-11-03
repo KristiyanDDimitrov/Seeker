@@ -29,7 +29,8 @@ linked to the HISTORY entry holding its investigation;
   QEvent.Type.DeferredDelete)`. A hidden `QWidgetItem`'s
   `setGeometry()` is a no-op; exclude it from `FlowLayout`
   assertions. [§167](../docs/history/151-180.md#167),
-  [§109](../docs/history/108-120.md#109), [§79](../docs/history/072-107.md#79)
+  [§109](../docs/history/108-120.md#109), [§79](../docs/history/072-107.md#79),
+  [§267](../docs/history/241-270.md#267)
 - **A UI test waits for its flow's real end, never the fake's call
   record**, which the worker writes before the main thread's finish
   handler runs. A late handler raises `RuntimeError: … already
@@ -66,6 +67,7 @@ linked to the HISTORY entry holding its investigation;
   `multiprocessing`) fails it too: such a spawn may bind the real
   `Popen` before the guard, or never reach it. Its link test runs
   offscreen only: elsewhere a broken handler would open its links.
+  [§267](../docs/history/241-270.md#267)
 - **Skips:** `tests/test_stress_e2e.py` (`requires_stress_opt_in`) runs
   only with `SEEKER_RUN_STRESS_TEST=1`: it drives real Spotify, slskd and
   the X9 Pro for minutes and mutates the production DB. Run it
@@ -74,7 +76,7 @@ linked to the HISTORY entry holding its investigation;
   and run only with `SEEKER_RUN_X9_PRO_TESTS=1` and the drive mounted:
   macOS guards a removable volume, and without the opt-in nothing looks
   at it. A bare run, like CI, skips 29: those 28 and the stress test.
-  [§32](../docs/history/032-046.md#32)
+  [§32](../docs/history/032-046.md#32), [§267](../docs/history/241-270.md#267)
 - **A test needing a real libchromaprint takes `requires_chromaprint`
   from `tests/chromaprint_gate.py`**, never its own `skipif`. The skip
   also hides a library-lookup bug, so a runner that must have the

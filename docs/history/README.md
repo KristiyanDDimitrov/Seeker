@@ -361,3 +361,4 @@ under their entry and live in the same file, after it.
 - §264 — Round 13 S4b: a Settings test's unwaited Docker-reading worker failed the next test's guard on `check-intel` (one failure in five runs); `settle_workers`; six tests no longer POST to a real slskd → [241-270.md#264](241-270.md#264)
 - §265 — Round 13 S4c: the `check-intel` timeout was a wait on the process-wide worker count (the flow is two workers); `settle_workers`, a sweep, `--durations`; the cause on the runner UNVERIFIED → [241-270.md#265](241-270.md#265)
 - §266 — R13-S10a: v0.2.0 prepared: version, lock, CHANGELOG (slskd 0.26.2; M4A/AAC need ffmpeg), libchromaprint LGPL-2.1-or-later read in the pinned source → [241-270.md#266](241-270.md#266)
+- §267 — H1: tests offscreen by default (empty too); desktop openers and QDesktopServices links refused; a src spawn sweep; X9 Pro tests opt-in (Kris) → [241-270.md#267](241-270.md#267)

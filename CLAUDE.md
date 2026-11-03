@@ -303,6 +303,7 @@ Hard-won, all five stay.
    count is a regression to diagnose, never a new baseline. The
    tracked count is a bare run's, which is offscreen; a Cocoa run's
    is compared only with another Cocoa run's.
+   [§267](docs/history/241-270.md#267)
 4. **A comment asserting platform or framework behaviour cites an
    observation or says UNVERIFIED.** Unmarked confident claims have
    burned this codebase twice (the `:last-child` selector; a macOS
