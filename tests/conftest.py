@@ -8,7 +8,8 @@ import threading
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QUrl, Slot
+from PySide6.QtGui import QDesktopServices
 
 # Before any QApplication exists: a bare run is offscreen, and so is
 # every process a test starts. A platform the caller names wins
@@ -152,7 +153,8 @@ def _docker_attempts():
 @pytest.fixture(scope="session")
 def _desktop_attempts():
     """Every command any test tried that opens something on the
-    desktop, refused by `_refuse_real_spawns`."""
+    desktop, refused by `_refuse_real_spawns`, and every link handed to
+    `QDesktopServices.openUrl`, taken by `_refuse_desktop_urls`."""
     attempts: list[str] = []
     return attempts
 
@@ -215,6 +217,41 @@ def _refuse_real_spawns(
     subprocess.Popen = real_popen
 
 
+class _UrlRecorder(QObject):
+    """Takes each link `QDesktopServices.openUrl` is handed, in place of
+    the browser, mail app or Finder that would open it."""
+
+    def __init__(self, attempts):
+        super().__init__()
+        self._attempts = attempts
+
+    @Slot(QUrl)
+    def record(self, url):
+        self._attempts.append(url.toString())
+
+
+# The schemes of Seeker's links (help_text's https and mailto) and of a
+# local file. A link of any other scheme still reaches the desktop, so a
+# new one in src/ joins these.
+_URL_SCHEMES = ("http", "https", "mailto", "file")
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _refuse_desktop_urls(qapp, _desktop_attempts):
+    """Takes every link a test hands `QDesktopServices.openUrl`, which a
+    label with `setOpenExternalLinks(True)` calls on a click, without
+    `subprocess`. Qt asks a scheme's handler before the platform:
+    observed 2026-11-03, offscreen, tests/test_headless.py's link test
+    logged "This plugin does not support QPlatformServices::openUrl()"
+    without one and records each link, logging nothing, with it."""
+    recorder = _UrlRecorder(_desktop_attempts)
+    for scheme in _URL_SCHEMES:
+        QDesktopServices.setUrlHandler(scheme, recorder, "record")
+    yield
+    for scheme in _URL_SCHEMES:
+        QDesktopServices.unsetUrlHandler(scheme)
+
+
 @pytest.fixture
 def allow_real_docker_inspect(_docker_inspect_allowed):
     """Lets this test run the real `docker inspect`, and nothing else
@@ -251,7 +288,8 @@ def _nothing_opened_on_the_desktop(_desktop_attempts):
     _desktop_attempts.clear()
     assert tried == [], (
         "a test tried to open something on the desktop; fake "
-        f"subprocess.run or webbrowser.open instead: {tried}"
+        "subprocess.run, webbrowser.open or QDesktopServices.openUrl "
+        f"instead: {tried}"
     )
 
 

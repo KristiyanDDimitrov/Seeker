@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
 
 from x9_pro_gate import OPT_IN_VARIABLE
 
@@ -342,5 +344,26 @@ def test_the_suite_refuses_the_osascript_webbrowser_opens_through(
 
     assert not ran.exists()
     assert _desktop_attempts == [str(program)]
+    # Recorded and refused; cleared so this test alone passes.
+    _desktop_attempts.clear()
+
+
+@pytest.mark.parametrize(
+    "link",
+    ["https://example.com/", "http://example.com/", "mailto:x@example.com", None],
+    ids=["https", "http", "mailto", "file"],
+)
+def test_the_suite_refuses_a_link_qt_would_open_on_the_desktop(
+        qapp, tmp_path, link, _desktop_attempts,
+):
+    """A label with `setOpenExternalLinks(True)` (Support's and About's
+    author and bug-report links) hands a click to
+    `QDesktopServices.openUrl`, which opens it in the browser, the mail
+    app or Finder without `subprocess`. `None` is a local folder."""
+    url = QUrl(link) if link is not None else QUrl.fromLocalFile(str(tmp_path))
+
+    QDesktopServices.openUrl(url)
+
+    assert _desktop_attempts == [url.toString()]
     # Recorded and refused; cleared so this test alone passes.
     _desktop_attempts.clear()
