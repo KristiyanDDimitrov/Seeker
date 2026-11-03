@@ -76,3 +76,10 @@ linked to the HISTORY entry holding its investigation;
   (`_fake_successful_bring_up` does): a start saves the default base URL
   127.0.0.1:5030, where a developer's own slskd listens, and the page
   POSTs a login there. [§264](../docs/history/241-270.md#264)
+- **A flow's end is never read off `workers._callbacks`.** The registry is
+  the whole process's, and a finish handler may start a worker of its own
+  (Sharing's add ends in a refresh): wait on the outcome the flow produces
+  or on `fakes.settle_workers(window)`. `tests/test_wait_sweeps.py` fails
+  the build. The Intel runner's `--durations` listing is the evidence to
+  read before giving the suite's 2 s waits a longer bound.
+  [§265](../docs/history/241-270.md#265)
