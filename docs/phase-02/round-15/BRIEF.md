@@ -101,9 +101,9 @@ Planning seeded the list; each round-14 row appends to it.
   runner (run 41647752561, user `runneradmin`; whether it runs elevated
   or with Developer Mode is UNVERIFIED), so whether a standard account
   can make one is open (PF-32's three symlink tests; the app bundles
-  `test_bundle_check.py`, `test_bundle_info.py` and `test_smoke_test.py`
-  build). *Settle:* those modules as a standard user, Developer Mode
-  off, then on.
+  that `test_bundle_check.py`, `test_bundle_info.py` and
+  `test_smoke_test.py` build). *Settle:* those tests and modules as a
+  standard user, Developer Mode off, then on.
 - A console's code page: run 41647752561's log shows pytest's em dash
   as U+FFFD, so the runner's pipe is not UTF-8; a pipe's code page is
   round 14 S3's to settle in CI (PF-11), and what a console on a real
