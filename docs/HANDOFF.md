@@ -12,81 +12,94 @@ beside it. Every document: `docs/README.md`.
 ## 1. Current state
 
 - **Released: v0.1.1** (2026-10-26, §247).
-- **HEAD:** wave 3's close-outs on `main`, pushed. Untracked: Kris's PDF
-  only. No worktrees, no `r13/*` branches left.
-- **The three numbers (Cocoa):** pytest `2522 passed, 1 skipped` (S6;
-  S4 added 6 tests, CI: `2500 passed, 29 skipped` on both macOS jobs);
-  mypy `--strict src/` clean, 149 files; ruff 0.
-- **CI:** `41506032138` green on `085ff27`: `check` 9 m, `check-intel`
-  19.5 m (first real Intel run, §261), `audit`. `cancel-in-progress` is
-  on: watch the run on the last push. A macos-26 job once sat queued 25
-  minutes and was cancelled: re-push, not a code bug.
+- **`origin/main` is `826608b`; one local, unpushed handoff commit sits on
+  top, on purpose:** `ci.yml` cancels an in-progress run on a new push,
+  so push it once run `41550884285` has ended. Untracked: Kris's PDF only.
+  No worktrees; local `r13/*` branches deleted. `origin` still has
+  `r13/S7` and `r13/S7c` (merged; the auto-mode classifier refused the
+  delete: `git push origin --delete r13/S7 r13/S7c` is Kris's).
+- **The three numbers (Cocoa):** pytest `2572 passed, 1 skipped`; mypy
+  `--strict src/` clean, 149 files; ruff 0.
+- **CI:** green on `235f795` (`41546314860`: `check` 2542 passed, 29
+  skipped, 94.73 %; `check-intel` 2540 passed, 31 skipped, 25 m; `audit`).
+  `build.yml` green on `main`, push and dispatch (`41547216451`). **Run
+  `41550884285` on `826608b` is in flight: its `check-intel` is the 5th
+  Intel run and the only confirmation of S4b's fix (§264).**
 
 ## 2. Where we are
 
-Round 13: **waves 0 to 3 done** (§246 to §261: S5b §257, S3b §258, S6
-§259, S6b §260, S4 §261). **Next: wave 4** (SESSION-PLAN → Execution →
-Waves): workers **S7** (needs CI: `build.yml`) and **S8** (docs), then
-S9's Code half (the lead), then Kris's gate; wave 5 is S10 (solo).
+Round 13: waves 0 to 3 done; wave 4: S7, S7c, S8, S8b, S4b done
+(§262 to §264). **S9's Code half is half done:** the Apple silicon
+candidate is built from `826608b` (untagged) and RELEASING step 3 passed
+(ad-hoc signed, `spctl` rejects, versions 0.1.1, thin arm64, smoke test
+exit 0, cold 3.49 s, warm 0.035 s); `dist/Seeker.dmg` SHA-256
+`df191247696631decfb90a401d6ba3fd8f2102316fc94e59e537583608fa7c0e`.
+The Help check (a GUI launch reads Kris's real data) is Kris's.
 
-## 3. Session report (waves 2-3's lead, 2026-11-02)
+## 3. Next steps
 
-- Eight workers/fix rounds, four `diff-reviewer`s, five `suite-runner`
-  checks. Reviews found real defects on S5b (vacuous test), S6 (Java
-  class magic, import-time arch, minos padding). Worker peaks ~35-75 K.
-- Two workers wrote the same HISTORY number (§257): the lead renumbers
-  on rebase; tell parallel workers "HISTORY numbers are the lead's".
+1. **Blocker:** the Intel candidate needs a local libchromaprint. The
+   classifier refused me `packaging/build_chromaprint.sh` (it downloads
+   and compiles a tarball). Kris runs, once (`.chromaprint/` is
+   gitignored and persists): `! packaging/build_chromaprint.sh "$PWD/.chromaprint"`.
+2. Then (RELEASING steps 2-3): `SEEKER_CHROMAPRINT_DIR="$PWD/.chromaprint/lib"
+   .venv-x86_64/bin/python packaging/build_dmg.py`, step 3 with
+   `ARCH=x86_64` (the build replaces `dist/Seeker.app`; the arm64 app
+   was checked first), then both checksums.
+3. Write `docs/phase-02/round-13/ACCEPTANCE.md`: both SHA-256s, then
+   Kris's checklist (BRIEF §9, already corrected). Commit, push; Kris's
+   gate; then S10 (solo, `[ASK]`).
 
-## 4. Key context for the next session
+## 4. Key context
 
-- **Push `main` before spawning**; cleanup: `git worktree remove
-  --force`, `git branch -D worktree-agent-<id> r13/S<n>`. To hand a
-  branch to a fresh worker: remove its worktree, keep the branch, tell
-  it `git checkout r13/S<n>`. A reviewer must not check out in the main
-  checkout.
-- **S7**: build commands: `<venv>/bin/python packaging/build_dmg.py`,
-  then `Seeker.app/Contents/MacOS/Seeker --smoke-test /abs/report.json`
-  (no `arch` prefix on the Intel runner). Give the first cold analysis a
-  generous timeout (37 s Rosetta). Copy `ci.yml`'s pins and
-  `brew install chromaprint`.
-- Image names: `Seeker.dmg` (arm64), `Seeker-Intel.dmg`; `bundle_check`
-  runs in every build. Intel bundle 333 MB vs arm64 318 MB.
-- `ruff check packaging` has 12 findings, outside CI's gate.
+- A fresh worker on an existing branch: `git checkout -B r13/S<n> main`.
+  Workers' suites run offscreen; the lead's Cocoa check runs alone.
+- Never `cmd | tail && git commit`: a pipe hides the gate's exit code
+  (I committed past a ruff error once and amended it).
+- `dist/` held v0.1.1's images; a copy of `Seeker.dmg` and its checksum
+  is in the previous session's scratchpad (also on the release page).
+- S10: un-gate the README (`From 0.2.0`, `Download (from 0.2.0)`,
+  `Until 0.2.0 is published…`), resolve nothing else pending
+  (`grep -rn S7-PENDING docs` is empty).
 
 ## 5. Decisions made
 
-- Kris (2026-11-02): numpy split `>=2.5.2` off Intel, `>=2.3` on it
-  (`07157c4`); the lead merged Dependabot #14 (setup-uv 10.3.3, green
-  on its rebase, `0b7497a`): S7 copies the new pin.
-- Kris (2026-11-02): the Intel bundle ships libchromaprint
-  (`f19ad82`; `bundle_info.chromaprint_binaries`, staged from
-  `/usr/local/lib`, plus its licence texts); arm64 stays on the user's
-  Homebrew copy. Not yet built for real: S7's Intel job must
-  `brew install chromaprint` and `bundle_check` must pass on the dylib.
-- S5 click track at 123.05 BPM (§256). S6's check reports a failing
-  lipo/otool as a problem rather than skipping it (§259).
+- Kris (2026-11-02): the Intel bundle ships libchromaprint (`f19ad82`);
+  arm64 stays on Homebrew's.
+- The lead, for Kris's review: Homebrew builds no Intel bottles, so
+  libchromaprint is built from a pinned source (`build_chromaprint.sh`,
+  one revert undoes it); `SEEKER_CHROMAPRINT_DIR` and `.chromaprint/`
+  (not `build/`, which `--clean` empties); the ffmpeg-free Intel runner
+  skips 2 more tests (§262).
 
 ## 6. Blockers
 
-None.
+The Intel libchromaprint build (3.1).
 
 ## 7. Files in progress
 
-None.
+None. `dist/` and `.chromaprint/` hold gitignored build outputs.
 
 ## 8. Waiting on Kris
 
+- Run the libchromaprint command (3.1); the Help check and the rest of
+  BRIEF §9 later.
+- README's licence paragraph names libchromaprint's upstream source and
+  an "LGPL 2.1" label (the vendored text says "2.1", Homebrew
+  "-or-later"): confirm the wording.
+- Before the final Intel release: an asset-aware update check, or a
+  notice in the release notes (RELEASING §7).
+- FYI: six Settings tests POSTed a login to the real slskd on
+  127.0.0.1:5030 until S4b (§264); fixed, effect on slskd unknown.
 - #1, #5, #7, #8 are still open though their changes are on `main`.
-- `/context` at the next lead's start.
-- Later: S9's Intel image test (BRIEF §9); S10's outward steps.
 
 ## 9. Open questions
 
-- `docs/cli.md`/`docs/packaging.md` don't mention `--smoke-test` (S8).
-- PyInstaller warns of sklearn's libomp SDK version and three missing
-  hidden imports (harmless so far, §260). Where numba's cache lives.
-- Linux audit's pyobjc coverage inferred (§253); five README images
-  change byte-wise on `--readme` (§249).
+- Without ffmpeg a non-audio file reads `error`, with it
+  `decode_unsupported` (pinned as documented, §262): which is right?
+- PyInstaller's Intel-only libomp SDK warning (§262); where numba's cache
+  lives; Module map lacks `ui/row_actions.py`, `soulseek/sweep.py`,
+  `soulseek/leftovers.py` (older than round 13).
 
 ---
 
