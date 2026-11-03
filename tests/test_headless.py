@@ -444,7 +444,18 @@ def test_the_suite_refuses_a_link_qt_would_open_on_the_desktop(
     """A label with `setOpenExternalLinks(True)` (Support's and About's
     author and bug-report links) hands a click to
     `QDesktopServices.openUrl`, which opens it in the browser, the mail
-    app or Finder without `subprocess`. `None` is a local folder."""
+    app or Finder without `subprocess`. `None` is a local folder.
+
+    No stand-in can take the link's place: with the handler gone, this
+    test would open the real thing. Offscreen opens nothing whatever
+    (it warns that it cannot; observed 2026-11-03), and the handler is
+    the same on every platform, so a run on any other is skipped."""
+    if qapp.platformName() != "offscreen":
+        pytest.skip(
+            "the handler does not depend on the platform, so every "
+            "offscreen run checks it; on this one a broken handler "
+            "would open these links on the desktop",
+        )
     url = QUrl(link) if link is not None else QUrl.fromLocalFile(str(tmp_path))
 
     QDesktopServices.openUrl(url)
