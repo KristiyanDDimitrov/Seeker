@@ -13,7 +13,7 @@ import pytest
 
 from x9_pro_gate import OPT_IN_VARIABLE
 
-TESTS =Path(__file__).resolve().parent
+TESTS = Path(__file__).resolve().parent
 PROBE = TESTS / "repro" / "_headless_probe.py"
 VOLUME_PROBE = TESTS / "repro" / "_volume_probe_plugin.py"
 SRC = TESTS.parent / "src" / "seeker"
@@ -33,17 +33,19 @@ _OTHER_SPAWNS = {
 }
 
 
-def _commands_src_spawns() -> tuple[list[tuple[str, ...]], list[str]]:
-    """Every `subprocess` spawn in `src/`, as the literal words its
-    argument list starts with (`("docker", "inspect")` for `["docker",
-    "inspect", name, ...]`), and where src/ spawns in a way this sweep
-    cannot read."""
+def _commands_src_spawns(
+        root: Path,
+) -> tuple[list[tuple[str, ...]], list[str]]:
+    """Every `subprocess` spawn in the modules under `root`, as the
+    literal words its argument list starts with (`("docker",
+    "inspect")` for `["docker", "inspect", name, ...]`), and where they
+    spawn in a way this sweep cannot read."""
     commands: set[tuple[str, ...]] = set()
     unreadable: list[str] = []
-    for path in sorted(SRC.rglob("*.py")):
+    for path in sorted(root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            where = f"{path.relative_to(SRC)}:{getattr(node, 'lineno', '?')}"
+            where = f"{path.relative_to(root)}:{getattr(node, 'lineno', '?')}"
             if isinstance(node, ast.Name) and node.id == "QProcess":
                 unreadable.append(where)
             if not (
@@ -75,7 +77,7 @@ def _commands_src_spawns() -> tuple[list[tuple[str, ...]], list[str]]:
     return sorted(commands), unreadable
 
 
-_SPAWNED, _UNREADABLE = _commands_src_spawns()
+_SPAWNED, _UNREADABLE = _commands_src_spawns(SRC)
 _REFUSED = [
     command for command in _SPAWNED
     if Path(command[0]).name not in OPENS_NOTHING
