@@ -183,9 +183,11 @@ def _refuse_real_spawns(
     A module that binds `Popen` itself (`from subprocess import
     Popen`) when the tests import it keeps the real class, and
     `os.system`, `os.startfile` (what `webbrowser.open` calls on
-    Windows), `os.posix_spawn`, asyncio's subprocesses and `QProcess`
-    never reach `Popen`; the sweep in tests/test_headless.py fails if
-    src/ spawns in any of those ways.
+    Windows), `os.posix_spawn` and the `os.exec*` and `os.spawn*`
+    families, `pty.spawn`, `QProcess` and multiprocessing's children
+    (fresh interpreters, without this file) never reach `Popen`; the
+    sweep in tests/test_headless.py fails if src/ spawns in any of
+    those ways.
     """
     real_popen = subprocess.Popen
 
@@ -292,8 +294,9 @@ def _nothing_opened_on_the_desktop(_desktop_attempts):
     _desktop_attempts.clear()
     assert tried == [], (
         "a test tried to open something on the desktop; fake "
-        "subprocess.run, webbrowser.open or QDesktopServices.openUrl "
-        f"instead: {tried}"
+        "subprocess.run or webbrowser.open, and never click a link "
+        "(a Python fake of QDesktopServices.openUrl does not reach a "
+        f"label's click; a URL handler does): {tried}"
     )
 
 

@@ -53,15 +53,19 @@ linked to the HISTORY entry holding its investigation;
   `os.popen`), `explorer`, `xdg-open` and `cmd /c start`, and a
   recording `QDesktopServices` handler takes every http, https, mailto
   and file link (a `setOpenExternalLinks` label's click); either fails
-  the test that tried: fake `subprocess.run`, `webbrowser.open` or
-  `QDesktopServices.openUrl`. A link of a new scheme joins conftest's
+  the test that tried: fake `subprocess.run` or `webbrowser.open`, and
+  don't click a link, or set a `QDesktopServices` URL handler (a label's
+  click calls Qt's C++, past any Python fake of `openUrl`; observed
+  offscreen 2026-11-03). A link of a new scheme joins conftest's
   `_URL_SCHEMES`. `tests/test_headless.py` reads every `subprocess`
   spawn in `src/` and runs each against a stand-in; a new program fails
   it until it joins conftest's `_DESKTOP_PROGRAMS` or the test's
-  `OPENS_NOTHING`, with what it does. A spawn it cannot read (a computed
-  command, `os.system`, `from subprocess import Popen`, an alias,
-  asyncio's, `QProcess`) fails it too: such a spawn may bind the real
-  `Popen` before the guard, or never reach it.
+  `OPENS_NOTHING`, with what it does. A spawn it cannot read (a
+  computed command, `os.system`, `from subprocess import Popen`, an
+  alias, `pty.spawn`, asyncio's, `QProcess`, Cocoa's,
+  `multiprocessing`) fails it too: such a spawn may bind the real
+  `Popen` before the guard, or never reach it. Its link test runs
+  offscreen only: elsewhere a broken handler would open its links.
 - **Skips:** `tests/test_stress_e2e.py` (`requires_stress_opt_in`) runs
   only with `SEEKER_RUN_STRESS_TEST=1`: it drives real Spotify, slskd and
   the X9 Pro for minutes and mutates the production DB. Run it
