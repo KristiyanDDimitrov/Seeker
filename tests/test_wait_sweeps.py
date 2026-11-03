@@ -138,6 +138,45 @@ def test_the_bound_sweep_sees_every_kind_of_wait():
     assert {"waitUntil", "waitSignal", "waitExposed", "waitForDone"} <= kinds
 
 
+def _kind_of(path: Path) -> str:
+    """"fakes" (where `WAIT_MS` is defined), "standalone" (a subprocess
+    script) or "test"."""
+    if path.parent.name == _STANDALONE_DIR:
+        return "standalone"
+
+    return "fakes" if path.name == "fakes.py" else "test"
+
+
+def _bound_offenders(tree: ast.Module, kind: str) -> list[str]:
+    """The line of each ceiling wait in `tree` bounded by anything but
+    `WAIT_MS` from `fakes`, with why when it is not plain."""
+    offenders = []
+
+    for node in ast.walk(tree):
+        if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in _CEILING_WAITS
+        ):
+            continue
+
+        bound = _bound_of(node)
+
+        if kind == "standalone":
+            if not (
+                    isinstance(bound, ast.Constant)
+                    and isinstance(bound.value, int)
+                    and bound.value >= WAIT_MS
+            ):
+                offenders.append(f"{node.lineno} (below WAIT_MS)")
+        elif not (isinstance(bound, ast.Name) and bound.id == "WAIT_MS"):
+            offenders.append(f"{node.lineno}")
+        elif kind == "test" and not _wait_ms_comes_from_fakes(tree):
+            offenders.append(f"{node.lineno} (WAIT_MS not from fakes)")
+
+    return offenders
+
+
 def test_every_wait_is_bounded_by_the_named_bound():
     # The Intel runner is 5 to 10 times slower than the Apple silicon
     # Mac on UI work, so a bound picked locally (2000 ms, or pytest-qt's
@@ -146,23 +185,13 @@ def test_every_wait_is_bounded_by_the_named_bound():
     # only ceiling a wait may have. See HISTORY §265.
     offenders = []
 
-    for path, tree, call in _ceiling_waits():
-        label = f"{path.relative_to(_TESTS_DIR)}:{call.lineno}"
-        bound = _bound_of(call)
-
-        if path.parent.name == _STANDALONE_DIR:
-            if not (
-                    isinstance(bound, ast.Constant)
-                    and isinstance(bound.value, int)
-                    and bound.value >= WAIT_MS
-            ):
-                offenders.append(f"{label} (below WAIT_MS)")
-        elif not (isinstance(bound, ast.Name) and bound.id == "WAIT_MS"):
-            offenders.append(label)
-        elif path.name != "fakes.py" and not _wait_ms_comes_from_fakes(
-                tree,
-        ):
-            offenders.append(f"{label} (WAIT_MS not from fakes)")
+    for path in sorted(_TESTS_DIR.rglob("*.py")):
+        tree = ast.parse(path.read_text(), filename=str(path))
+        label = path.relative_to(_TESTS_DIR)
+        offenders += [
+            f"{label}:{offender}"
+            for offender in _bound_offenders(tree, _kind_of(path))
+        ]
 
     assert not offenders, (
         "bound every wait by `fakes.WAIT_MS` (`timeout=WAIT_MS`, "
