@@ -121,9 +121,25 @@ def _docker_inspect_allowed():
     return threading.Event()
 
 
+@pytest.fixture(scope="session")
+def _docker_attempts():
+    """Every `docker` command any test tried to run, refused by
+    `_refuse_real_spawns`."""
+    attempts: list[str] = []
+    return attempts
+
+
+@pytest.fixture(scope="session")
+def _desktop_attempts():
+    """Every command any test tried that opens something on the
+    desktop, refused by `_refuse_real_spawns`."""
+    attempts: list[str] = []
+    return attempts
+
+
 @pytest.fixture(autouse=True, scope="session")
-def _docker_attempts(_docker_inspect_allowed):
-    """Every `docker` command any test tries to run, refused.
+def _refuse_real_spawns(_docker_inspect_allowed, _docker_attempts):
+    """Refuses every `docker` command any test tries to run.
 
     A test once reached the real `bring_up_slskd` and recreated the
     user's slskd container against pytest's temporary directories
@@ -133,7 +149,6 @@ def _docker_attempts(_docker_inspect_allowed):
     refused too. A test that fakes `subprocess.run` never reaches it.
     `docker inspect`, which only reads, runs for a test that opted in.
     """
-    attempts: list[str] = []
     real_popen = subprocess.Popen
 
     class RefusingPopen(real_popen):
@@ -148,14 +163,14 @@ def _docker_attempts(_docker_inspect_allowed):
                     )
             ):
                 command = " ".join(os.fsdecode(part) for part in argv)
-                attempts.append(command)
+                _docker_attempts.append(command)
                 raise _RealDockerRefused(
                     f"tests never run docker: {command!r}"
                 )
             super().__init__(args, *pargs, **kwargs)
 
     subprocess.Popen = RefusingPopen
-    yield attempts
+    yield
     subprocess.Popen = real_popen
 
 
