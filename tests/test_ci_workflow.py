@@ -28,6 +28,18 @@ def _uses(job: str) -> list[str]:
     return re.findall(r"uses: (\S+@[0-9a-f]{40}) # v", job)
 
 
+def _runs(job: str) -> list[str]:
+    """Each step's `run:` command; a folded one (`run: >-`) is joined
+    with spaces, as YAML folds it.
+    """
+    steps = re.findall(r"^( *)- run: (.*)\n((?:\1    \S.*\n)*)", job, re.MULTILINE)
+    return [
+        " ".join(line.strip() for line in folded.splitlines())
+        if command == ">-" else command
+        for _indent, command, folded in steps
+    ]
+
+
 def test_check_intel_runs_on_the_intel_image_with_a_timeout():
     job = _job("check-intel")
 
@@ -48,7 +60,7 @@ def test_check_intel_requires_chromaprint_and_builds_it_from_source():
 
 
 def test_check_intel_runs_the_suite_without_the_coverage_gate():
-    runs = re.findall(r"- run: (.*)", _job("check-intel"))
+    runs = _runs(_job("check-intel"))
     pytest_runs = [r for r in runs if r.startswith("uv run pytest -q")]
 
     assert len(pytest_runs) == 1
@@ -58,7 +70,7 @@ def test_check_intel_runs_the_suite_without_the_coverage_gate():
 def test_check_intel_lists_its_slowest_tests():
     # The runner has failed two different tests on a short wait (§264,
     # §265) and nothing else records whether it stalls.
-    runs = re.findall(r"- run: (.*)", _job("check-intel"))
+    runs = _runs(_job("check-intel"))
 
     assert "uv run pytest -q --durations=25 --durations-min=1.0" in runs
 
@@ -77,7 +89,7 @@ def test_check_type_checks_the_win32_branches_too():
     checks the body of an `if sys.platform == "win32":`, so only a run
     told the platform does.
     """
-    runs = re.findall(r"- run: (.*)", _job("check"))
+    runs = _runs(_job("check"))
 
     assert "uv run mypy --strict src/" in runs
     assert "uv run mypy --strict --platform win32 src/" in runs
@@ -113,7 +125,7 @@ def test_check_windows_runs_the_suite_alone():
     stack, so a run the job's timeout kills still names the test that
     hung.
     """
-    runs = re.findall(r"- run: (.*)", _job("check-windows"))
+    runs = _runs(_job("check-windows"))
 
     assert runs == [
         "uv sync --locked --all-extras --dev",
