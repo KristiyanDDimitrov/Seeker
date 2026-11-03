@@ -71,11 +71,12 @@ def test_no_wait_reads_the_global_worker_registry():
     )
 
 
-# Every wait that returns as soon as its condition holds, so that its
-# bound is only a ceiling: pytest-qt's (`timeout=`, keyword-only) and
-# `QThreadPool.waitForDone` (the first argument). Not here: fixed
+# The Qt waits that return as soon as their condition holds, so that
+# their bound is only a ceiling: pytest-qt's (`timeout=`, keyword-only)
+# and `QThreadPool.waitForDone` (the first argument). Not here: fixed
 # delays (`qtbot.wait`), which a longer bound would make every run pay,
 # and `assertNotEmitted`, which passes only by waiting out its `wait`.
+# Not swept at all: `Thread.join` and `Queue.get` timeouts.
 _CEILING_WAITS = {
     "waitUntil", "waitSignal", "waitSignals", "waitCallback",
     "waitExposed", "waitActive", "waitForDone",

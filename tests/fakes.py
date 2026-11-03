@@ -57,15 +57,22 @@ from seeker.models.upgrade_review import UpgradeReviewDetails
 from seeker.soulseek.sharing_service import ShareStatus
 from seeker.ui import plain_text
 
-# The one ceiling for every wait that returns as soon as its condition
-# holds (`waitUntil`, `waitSignal`, `waitExposed`, `waitForDone`, …);
-# `tests/test_wait_sweeps.py` fails any other. A green run never waits
-# it out, so its size costs only a failing wait's report time. Sized
-# from one offscreen run on the Apple silicon Mac (2026-11-03): the
-# slowest of 628 waits took 425 ms (a 400 ms timer's), the slowest
-# handler wait 38 ms. The Intel runner is 5 to 10 times slower on UI
-# work, so about 4.3 s at worst there, and its slowest UI test outside
-# the screen sweeps took 6.4 s whole. See HISTORY §265.
+# The one ceiling for the tests' ceiling waits, those that return as
+# soon as their condition holds: pytest-qt's (`timeout=WAIT_MS`),
+# `QThreadPool.waitForDone(WAIT_MS)` and an asserted `Event.wait`
+# (`WAIT_MS / 1000`). `tests/test_wait_sweeps.py` fails any other
+# bound. Not covered: `Thread.join` and `Queue.get` timeouts, and an
+# `Event.wait` not asserted (a fake's fallback, shorter than this, or a
+# wait meant to time out). A green run never waits it out, so its size
+# costs only a failing wait's report time.
+#
+# Sized from one offscreen run on the Apple silicon Mac (2026-11-03)
+# that timed the 628 `waitUntil` and `waitSignal` calls only: the
+# slowest took 425 ms (a 400 ms timer's), the slowest handler wait
+# 38 ms. The `waitForDone`, `waitExposed` and `Event.wait` waits it
+# also bounds were not timed. The Intel runner is 5 to 10 times slower
+# on UI work, so about 4.3 s at worst there, and its slowest UI test
+# outside the screen sweeps took 6.4 s whole. See HISTORY §265.
 WAIT_MS = 10_000
 
 
