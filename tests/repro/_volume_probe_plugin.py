@@ -1,8 +1,12 @@
 """A pytest plugin `tests/test_headless.py` loads into a `--collect-only`
 run of the suite in a process of its own: records every path under
-`/Volumes` that collecting the suite asks `Path` about, and answers
-"absent" without touching the volume. Loaded with `-p` before any test
-module is imported, so a module-level skip condition is seen too."""
+`/Volumes` that collecting the suite asks `Path.exists`, `is_dir` or
+`is_file` about, and answers "absent" without touching the volume.
+Loaded with `-p` before any test module is imported, so a module-level
+skip condition is seen too. Those three are what a skip condition asks
+(the X9 Pro gate's `is_dir`); a module that opens or lists a file under
+/Volumes at import, unasked, passes unseen, and fails CI, which has no
+such drive."""
 import json
 import os
 import pathlib

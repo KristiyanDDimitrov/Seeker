@@ -166,13 +166,18 @@ def _refuse_real_spawns(
 
     A test once reached the real `bring_up_slskd` and recreated the
     user's slskd container against pytest's temporary directories
-    (HISTORY §213). Refusing at `Popen` covers `subprocess.run` and
-    every other spawn, whatever the import path or thread, and stays in
-    place for the whole session, so a worker outliving its test is
-    refused too. A test that fakes `subprocess.run` never reaches it.
-    `docker inspect`, which only reads, runs for a test that opted in.
-    A test that reaches `open`, `osascript` and the like would show a
-    folder, a browser or Docker Desktop on the desktop it runs on.
+    (HISTORY §213). Refusing at `Popen` covers `subprocess.run`,
+    `os.popen` and every other spawn through `subprocess`, whatever the
+    import path or thread, and stays in place for the whole session, so
+    a worker outliving its test is refused too. A test that fakes
+    `subprocess.run` never reaches it. `docker inspect`, which only
+    reads, runs for a test that opted in. A test that reaches `open`,
+    `osascript` and the like would show a folder, a browser or Docker
+    Desktop on the desktop it runs on.
+
+    `os.system`, `os.startfile` (what `webbrowser.open` calls on
+    Windows) and `os.posix_spawn` never reach `Popen`; the sweep in
+    tests/test_headless.py fails if src/ calls one.
     """
     real_popen = subprocess.Popen
 
