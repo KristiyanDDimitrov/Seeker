@@ -5,6 +5,8 @@ machine than the one that runs it. See HISTORY §265.
 import ast
 from pathlib import Path
 
+import pytest
+
 from fakes import WAIT_MS
 
 _TESTS_DIR = Path(__file__).parent
@@ -77,6 +79,12 @@ def test_no_wait_reads_the_global_worker_registry():
 _CEILING_WAITS = {
     "waitUntil", "waitSignal", "waitSignals", "waitCallback",
     "waitExposed", "waitActive", "waitForDone",
+    # pytest-qt's PEP 8 aliases, which `QtBot.__init__` sets (4.5.0).
+    "wait_until", "wait_signal", "wait_signals", "wait_callback",
+    "wait_exposed", "wait_active",
+    # Deprecated, and takes no bound (Qt's own 5 s), so it always
+    # fails: `waitExposed(widget, timeout=WAIT_MS)` replaces it.
+    "waitForWindowShown", "wait_for_window_shown",
 }
 
 # Subprocess scripts run as `python <script>`, outside pytest's import
@@ -94,23 +102,72 @@ def _bound_of(call: ast.Call) -> ast.expr | None:
     )
 
 
+def _wait_ms_bindings(tree: ast.Module) -> list[ast.AST]:
+    """Every node in `tree` that binds the name `WAIT_MS`: an
+    assignment or loop target, a parameter, an import, an `except …
+    as`, a `match` capture, a `def` or a `class`."""
+    found = []
+
+    for node in ast.walk(tree):
+        match node:
+            case ast.Name(ctx=ast.Store()):
+                name = node.id
+            case ast.arg():
+                name = node.arg
+            case ast.alias():
+                name = node.asname or node.name.partition(".")[0]
+            case (
+                    ast.ExceptHandler() | ast.MatchAs() | ast.MatchStar()
+                    | ast.FunctionDef() | ast.AsyncFunctionDef()
+                    | ast.ClassDef()
+            ):
+                name = node.name
+            case ast.MatchMapping():
+                name = node.rest
+            case _:
+                continue
+
+        if name == "WAIT_MS":
+            found.append(node)
+
+    return found
+
+
 def _wait_ms_comes_from_fakes(tree: ast.Module) -> bool:
-    """Imported from `fakes`, and never bound again in the file."""
-    imported = any(
-        isinstance(node, ast.ImportFrom)
-        and node.module == "fakes"
-        and any(alias.name == "WAIT_MS" and alias.asname is None
-                for alias in node.names)
+    """Its one binding is a module-level `from fakes import WAIT_MS`."""
+    bindings = _wait_ms_bindings(tree)
+    from_fakes = [
+        alias
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "fakes" and node.level == 0
+        for alias in node.names
+    ]
+
+    return len(bindings) == 1 and any(bindings[0] is a for a in from_fakes)
+
+
+def _wait_ms_is_defined_once(tree: ast.Module) -> bool:
+    """`fakes.py`'s own: one binding, a module-level assignment."""
+    bindings = _wait_ms_bindings(tree)
+
+    return len(bindings) == 1 and any(
+        isinstance(node, ast.Assign)
+        and any(target is bindings[0] for target in node.targets)
         for node in tree.body
     )
-    rebound = any(
-        isinstance(node, ast.Name)
-        and node.id == "WAIT_MS"
-        and isinstance(node.ctx, ast.Store)
-        for node in ast.walk(tree)
-    )
 
-    return imported and not rebound
+
+def _is_wait_by_name(node: ast.AST) -> bool:
+    """`getattr(<anything>, "<a ceiling wait>")`."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "getattr"
+        and len(node.args) >= 2
+        and isinstance(node.args[1], ast.Constant)
+        and node.args[1].value in _CEILING_WAITS
+    )
 
 
 def _ceiling_waits() -> list[tuple[Path, ast.Module, ast.Call]]:
@@ -149,10 +206,26 @@ def _kind_of(path: Path) -> str:
 
 def _bound_offenders(tree: ast.Module, kind: str) -> list[str]:
     """The line of each ceiling wait in `tree` bounded by anything but
-    `WAIT_MS` from `fakes`, with why when it is not plain."""
+    `WAIT_MS` from `fakes`, with why when it is not plain.
+
+    A wait is checked where it is called, so one reached any other way
+    (an alias, `functools.partial`, `getattr`) fails: its bound is out of
+    sight. Assigning one (`pool.waitForDone = fake`) is not a wait."""
     offenders = []
+    called = {
+        id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)
+    }
 
     for node in ast.walk(tree):
+        if _is_wait_by_name(node) or (
+                isinstance(node, ast.Attribute)
+                and node.attr in _CEILING_WAITS
+                and isinstance(node.ctx, ast.Load)
+                and id(node) not in called
+        ):
+            offenders.append(f"{node.lineno} (not called directly)")
+            continue
+
         if not (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
@@ -173,6 +246,8 @@ def _bound_offenders(tree: ast.Module, kind: str) -> list[str]:
             offenders.append(f"{node.lineno}")
         elif kind == "test" and not _wait_ms_comes_from_fakes(tree):
             offenders.append(f"{node.lineno} (WAIT_MS not from fakes)")
+        elif kind == "fakes" and not _wait_ms_is_defined_once(tree):
+            offenders.append(f"{node.lineno} (WAIT_MS bound again)")
 
     return offenders
 
@@ -196,4 +271,66 @@ def test_every_wait_is_bounded_by_the_named_bound():
     assert not offenders, (
         "bound every wait by `fakes.WAIT_MS` (`timeout=WAIT_MS`, "
         f"`waitForDone(WAIT_MS)`): {offenders}"
+    )
+
+
+_FROM_FAKES = "from fakes import WAIT_MS\n"
+
+
+def test_the_bound_sweep_passes_the_named_bound():
+    source = _FROM_FAKES + (
+        "qtbot.waitUntil(cond, timeout=WAIT_MS)\n"
+        "qtbot.wait_until(cond, timeout=WAIT_MS)\n"
+        "with qtbot.waitSignal(signal, timeout=WAIT_MS):\n"
+        "    pass\n"
+        "assert pool.waitForDone(WAIT_MS)\n"
+    )
+
+    assert _bound_offenders(ast.parse(source), "test") == []
+
+
+@pytest.mark.parametrize("evasion", [
+    # pytest-qt's PEP 8 aliases, set in `QtBot.__init__`.
+    "qtbot.wait_until(cond, timeout=200)",
+    "qtbot.wait_signal(signal)",
+    "qtbot.wait_signals([signal], timeout=200)",
+    "qtbot.wait_exposed(widget)",
+    "qtbot.wait_active(widget)",
+    "qtbot.wait_callback(timeout=200)",
+    # Deprecated, and takes no bound: Qt's own 5 s.
+    "qtbot.waitForWindowShown(widget)",
+    "qtbot.wait_for_window_shown(widget)",
+    # A wait reached other than as the called attribute.
+    "wait = qtbot.waitUntil\nwait(cond, timeout=200)",
+    "functools.partial(qtbot.waitUntil, timeout=200)(cond)",
+    "getattr(qtbot, 'waitUntil')(cond, timeout=200)",
+    # `WAIT_MS` bound again, so the name no longer means fakes'.
+    "WAIT_MS = 200\nqtbot.waitUntil(cond, timeout=WAIT_MS)",
+    "def wait(qtbot, WAIT_MS=200):\n"
+    "    qtbot.waitUntil(cond, timeout=WAIT_MS)",
+    "wait = lambda WAIT_MS=200: qtbot.waitUntil(cond, timeout=WAIT_MS)",
+    "from timing import SHORT as WAIT_MS\n"
+    "qtbot.waitUntil(cond, timeout=WAIT_MS)",
+    "try:\n    pass\nexcept Exception as WAIT_MS:\n"
+    "    qtbot.waitUntil(cond, timeout=WAIT_MS)",
+    "for WAIT_MS in (200,):\n    qtbot.waitUntil(cond, timeout=WAIT_MS)",
+])
+def test_the_bound_sweep_fails_each_way_round_it(evasion):
+    tree = ast.parse(_FROM_FAKES + evasion)
+
+    assert _bound_offenders(tree, "test")
+
+
+def test_the_bound_sweep_fails_a_wait_ms_not_taken_from_fakes():
+    tree = ast.parse("qtbot.waitUntil(cond, timeout=WAIT_MS)\n")
+
+    assert _bound_offenders(tree, "test")
+
+
+def test_the_bound_sweep_fails_fakes_binding_wait_ms_twice():
+    defined = "WAIT_MS = 10_000\npool.waitForDone(WAIT_MS)\n"
+
+    assert _bound_offenders(ast.parse(defined), "fakes") == []
+    assert _bound_offenders(
+        ast.parse(defined + "def wait(WAIT_MS=200):\n    pass\n"), "fakes",
     )
