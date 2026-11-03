@@ -13,8 +13,11 @@ from PySide6.QtGui import QDesktopServices
 
 # Before any QApplication exists: a bare run is offscreen, and so is
 # every process a test starts. A platform the caller names wins
-# (`QT_QPA_PLATFORM=cocoa uv run pytest` puts the windows on screen).
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# (`QT_QPA_PLATFORM=cocoa uv run pytest` puts the windows on screen);
+# an empty one names none, and Qt would take Cocoa (observed: the
+# `empty` case of tests/test_headless.py's platform test).
+if not os.environ.get("QT_QPA_PLATFORM"):
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 
 @pytest.fixture(autouse=True, scope="session")

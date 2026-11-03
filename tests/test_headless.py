@@ -157,15 +157,17 @@ _REFUSED = [
 
 @pytest.mark.parametrize(
     ("callers_platform", "expected"),
-    [(None, "offscreen"), ("minimal", "minimal")],
+    [(None, "offscreen"), ("", "offscreen"), ("minimal", "minimal")],
+    ids=["unset", "empty", "named"],
 )
 def test_the_suite_is_offscreen_unless_its_caller_names_a_platform(
         tmp_path, callers_platform, expected,
 ):
     """A bare `pytest` builds its `qapp` offscreen, and a process a
     test starts inherits that; a platform the caller sets (Kris's
-    `cocoa`) wins. `minimal` stands in for `cocoa`, which would put
-    windows on this desktop. If the default regresses, Qt's
+    `cocoa`) wins. An empty `QT_QPA_PLATFORM=` names none: Qt takes it
+    as unset and picks Cocoa. `minimal` stands in for `cocoa`, which
+    would put windows on this desktop. If the default regresses, Qt's
     QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM keeps the probe's
     Cocoa app out of the Dock: observed 2026-11-03, `lsappinfo list`
     showed it as type BackgroundOnly, not Foreground."""
