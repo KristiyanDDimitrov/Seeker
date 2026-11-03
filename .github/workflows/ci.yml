@@ -126,7 +126,9 @@ jobs:
       # still running after five minutes dumps every thread's stack
       # (pytest's faulthandler), so a run the job's timeout kills still
       # names the test that hung.
-      - run: uv run pytest -q -rfEs --durations=25 --durations-min=1.0 -o faulthandler_timeout=300
+      - run: >-
+          uv run pytest -q -rfEs --durations=25 --durations-min=1.0
+          -o faulthandler_timeout=300
 
   audit:
     # pip-audit over every locked dependency (tools/audit_dependencies.py
