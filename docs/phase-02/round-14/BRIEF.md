@@ -134,6 +134,14 @@ docker guard matches `argv[0]`'s name `docker` exactly
    It fails the build, like the other sweeps.
 4. The docker guard compares `Path(argv[0]).stem.casefold()`, so
    `docker.exe` and `DOCKER` are refused too, with a test (PF-34).
+5. Tests isolate platformdirs on Windows (HISTORY §268): an autouse
+   `tests/conftest.py` fixture sets `WIN_PD_OVERRIDE_LOCAL_APPDATA` to
+   a tmp path, which covers Seeker's data, log and cache folders and
+   reaches `test_lazy_spotify_config`'s subprocesses (platformdirs'
+   source; UNVERIFIED on Windows). Its failing test is the probe, on
+   `check-windows`: under the suite, `platformdirs.user_data_dir(
+   "Seeker", appauthor=False)` names a tmp path, not the runner's
+   `%LOCALAPPDATA%\Seeker`. Round 15 runs no suite until it is on main.
 
 **Split point:** after step 2 for `docker_setup.py` and
 `sharing_service.py` (fingerprint, wizard and "Show in folder"

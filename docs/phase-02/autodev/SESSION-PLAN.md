@@ -254,27 +254,34 @@ pushes its branch and resumes it with the result.
 | Row | Brief | Audit (`AUDIT.md`) | Code (grep, then ranges) |
 |---|---|---|---|
 | R14-S1 | `:67-106` | PF-32 `:604-618`, PF-33 `:619-627` | `.github/workflows/ci.yml` (3 K) · `tests/conftest.py` · `pyproject.toml` `[tool.mypy]` |
-| R14-S2 | `:107-143` | PF-10 `:253-274`, PF-11 `:275-304`, PF-34 `:628-637` | `soulseek/docker_setup.py` (17 KB) · `soulseek/sharing_service.py` (32 KB) · `audio/fingerprint.py` · `ui/workers.py` · `tests/conftest.py` (docker guard) |
-| R14-S3 | `:144-175` | PF-11, PF-12 `:305-318` | `main.py` · `cli.py` (46 KB) · `files/atomic.py` · every `open(`/`read_text`/`write_text` |
-| R14-S4 | `:176-206` | PF-09 `:234-252`, PF-15 `:360-373` | `soulseek/docker_setup.py:20-80` · `application.py:125-140` |
-| R14-S5 | `:207-238` | PF-13 `:321-340`, PF-14 `:341-359` | `soulseek/sharing_service.py` · `ui/pages/sharing_page.py` |
-| R14-S6 | `:239-278` | PF-24–PF-27 `:499-546`, PF-31 `:590-601` | `ui/tray.py` (26 KB) · `ui/main_window.py` (grep only) · `src/seeker/ui/CLAUDE.md` · `tools/screenshots.py` |
-| R14-S7 | `:279-312` | PF-23 `:484-498` | `main_ui.py` · `ui/main_window.py` (grep) · `src/seeker/ui/CLAUDE.md` (quit seam) |
-| R14-S8 | `:313-342` | PF-28 `:547-560` | `login_item.py` · the Settings page (grep `login`) |
-| R14-S9 | `:343-378` | PF-18–PF-22 `:408-423`, `:426-481` | `files/atomic.py` · `files/sanitize.py` · `files/placement.py` · `soulseek/placement.py` |
-| R14-S10 | `:379-406` | PF-29 `:561-576` | `packaging/seeker.spec` · `packaging/bundle_info.py` · `audio/fingerprint.py` (grep `_candidate_search_dirs`) · `packaging/build_chromaprint.sh` · `docs/packaging.md` |
-| R14-S11 | `:407-449` | PF-35 `:638-647`, PF-36 `:648-664` | `.github/workflows/build.yml` · `packaging/build_windows_installer.py` · `packaging/seeker.iss` · `packaging/build_dmg.py` |
-| R14-S12 | `:450-467` | PF-32, PF-22 | S1's failure list (where S1 records it) |
+| R14-S2 | `:107-151` | PF-10 `:253-274`, PF-11 `:275-304`, PF-34 `:628-637` | `soulseek/docker_setup.py` (17 KB) · `soulseek/sharing_service.py` (32 KB) · `audio/fingerprint.py` · `ui/workers.py` · `tests/conftest.py` (docker guard) |
+| R14-S3 | `:152-183` | PF-11, PF-12 `:305-318` | `main.py` · `cli.py` (46 KB) · `files/atomic.py` · every `open(`/`read_text`/`write_text` |
+| R14-S4 | `:184-214` | PF-09 `:234-252`, PF-15 `:360-373` | `soulseek/docker_setup.py:20-80` · `application.py:125-140` |
+| R14-S5 | `:215-246` | PF-13 `:321-340`, PF-14 `:341-359` | `soulseek/sharing_service.py` · `ui/pages/sharing_page.py` |
+| R14-S6 | `:247-286` | PF-24–PF-27 `:499-546`, PF-31 `:590-601` | `ui/tray.py` (26 KB) · `ui/main_window.py` (grep only) · `src/seeker/ui/CLAUDE.md` · `tools/screenshots.py` |
+| R14-S7 | `:287-320` | PF-23 `:484-498` | `main_ui.py` · `ui/main_window.py` (grep) · `src/seeker/ui/CLAUDE.md` (quit seam) |
+| R14-S8 | `:321-350` | PF-28 `:547-560` | `login_item.py` · the Settings page (grep `login`) |
+| R14-S9 | `:351-386` | PF-18–PF-22 `:408-423`, `:426-481` | `files/atomic.py` · `files/sanitize.py` · `files/placement.py` · `soulseek/placement.py` |
+| R14-S10 | `:387-414` | PF-29 `:561-576` | `packaging/seeker.spec` · `packaging/bundle_info.py` · `audio/fingerprint.py` (grep `_candidate_search_dirs`) · `packaging/build_chromaprint.sh` · `docs/packaging.md` |
+| R14-S11 | `:415-457` | PF-35 `:638-647`, PF-36 `:648-664` | `.github/workflows/build.yml` · `packaging/build_windows_installer.py` · `packaging/seeker.iss` · `packaging/build_dmg.py` |
+| R14-S12 | `:458-475` | PF-32, PF-22 | S1's failure list, numbered by cause (HISTORY §268) |
 
 R14-S10 adds a native library to the bundle: its source is pinned and
 checksummed like `build_chromaprint.sh`, its licence texts land in
 `licenses/`, and `docs/packaging.md` → Native libraries gains its row.
 R14-S11's uninstaller removes the install folder only, never the user's
 data folders (the reason for `user-data`).
+R14-S2 also owns isolating platformdirs in tests (its BRIEF step 5;
+HISTORY §268, R14-S1's review): a `tests/conftest.py` fixture sets
+`WIN_PD_OVERRIDE_LOCAL_APPDATA` to a tmp path, and the probe on
+`check-windows` is its failing test. Until it is on main,
+`test_lazy_spotify_config`'s `Application()` subprocesses would open a
+Windows machine's real `%LOCALAPPDATA%\Seeker`; round 15 runs no suite
+before it lands.
 
 ### R15-S0 — round 15 as an autodev plan
 
-`round-15/BRIEF.md` → §S0 (`:103-110`): read round 14's HISTORY
+`round-15/BRIEF.md` → §S0 (`:119-125`): read round 14's HISTORY
 entries and §0.7; rewrite the brief's rows S1–S6 to what is left; then
 write round 15's plan in this file's shape (`round-15/SESSION-PLAN.md`
 and a `round-15/tasks.json` that `autodev.py validate` accepts) for a

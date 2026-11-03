@@ -116,15 +116,16 @@
       "history": null,
       "commits": [],
       "actual_peak_k": null,
-      "status": "todo",
+      "status": "reviewing",
       "model": "opus",
       "effort": "high",
-      "attempts": 0,
+      "attempts": 1,
       "review_rounds": 0,
-      "worker_id": null,
-      "agent_id": null,
-      "branch": null,
-      "blocker": null
+      "worker_id": "ae7b7d5bd10ba6576",
+      "agent_id": "a0ed794c5841acd82",
+      "branch": "p02/H2",
+      "blocker": null,
+      "updated": "2026-11-03T19:07:04Z"
     },
     {
       "id": "R13-S10a",
@@ -296,19 +297,28 @@
       "split_point": "After the failure list",
       "notes": "docs/phase-02/autodev/SESSION-PLAN.md -> Row notes (R14-S1)",
       "kris": null,
-      "history": null,
-      "commits": [],
-      "actual_peak_k": null,
-      "status": "doing",
+      "history": "§268",
+      "commits": [
+        "6bf4db5",
+        "1b94f6a",
+        "11e02cc",
+        "b85c71e",
+        "02affc5",
+        "93d4dc7",
+        "479c1ee",
+        "f65cb28"
+      ],
+      "actual_peak_k": 200,
+      "status": "done",
       "model": "opus",
       "effort": "max",
       "attempts": 1,
-      "review_rounds": 0,
+      "review_rounds": 1,
       "worker_id": "a2f629926c967ad19",
-      "agent_id": "a2f629926c967ad19",
+      "agent_id": "a3bb33cb210ecb2c4",
       "branch": "p02/R14-S1",
       "blocker": null,
-      "updated": "2026-11-03T11:34:13Z"
+      "updated": "2026-11-03T19:10:08Z"
     },
     {
       "id": "DEP-1",
@@ -365,7 +375,9 @@
       "worker_id": null,
       "agent_id": null,
       "branch": null,
-      "blocker": null
+      "blocker": null,
+      "lead_note": "Owns isolating platformdirs in tests (R14-S1 review): a conftest fixture setting WIN_PD_OVERRIDE_LOCAL_APPDATA to a tmp path, with the CI probe (platformdirs.user_data_dir('Seeker', appauthor=False) with HOME moved, on check-windows) as its failing test. Guards round 15's Windows machine's real %LOCALAPPDATA%\\Seeker. See HISTORY for R14-S1.",
+      "updated": "2026-11-03T19:05:20Z"
     },
     {
       "id": "R14-S3",

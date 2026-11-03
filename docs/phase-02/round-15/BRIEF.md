@@ -37,6 +37,9 @@ outside those folders, and remove Seeker, its data
 (`%LOCALAPPDATA%\Seeker`), the slskd container and Docker Desktop
 (if installed for this) when the round ends, with the owner's say.
 
+**Precondition:** no suite runs on this machine until R14-S2's
+platformdirs isolation (HISTORY §268) is on main; R15-S0 checks it.
+
 **§0.4 Accounts.** A **Spotify test account**: `src/seeker/spotify/CLAUDE.md` records that
 two installs sharing a client ID can invalidate each other's rotating
 refresh tokens (§92), so Kris's own account stays on his Mac. A

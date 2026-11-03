@@ -53,8 +53,9 @@ short, under `src/seeker/`:
   version pinned in three places (`[tool.uv] required-version`, setup-uv's
   `version:`, the `uv_build` range; `tests/test_uv_pin.py`,
   [§251](docs/history/241-270.md#251)). Type
-  hints everywhere; `mypy --strict` clean before work is done. Models are dataclasses, no
-  getter/setter classes.
+  hints everywhere; `mypy --strict` clean, native and `--platform
+  win32` ([§268](docs/history/241-270.md#268)), before work is done.
+  Models are dataclasses, no getter/setter classes.
 - slskd through its REST API, never a raw protocol library.
   `SoulseekClient` is synchronous `httpx`, the same pattern as
   `SpotifyClient`, tested the same way: mock the HTTP layer. No test
@@ -220,6 +221,7 @@ uv run seeker         # run the CLI
 uv run seeker-ui       # run the GUI (PySide6) — onboarding wizard on first launch
 uv run pytest         # run tests, offscreen; Kris alone prefixes QT_QPA_PLATFORM=cocoa
 uv run mypy --strict src/  # type check — must stay clean
+uv run mypy --strict --platform win32 src/  # the win32 branches too (CI's check runs both)
 uv run ruff check src tests tools  # lint — CI's exact gate, 0 findings
 uv run python tools/screenshots.py  # every screen, both themes -> tools/.screens/
 # x86_64 under Rosetta (shares the real data folders, BRIEF §0.5; HISTORY §255):
@@ -281,6 +283,15 @@ UNVERIFIED). `docs/status.md` loads only when read.
   only). A real Intel Mac has no `sysctl.proc_translated` key: it reads
   None, meaning native (observed in CI run `41501947860`).
   [§261](docs/history/241-270.md#261)
+- **CI runs the suite on Windows, non-blocking.** `check-windows`
+  (`windows-2025`, offscreen, about 16 min, no libchromaprint, so the
+  25 fingerprint tests skip) has `continue-on-error: true` until the
+  suite passes there; the change that makes it pass deletes that line.
+  A module that cannot import shows as one ERROR hiding its tests. Its
+  first run's 42 failures are numbered by cause in §268; a row that
+  fixes one cites its number. mypy decides `sys.platform` statically,
+  so only `--platform win32` sees a `win32` branch.
+  [§268](docs/history/241-270.md#268)
 
 ## Working agreements
 

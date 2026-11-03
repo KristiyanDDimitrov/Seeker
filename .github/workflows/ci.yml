@@ -104,7 +104,8 @@ jobs:
     # that line. No libchromaprint is built for Windows yet, so the
     # fingerprint tests skip (tests/chromaprint_gate.py; 25 in that
     # run). ruff, both mypy runs and the coverage gate run in `check`
-    # alone. Pinned for the same reason as macos-26 above.
+    # alone. Pinned for the same reason as macos-26 above. HISTORY §268
+    # holds both runs cited here and numbers the failures by cause.
     runs-on: windows-2025
     # The weekly run is for the audit job alone.
     if: github.event_name != 'schedule'
