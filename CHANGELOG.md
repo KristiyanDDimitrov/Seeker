@@ -7,6 +7,12 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **CI type-checks the Windows code paths:** `check` also runs
+  `mypy --strict --platform win32 src/`; a run on macOS never checks
+  what sits under `if sys.platform == "win32":`.
+
 ## [0.2.0] - 2026-11-03
 
 ### Added

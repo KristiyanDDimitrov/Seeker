@@ -1,4 +1,5 @@
-"""The Intel CI job exists, is blocking, and cannot hide a library bug.
+"""The Intel CI job exists, is blocking, and cannot hide a library bug;
+`check` type-checks the Windows branches too.
 
 PyYAML is not a dependency, so the workflow is read as text, one job
 per top-level key under `jobs:`.
@@ -64,6 +65,17 @@ def test_check_intel_pins_the_same_actions_as_check():
 
 def test_check_requires_chromaprint_too():
     assert 'SEEKER_REQUIRE_CHROMAPRINT: "1"' in _job("check")
+
+
+def test_check_type_checks_the_win32_branches_too():
+    """mypy evaluates `sys.platform` statically: a run on macOS never
+    checks the body of an `if sys.platform == "win32":`, so only a run
+    told the platform does.
+    """
+    runs = re.findall(r"- run: (.*)", _job("check"))
+
+    assert "uv run mypy --strict src/" in runs
+    assert "uv run mypy --strict --platform win32 src/" in runs
 
 
 def test_check_intel_is_skipped_on_the_weekly_schedule_only():
