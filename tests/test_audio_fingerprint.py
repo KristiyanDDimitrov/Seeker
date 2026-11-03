@@ -14,8 +14,7 @@ from seeker.audio.fingerprint import (
     decode_fingerprint,
     similarity_from_decoded,
 )
-
-X9_PRO_ROOT = Path("/Volumes/X9 Pro")
+from x9_pro_gate import X9_PRO_ROOT, requires_x9_pro
 
 
 def hamming_similarity(fingerprint_a: str, fingerprint_b: str) -> float:
@@ -26,11 +25,6 @@ def hamming_similarity(fingerprint_a: str, fingerprint_b: str) -> float:
         decode_fingerprint(fingerprint_b),
     )
 
-
-requires_x9_pro = pytest.mark.skipif(
-    not X9_PRO_ROOT.is_dir(),
-    reason="x9-pro drive not mounted",
-)
 
 requires_ffmpeg = pytest.mark.skipif(
     not audio_fingerprint._ffmpeg_available(),

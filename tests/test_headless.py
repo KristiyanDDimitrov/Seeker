@@ -1,6 +1,7 @@
 """The suite never reaches the desktop it runs on: its Qt platform is
-offscreen unless the caller names another, and conftest refuses the
-programs that open things on the desktop."""
+offscreen unless the caller names another, conftest refuses the
+programs that open things on the desktop, and no removable volume is
+read unless the run opts in."""
 import ast
 import json
 import os
@@ -10,8 +11,11 @@ from pathlib import Path
 
 import pytest
 
-TESTS = Path(__file__).resolve().parent
+from x9_pro_gate import OPT_IN_VARIABLE
+
+TESTS =Path(__file__).resolve().parent
 PROBE = TESTS / "repro" / "_headless_probe.py"
+VOLUME_PROBE = TESTS / "repro" / "_volume_probe_plugin.py"
 SRC = TESTS.parent / "src" / "seeker"
 
 # Programs src/ spawns that open nothing on the desktop, and what each
@@ -115,6 +119,36 @@ def test_the_suite_is_offscreen_unless_its_caller_names_a_platform(
     assert json.loads(report.read_text(encoding="utf-8")) == {
         "qapp": expected, "child": expected,
     }
+
+
+def test_collecting_the_suite_looks_at_no_removable_volume(tmp_path):
+    """The real-file tests read the X9 Pro, a removable volume, which
+    macOS guards as it guards Documents (UNVERIFIED for this drive: the
+    terminals that ran them already had access). Without their opt-in,
+    collecting the suite asks about no path under /Volumes, not even
+    whether the drive is mounted. The probe answers "absent" to any
+    such question, so a regression reads nothing either."""
+    env = {
+        name: value for name, value in os.environ.items()
+        if name != OPT_IN_VARIABLE
+    }
+    env["PYTHONPATH"] = os.pathsep.join(
+        filter(None, [str(VOLUME_PROBE.parent), env.get("PYTHONPATH")]),
+    )
+    report = tmp_path / "report.json"
+    env["SEEKER_VOLUME_PROBE_REPORT"] = str(report)
+
+    result = subprocess.run(  # noqa: S603 — this interpreter, the suite
+        [
+            sys.executable, "-m", "pytest", "--collect-only", "-q",
+            "-p", "no:cacheprovider", "-p", VOLUME_PROBE.stem, str(TESTS),
+        ],
+        cwd=TESTS.parent, env=env, capture_output=True, text=True,
+        timeout=300, check=False,
+    )
+
+    assert result.returncode == 0, result.stdout[-3000:] + result.stderr
+    assert json.loads(report.read_text(encoding="utf-8")) == []
 
 
 def test_the_sweep_reads_every_spawn_in_src():

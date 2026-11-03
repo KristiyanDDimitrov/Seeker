@@ -37,14 +37,9 @@ from seeker.models.local_file import LocalFile
 from seeker.models.playlist import Playlist
 from seeker.models.track import Track
 from seeker.models.track_match import TrackMatch
+from x9_pro_gate import X9_PRO_ROOT, requires_x9_pro
 
-X9_PRO_ROOT = Path("/Volumes/X9 Pro")
 REAL_WAV = X9_PRO_ROOT / "Music/240KMH/3AMDISCO - Get Back.wav"
-
-requires_x9_pro = pytest.mark.skipif(
-    not X9_PRO_ROOT.is_dir(),
-    reason="x9-pro drive not mounted",
-)
 
 FAKE_JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"0" * 256
 

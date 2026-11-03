@@ -19,6 +19,7 @@ from seeker.audio.tags import (
     write_analysis_tags,
     write_text_tags,
 )
+from x9_pro_gate import X9_PRO_ROOT, requires_x9_pro
 
 
 def _make_minimal_jpeg(width: int, height: int) -> bytes:
@@ -64,9 +65,8 @@ def _make_minimal_png(width: int, height: int) -> bytes:
 # Real files from the scanned x9-pro library, used to test tag-writing
 # against genuine format quirks rather than hand-rolled fixtures. Always
 # copied to tmp_path before being touched — the originals are never
-# opened for writing. Skipped (not failed) when the drive isn't mounted,
-# the same way the rest of the app treats an unreachable library location.
-X9_PRO_ROOT = Path("/Volumes/X9 Pro")
+# opened for writing. Run only when the run opts in and the drive is
+# mounted (`x9_pro_gate`).
 REAL_MP3 = (
     X9_PRO_ROOT
     / "Music/Psytrance/ Eye Contact - Juliet Fox, Giorgia Angiuli"
@@ -82,11 +82,6 @@ REAL_M4A = X9_PRO_ROOT / "Music/DnB/ChaseR - Prolegomenon.m4a"
 REAL_AIFF = (
     X9_PRO_ROOT
     / "Music/beatport_tracks_2023-11 copy/8Kays - Morning After The Rave.aiff"
-)
-
-requires_x9_pro = pytest.mark.skipif(
-    not X9_PRO_ROOT.is_dir(),
-    reason="x9-pro drive not mounted",
 )
 
 FAKE_JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"0" * 256

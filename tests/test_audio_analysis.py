@@ -1,5 +1,4 @@
 import shutil
-from pathlib import Path
 
 import pytest
 
@@ -8,18 +7,12 @@ from seeker.audio.analysis import (
     analyze_audio,
     correct_octave_error,
 )
+from x9_pro_gate import X9_PRO_ROOT, requires_x9_pro
 
 # Real file from the scanned x9-pro library — copied to tmp_path before
-# being touched; the original is never opened. Skipped (not failed) when
-# the drive isn't mounted, same treatment as the rest of the test suite
-# gives an unreachable library location.
-X9_PRO_ROOT = Path("/Volumes/X9 Pro")
+# being touched; the original is never opened. Runs only when the run
+# opts in and the drive is mounted (`x9_pro_gate`).
 REAL_WAV = X9_PRO_ROOT / "Music/240KMH/3AMDISCO - Get Back.wav"
-
-requires_x9_pro = pytest.mark.skipif(
-    not X9_PRO_ROOT.is_dir(),
-    reason="x9-pro drive not mounted",
-)
 
 
 @requires_x9_pro
