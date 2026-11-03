@@ -1238,7 +1238,7 @@ def test_quit_stops_a_running_retry(qtbot):
     page._render_active_downloads([failed])
 
     _row_button(page, 0, "Retry").click()
-    assert service.started.wait(2)
+    assert service.started.wait(WAIT_MS / 1000)
     window.cleanup_before_quit()
 
     assert window.thread_pool.waitForDone(WAIT_MS)

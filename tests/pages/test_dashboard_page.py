@@ -2121,7 +2121,7 @@ def test_quit_stops_a_running_playlist_refresh(qtbot):
     qtbot.addWidget(window)
 
     window._dashboard_page.sync_button.click()
-    assert service.started.wait(2)
+    assert service.started.wait(WAIT_MS / 1000)
     window.cleanup_before_quit()
 
     assert window.thread_pool.waitForDone(WAIT_MS)
@@ -2148,7 +2148,7 @@ def test_quit_stops_a_running_track_load(qtbot):
     )
 
     window._dashboard_page.sync_tracks_button.click()
-    assert service.started.wait(2)
+    assert service.started.wait(WAIT_MS / 1000)
     window.cleanup_before_quit()
 
     assert window.thread_pool.waitForDone(WAIT_MS)

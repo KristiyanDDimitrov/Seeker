@@ -628,7 +628,7 @@ def test_quit_stops_the_wait_for_a_new_share(qtbot, monkeypatch):
     qtbot.waitUntil(lambda: locations_table.rowCount() == 1, timeout=WAIT_MS)
 
     locations_table.cellWidget(0, 4).findChild(QPushButton).click()
-    assert sharing_service.started.wait(2)
+    assert sharing_service.started.wait(WAIT_MS / 1000)
     window.cleanup_before_quit()
 
     assert window.thread_pool.waitForDone(WAIT_MS)

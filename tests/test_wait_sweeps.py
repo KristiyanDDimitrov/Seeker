@@ -87,6 +87,18 @@ _CEILING_WAITS = {
     "waitForWindowShown", "wait_for_window_shown",
 }
 
+# A thread's `Event.wait` asserted true (`assert started.wait(…)`, a
+# worker reaching its fake) is a ceiling wait too, bounded in seconds:
+# `WAIT_MS / 1000`. One not asserted is a fake's fallback or a wait
+# meant to time out, and is not held to the bound. A fallback the code
+# under test releases is shorter than `WAIT_MS`, so its fake records
+# whether it was released (`released`, `stopped`) for the test to
+# assert; a wait cannot prove it.
+_EVENT_WAIT = "wait"
+
+# The waits whose bound is their first argument, or their keyword.
+_POSITIONAL_BOUND = {"waitForDone", _EVENT_WAIT}
+
 # Subprocess scripts run as `python <script>`, outside pytest's import
 # path, so they cannot import `fakes`. Their literal bounds are held to
 # at least `WAIT_MS` instead, which cannot hide a short one.
@@ -94,11 +106,21 @@ _STANDALONE_DIR = "repro"
 
 
 def _bound_of(call: ast.Call) -> ast.expr | None:
-    if call.func.attr == "waitForDone":
-        return call.args[0] if call.args else None
+    if call.func.attr in _POSITIONAL_BOUND and call.args:
+        return call.args[0]
 
     return next(
-        (k.value for k in call.keywords if k.arg == "timeout"), None,
+        (k.value for k in call.keywords if k.arg in {"timeout", "msecs"}),
+        None,
+    )
+
+
+def _is_asserted_event_wait(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Assert)
+        and isinstance(node.test, ast.Call)
+        and isinstance(node.test.func, ast.Attribute)
+        and node.test.func.attr == _EVENT_WAIT
     )
 
 
@@ -226,24 +248,27 @@ def _bound_offenders(tree: ast.Module, kind: str) -> list[str]:
             offenders.append(f"{node.lineno} (not called directly)")
             continue
 
-        if not (
+        if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr in _CEILING_WAITS
         ):
+            bound, named, floor = _bound_of(node), "WAIT_MS", WAIT_MS
+        elif _is_asserted_event_wait(node):
+            bound, named = _bound_of(node.test), "WAIT_MS / 1000"
+            floor = WAIT_MS / 1000
+        else:
             continue
-
-        bound = _bound_of(node)
 
         if kind == "standalone":
             if not (
                     isinstance(bound, ast.Constant)
-                    and isinstance(bound.value, int)
-                    and bound.value >= WAIT_MS
+                    and isinstance(bound.value, int | float)
+                    and bound.value >= floor
             ):
                 offenders.append(f"{node.lineno} (below WAIT_MS)")
-        elif not (isinstance(bound, ast.Name) and bound.id == "WAIT_MS"):
-            offenders.append(f"{node.lineno}")
+        elif bound is None or ast.unparse(bound) != named:
+            offenders.append(f"{node.lineno} (not {named})")
         elif kind == "test" and not _wait_ms_comes_from_fakes(tree):
             offenders.append(f"{node.lineno} (WAIT_MS not from fakes)")
         elif kind == "fakes" and not _wait_ms_is_defined_once(tree):
@@ -252,12 +277,13 @@ def _bound_offenders(tree: ast.Module, kind: str) -> list[str]:
     return offenders
 
 
-def test_every_wait_is_bounded_by_the_named_bound():
+def test_every_ceiling_wait_is_bounded_by_the_named_bound():
     # The Intel runner is 5 to 10 times slower than the Apple silicon
     # Mac on UI work, so a bound picked locally (2000 ms, or pytest-qt's
     # 5000 ms default) times out there on a wait that is merely slow.
     # One named bound, `fakes.WAIT_MS`, sized from measurements, is the
-    # only ceiling a wait may have. See HISTORY §265.
+    # only ceiling a pytest-qt wait, a `waitForDone` or an asserted
+    # `Event.wait` may have. See HISTORY §265.
     offenders = []
 
     for path in sorted(_TESTS_DIR.rglob("*.py")):
@@ -269,8 +295,9 @@ def test_every_wait_is_bounded_by_the_named_bound():
         ]
 
     assert not offenders, (
-        "bound every wait by `fakes.WAIT_MS` (`timeout=WAIT_MS`, "
-        f"`waitForDone(WAIT_MS)`): {offenders}"
+        "bound every ceiling wait by `fakes.WAIT_MS` (`timeout=WAIT_MS`, "
+        "`waitForDone(WAIT_MS)`, `assert event.wait(WAIT_MS / 1000)`): "
+        f"{offenders}"
     )
 
 
@@ -334,3 +361,26 @@ def test_the_bound_sweep_fails_fakes_binding_wait_ms_twice():
     assert _bound_offenders(
         ast.parse(defined + "def wait(WAIT_MS=200):\n    pass\n"), "fakes",
     )
+
+
+def test_the_bound_sweep_passes_an_asserted_event_wait_on_the_bound():
+    source = _FROM_FAKES + (
+        "assert started.wait(WAIT_MS / 1000)\n"
+        "assert started.wait(timeout=WAIT_MS / 1000)\n"
+        # Not a ceiling wait: a fake's fallback, or one meant to time out.
+        "gate.wait(timeout=5)\n"
+        "assert not entered.wait(0.5)\n"
+    )
+
+    assert _bound_offenders(ast.parse(source), "test") == []
+
+
+@pytest.mark.parametrize("wait", [
+    "assert started.wait(2)",
+    "assert started.wait(timeout=2)",
+    "assert started.wait()",
+    "assert started.wait(WAIT_MS)",
+    "assert started.wait(WAIT_MS / 2000)",
+])
+def test_the_bound_sweep_fails_an_asserted_event_wait_off_the_bound(wait):
+    assert _bound_offenders(ast.parse(_FROM_FAKES + wait), "test")

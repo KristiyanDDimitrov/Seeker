@@ -5,6 +5,7 @@ import time
 import httpx
 import pytest
 
+from fakes import WAIT_MS
 from seeker.error_text import describe_error
 from seeker.soulseek.client import (
     SearchStoppedError,
@@ -499,7 +500,7 @@ def test_two_clients_never_enqueue_at_once(monkeypatch):
 
     first = threading.Thread(target=enqueue)
     first.start()
-    assert first_inside.wait(timeout=5)
+    assert first_inside.wait(timeout=WAIT_MS / 1000)
     second = threading.Thread(target=enqueue)
     second.start()
     first.join(timeout=5)

@@ -1177,7 +1177,7 @@ def test_library_track_list_keeps_the_latest_load_when_an_older_one_lands_last(
 
     def stale_answer(playlist_name):
         stale_entered.set()
-        assert release_stale.wait(5)
+        assert release_stale.wait(WAIT_MS / 1000)
         return stale
 
     # Each load gets its answer by when it was started, not by when its
@@ -1185,7 +1185,7 @@ def test_library_track_list_keeps_the_latest_load_when_an_older_one_lands_last(
     service = application.dashboard_service
     service.get_playlist_track_status = stale_answer
     page.refresh_tracks()
-    assert stale_entered.wait(2)
+    assert stale_entered.wait(WAIT_MS / 1000)
     service.get_playlist_track_status = lambda playlist_name: fresh
     page.refresh_tracks()
     qtbot.waitUntil(
@@ -1258,7 +1258,7 @@ def test_quit_stops_a_running_cover_art_refresh(qtbot):
     _select_first_playlist(window, qtbot)
 
     window._library_page._tagging_panel.fill_missing_art_urls_button.click()
-    assert service.started.wait(2)
+    assert service.started.wait(WAIT_MS / 1000)
     window.cleanup_before_quit()
 
     assert window.thread_pool.waitForDone(WAIT_MS)

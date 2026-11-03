@@ -106,7 +106,7 @@ def test_backend_poll_overlap_guard_skips_concurrent_tick(qtbot):
     qtbot.addWidget(window)
 
     window._trigger_backend_poll()
-    assert started.wait(timeout=2)
+    assert started.wait(timeout=WAIT_MS / 1000)
 
     # A second tick while the first poll_downloads() call is still
     # running must be skipped, not start a second concurrent writer.

@@ -337,7 +337,7 @@ def test_quit_stops_a_running_fingerprint_run(qtbot, monkeypatch):
     )
 
     page.compute_fingerprints_button.click()
-    assert service.started.wait(2)
+    assert service.started.wait(WAIT_MS / 1000)
     window.cleanup_before_quit()
 
     assert window.thread_pool.waitForDone(WAIT_MS)
@@ -392,7 +392,7 @@ def test_quit_stops_a_running_playlist_download(qtbot, monkeypatch):
     qtbot.waitUntil(page.download_button.isEnabled, timeout=WAIT_MS)
 
     page.download_button.click()
-    assert service.started.wait(2)
+    assert service.started.wait(WAIT_MS / 1000)
     window.cleanup_before_quit()
 
     assert window.thread_pool.waitForDone(WAIT_MS)
@@ -437,7 +437,7 @@ def test_quit_stops_a_running_library_scan(qtbot, monkeypatch):
     qtbot.waitUntil(page.scan_button.isEnabled, timeout=WAIT_MS)
 
     page.scan_button.click()
-    assert service.started.wait(2)
+    assert service.started.wait(WAIT_MS / 1000)
     window.cleanup_before_quit()
 
     assert window.thread_pool.waitForDone(WAIT_MS)
@@ -504,7 +504,7 @@ def test_quit_stops_a_running_playlist_tagging_task(
     window._dashboard_page.playlist_list.setCurrentRow(0)
 
     getattr(window._library_page._tagging_panel, button_name).click()
-    assert service.started.wait(2)
+    assert service.started.wait(WAIT_MS / 1000)
     window.cleanup_before_quit()
 
     assert window.thread_pool.waitForDone(WAIT_MS)
@@ -631,7 +631,7 @@ def test_quit_waits_a_bounded_time_for_a_settings_task_and_logs_it(
     qtbot.addWidget(window)
     window.thread_pool.waitForDone(WAIT_MS)
     window.settings_page.test_connection_button.click()
-    assert started.wait(2)
+    assert started.wait(WAIT_MS / 1000)
 
     try:
         with caplog.at_level(
