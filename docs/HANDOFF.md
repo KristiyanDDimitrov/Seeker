@@ -13,7 +13,7 @@ run), with status in `tasks.json` beside it, changed only through
 ## 1. Current state
 
 - **Released: v0.1.1** (2026-10-26, §247). **Main says 0.2.0**
-  (R13-S10a, §266): version, lock, CHANGELOG `[0.2.0] - 2026-11-03`,
+  (R13-S10a, §266): version, lock, CHANGELOG `[0.2.0] - 2026-11-04`,
   README → License "LGPL-2.1-or-later". Not tagged. CHANGELOG's
   `[Unreleased]` holds R14-S1's two CI bullets; they are not 0.2.0's.
   H2 added none (test-only).
@@ -44,11 +44,11 @@ Status: `python3
 ## 3. Next steps
 
 1. **R13-S9 (lead) tags v0.2.0** once `check`, `check-intel` and
-   `audit` are green on main's HEAD (H2's merge) and `build.yml` is
+   `audit` are green on main's HEAD and `build.yml` is
    green on a commit with HEAD's `pyproject.toml`, `uv.lock` and
-   `packaging/`. **First re-date CHANGELOG's `[0.2.0] - 2026-11-03`
-   to the tag day** (RELEASING: "today's date"; today is 2026-11-04
-   or later). R14-S1's bullets stay in `[Unreleased]`. Tag local only;
+   `packaging/`. CHANGELOG's `[0.2.0]` is re-dated 2026-11-04 (RELEASING:
+   "today's date"); **if the tag lands later, re-date it again
+   first**. R14-S1's bullets stay in `[Unreleased]`. Tag local only;
    record its sha here.
 2. R13-S9b builds both images from the tag and replaces the release
    notes' placeholders `SHA256_ARM64_PLACEHOLDER` and

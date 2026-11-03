@@ -16,7 +16,7 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `windows-2025`, which does not fail the run until the suite passes
   there.
 
-## [0.2.0] - 2026-11-03
+## [0.2.0] - 2026-11-04
 
 ### Added
 
