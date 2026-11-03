@@ -241,9 +241,10 @@ _URL_SCHEMES = ("http", "https", "mailto", "file")
 
 @pytest.fixture(autouse=True, scope="session")
 def _refuse_desktop_urls(qapp, _desktop_attempts):
-    """Takes every link a test hands `QDesktopServices.openUrl`, which a
-    label with `setOpenExternalLinks(True)` calls on a click, without
-    `subprocess`. Qt asks a scheme's handler before the platform:
+    """Takes every link of `_URL_SCHEMES` a test hands
+    `QDesktopServices.openUrl` (a `setOpenExternalLinks(True)` label's
+    click), which opens it without `subprocess`, out of the Popen
+    guard's sight. Qt asks a scheme's handler before the platform:
     observed 2026-11-03, offscreen, tests/test_headless.py's link test
     logged "This plugin does not support QPlatformServices::openUrl()"
     without one and records each link, logging nothing, with it."""
