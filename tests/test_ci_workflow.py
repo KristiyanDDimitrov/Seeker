@@ -123,14 +123,16 @@ def test_check_windows_runs_the_suite_alone():
     `-rfEs` lists each skip's reason beside the failures and errors,
     and a test still running after five minutes dumps every thread's
     stack, so a run the job's timeout kills still names the test that
-    hung.
+    hung. A module that cannot import on Windows is one ERROR and the
+    rest of the suite still runs; without the flag pytest stops at
+    collection, and the failure list is that one line.
     """
     runs = _runs(_job("check-windows"))
 
     assert runs == [
         "uv sync --locked --all-extras --dev",
         "uv run pytest -q -rfEs --durations=25 --durations-min=1.0"
-        " -o faulthandler_timeout=300",
+        " -o faulthandler_timeout=300 --continue-on-collection-errors",
     ]
 
 
