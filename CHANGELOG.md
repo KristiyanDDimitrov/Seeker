@@ -16,14 +16,14 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   README's Install section says which to download. The Intel app carries
   its own copy of libchromaprint 1.6.2, built from source (Homebrew
   builds no Intel bottles), so Duplicates needs no `brew install
-  chromaprint` there. An M4A file still needs ffmpeg, in either app:
-  the bundled audio library cannot open it. A smoke test of the built
-  app found libchromaprint on GitHub's Intel runner after the job
+  chromaprint` there. An M4A or AAC file still needs ffmpeg, in either
+  app: the bundled audio library cannot open it. A smoke test of the
+  built app found libchromaprint on GitHub's Intel runner after the job
   deleted the build machine's own copy (Build run 41537431447), though
   not yet on an Intel Mac of anyone's own. The Apple silicon app still
-  uses Homebrew's. Every build now
-  checks its own bundle: each binary carries the build's architecture
-  and none needs a newer macOS than 15.0.
+  uses Homebrew's. Every build now checks its own bundle: each binary
+  carries the build's architecture and none needs a newer macOS than
+  15.0.
 - **Help and About name the architecture Seeker runs as:** Apple
   silicon, Intel, or the Intel build on Apple silicon (Rosetta), with
   a pointer to the faster Apple silicon download.
