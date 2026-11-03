@@ -114,6 +114,26 @@ class _RealDockerRefused(FileNotFoundError):
     fixture below fails the test."""
 
 
+class _DesktopSpawnRefused(FileNotFoundError):
+    """Raised in place of a program that opens something on the
+    desktop, as a missing executable would be; the fixture below fails
+    the test either way."""
+
+
+# What opens something on the desktop: src/'s own `open`, `explorer`,
+# `xdg-open` and `cmd /c start`, and the `osascript` that
+# `webbrowser.open` runs on macOS. tests/test_headless.py ties this to
+# every program src/ spawns.
+_DESKTOP_PROGRAMS = frozenset({"open", "osascript", "explorer", "xdg-open"})
+
+
+def _opens_on_the_desktop(argv):
+    program = Path(argv[0]).name
+    return program in _DESKTOP_PROGRAMS or (
+        program == "cmd" and "start" in (word.casefold() for word in argv[1:])
+    )
+
+
 @pytest.fixture(scope="session")
 def _docker_inspect_allowed():
     """Set while a test that opted in through
@@ -138,8 +158,11 @@ def _desktop_attempts():
 
 
 @pytest.fixture(autouse=True, scope="session")
-def _refuse_real_spawns(_docker_inspect_allowed, _docker_attempts):
-    """Refuses every `docker` command any test tries to run.
+def _refuse_real_spawns(
+        _docker_inspect_allowed, _docker_attempts, _desktop_attempts,
+):
+    """Refuses every `docker` command any test tries to run, and every
+    program that opens something on the desktop.
 
     A test once reached the real `bring_up_slskd` and recreated the
     user's slskd container against pytest's temporary directories
@@ -148,12 +171,22 @@ def _refuse_real_spawns(_docker_inspect_allowed, _docker_attempts):
     place for the whole session, so a worker outliving its test is
     refused too. A test that fakes `subprocess.run` never reaches it.
     `docker inspect`, which only reads, runs for a test that opted in.
+    A test that reaches `open`, `osascript` and the like would show a
+    folder, a browser or Docker Desktop on the desktop it runs on.
     """
     real_popen = subprocess.Popen
 
     class RefusingPopen(real_popen):
         def __init__(self, args, *pargs, **kwargs):
             argv = shlex.split(args) if isinstance(args, str) else list(args)
+            if argv and _opens_on_the_desktop(
+                    [os.fsdecode(part) for part in argv],
+            ):
+                command = " ".join(os.fsdecode(part) for part in argv)
+                _desktop_attempts.append(command)
+                raise _DesktopSpawnRefused(
+                    f"tests never open anything on the desktop: {command!r}"
+                )
             if (
                     argv
                     and Path(os.fsdecode(argv[0])).name == "docker"
@@ -196,6 +229,21 @@ def _no_real_docker(_docker_attempts):
     assert tried == [], (
         "a test tried to run the real docker; fake detect_docker_state, "
         f"bring_up_slskd or subprocess.run instead: {tried}"
+    )
+
+
+@pytest.fixture(autouse=True)
+def _nothing_opened_on_the_desktop(_desktop_attempts):
+    """Fails the test that tried to open something on the desktop (or,
+    for a worker that outlived its own test, the one running when it
+    tried)."""
+    _desktop_attempts.clear()
+    yield
+    tried = list(_desktop_attempts)
+    _desktop_attempts.clear()
+    assert tried == [], (
+        "a test tried to open something on the desktop; fake "
+        f"subprocess.run or webbrowser.open instead: {tried}"
     )
 
 
