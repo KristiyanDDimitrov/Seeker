@@ -28,3 +28,7 @@ tools/.screens/
 # Kris's own folder of documents exported from Claude sessions; never
 # part of the repository, and RELEASING.md wants a clean tree.
 Claude outputs/
+# Kris's personal documents (launch plans, interview notes) are PDFs
+# kept beside the code; one was swept into a commit and pushed. The
+# repository tracks no PDF of its own.
+*.pdf
