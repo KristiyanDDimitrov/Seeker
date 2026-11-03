@@ -16,10 +16,13 @@ linked to the HISTORY entry holding its investigation;
 - **Tests run the real theme:** `conftest.py` applies `apply_theme()`
   session-wide, so `grab()` assertions see the shipped style.
   [§103](../docs/history/072-107.md#103)
-- **Local runs use Cocoa; CI uses `QT_QPA_PLATFORM=offscreen`** (an
-  800×800 screen that fits restored windows to it). Reproduce a
-  CI-only failure with `QT_QPA_PLATFORM=offscreen uv run pytest
-  <test>`. Offscreen never fires `colorSchemeChanged`, and
+- **Every run is offscreen unless its caller names a platform.**
+  `conftest.py` sets `QT_QPA_PLATFORM=offscreen` before any
+  `QApplication` exists (an 800×800 screen that fits restored windows
+  to it), so a bare `uv run pytest`, CI and every process a test
+  starts agree. `QT_QPA_PLATFORM=cocoa uv run pytest` puts the windows
+  on the desktop; only Kris runs that, by typing it. Offscreen never
+  fires `colorSchemeChanged`, and
   `processEvents()` does not flush deferred deletes:
   `QCoreApplication.sendPostedEvents(None,
   QEvent.Type.DeferredDelete)`. A hidden `QWidgetItem`'s
@@ -44,11 +47,22 @@ linked to the HISTORY entry holding its investigation;
   runs the read-only `docker inspect` (`allow_real_docker_inspect`);
   anything else of docker's stays refused there too.
   [§213](../docs/history/211-240.md#213), [§243](../docs/history/241-270.md#243)
+- **Nothing a test runs opens on the desktop.** The same guard refuses
+  `open`, `osascript` (which `webbrowser.open` runs on macOS through
+  `os.popen`), `explorer`, `xdg-open` and `cmd /c start`, and fails the
+  test that tried: fake `subprocess.run` or `webbrowser.open`.
+  `tests/test_headless.py` reads every `subprocess` spawn in `src/` and
+  runs each against a stand-in; a new program fails it until it joins
+  conftest's `_DESKTOP_PROGRAMS` or the test's `OPENS_NOTHING`, with
+  what it does.
 - **Skips:** `tests/test_stress_e2e.py` (`requires_stress_opt_in`) runs
   only with `SEEKER_RUN_STRESS_TEST=1`: it drives real Spotify, slskd and
   the X9 Pro for minutes and mutates the production DB. Run it
-  deliberately after worker, timer or connection lifecycle changes. CI
-  skips 29: that one plus 28 `@requires_x9_pro`.
+  deliberately after worker, timer or connection lifecycle changes. The
+  28 real-file tests take `requires_x9_pro` from `tests/x9_pro_gate.py`
+  and run only with `SEEKER_RUN_X9_PRO_TESTS=1` and the drive mounted:
+  macOS guards a removable volume, and without the opt-in nothing looks
+  at it. A bare run, like CI, skips 29: those 28 and the stress test.
   [§32](../docs/history/032-046.md#32)
 - **A test needing a real libchromaprint takes `requires_chromaprint`
   from `tests/chromaprint_gate.py`**, never its own `skipif`. The skip

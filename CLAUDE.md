@@ -218,14 +218,14 @@ short, under `src/seeker/`:
 uv sync              # install deps
 uv run seeker         # run the CLI
 uv run seeker-ui       # run the GUI (PySide6) — onboarding wizard on first launch
-uv run pytest         # run tests
+uv run pytest         # run tests, offscreen; Kris alone prefixes QT_QPA_PLATFORM=cocoa
 uv run mypy --strict src/  # type check — must stay clean
 uv run ruff check src tests tools  # lint — CI's exact gate, 0 findings
 uv run python tools/screenshots.py  # every screen, both themes -> tools/.screens/
 # x86_64 under Rosetta (shares the real data folders, BRIEF §0.5; HISTORY §255):
 uv python install cpython-3.13.15-macos-x86_64-none
 UV_PROJECT_ENVIRONMENT=.venv-x86_64 uv sync --locked --python cpython-3.13.15-macos-x86_64-none
-QT_QPA_PLATFORM=offscreen .venv-x86_64/bin/python -m pytest -q
+.venv-x86_64/bin/python -m pytest -q
 ```
 
 ## Standing facts and gotchas
@@ -300,7 +300,9 @@ Hard-won, all five stay.
    `_build_info_generated.py`, say) in place.
 3. **The failure count is a tracked number.** Quote the `pytest`
    summary line and name every failing test, every time. A changed
-   count is a regression to diagnose, never a new baseline.
+   count is a regression to diagnose, never a new baseline. The
+   tracked count is a bare run's, which is offscreen; a Cocoa run's
+   is compared only with another Cocoa run's.
 4. **A comment asserting platform or framework behaviour cites an
    observation or says UNVERIFIED.** Unmarked confident claims have
    burned this codebase twice (the `:last-child` selector; a macOS
