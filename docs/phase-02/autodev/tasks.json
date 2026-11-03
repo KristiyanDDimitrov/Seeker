@@ -32,7 +32,7 @@
       "history": null,
       "commits": [],
       "actual_peak_k": null,
-      "status": "todo",
+      "status": "done",
       "model": "opus",
       "effort": "high",
       "attempts": 0,
@@ -40,7 +40,20 @@
       "worker_id": null,
       "agent_id": null,
       "branch": null,
-      "blocker": null
+      "blocker": null,
+      "updated": "2026-11-03T11:39:35Z",
+      "answers": [
+        {
+          "at": "2026-11-03T11:37:25Z",
+          "answer": "Kris 2026-11-03: #5/#7/#8 stay open; after v0.2.0 a new row (DEP-1) reads each upgrade with upstream-reader, then applies them. PR #1 and removing the two merged r13 branches from origin: Kris does both himself and says Done.",
+          "question": "PR #1 is on main (2ea53c2) but the lead may not close it (auto mode denied gh pr close) or delete origin r13/S7, r13/S7c (hook refuses branch deletion): Kris runs them? And #5/#7/#8 are NOT on main: Dependabot moved them on 2026-11-02 to mypy 2.4.1, ruff 0.17.3, platformdirs 4.14.0: leave open until after v0.2.0, close, or merge before the tag?"
+        },
+        {
+          "at": "2026-11-03T11:39:35Z",
+          "answer": "Done (Kris 2026-11-03): PR #1 closed, origin r13/S7 and r13/S7c removed; verified by gh pr view and git ls-remote.",
+          "question": "Close PR #1 (on main as 2ea53c2) and remove origin r13/S7, r13/S7c (both merged into origin/main) from the prompt with the ! prefix, then say Done"
+        }
+      ]
     },
     {
       "id": "H1",
@@ -57,15 +70,17 @@
       "history": null,
       "commits": [],
       "actual_peak_k": null,
-      "status": "todo",
+      "status": "doing",
       "model": "opus",
       "effort": "xhigh",
-      "attempts": 0,
-      "review_rounds": 0,
-      "worker_id": null,
-      "agent_id": null,
-      "branch": null,
-      "blocker": null
+      "attempts": 1,
+      "review_rounds": 1,
+      "worker_id": "a12ba60fe9f01f418",
+      "agent_id": "a12ba60fe9f01f418",
+      "branch": "p02/H1",
+      "blocker": null,
+      "updated": "2026-11-03T13:48:42Z",
+      "kris_decision": "Kris (2026-11-03): keep 564421f; the 28 X9 Pro tests stay opt-in behind SEEKER_RUN_X9_PRO_TESTS=1, and a bare run skips them (baseline 2568 passed, 29 skipped)."
     },
     {
       "id": "H2",
@@ -106,18 +121,25 @@
       "split_point": "After the version commit",
       "notes": "docs/phase-02/autodev/SESSION-PLAN.md -> Row notes (R13-S10a)",
       "kris": null,
-      "history": null,
-      "commits": [],
-      "actual_peak_k": null,
-      "status": "todo",
+      "history": "§266",
+      "commits": [
+        "4ffc6f1",
+        "601973d",
+        "76e2eef",
+        "e1f592b",
+        "7f1ae6b"
+      ],
+      "actual_peak_k": 85,
+      "status": "done",
       "model": "opus",
       "effort": "high",
-      "attempts": 0,
-      "review_rounds": 0,
-      "worker_id": null,
-      "agent_id": null,
-      "branch": null,
-      "blocker": null
+      "attempts": 1,
+      "review_rounds": 2,
+      "worker_id": "a62d81d2bed98c809",
+      "agent_id": "ab31e2b14fc3df569",
+      "branch": "p02/R13-S10a",
+      "blocker": null,
+      "updated": "2026-11-03T13:53:09Z"
     },
     {
       "id": "R13-S9",
@@ -241,7 +263,9 @@
       "worker_id": null,
       "agent_id": null,
       "branch": null,
-      "blocker": null
+      "blocker": null,
+      "note": "From R13-S10a's round-2 review: README → Install says the Intel download carries its own chromaprint, but not that an M4A or AAC file still needs ffmpeg (a heavy Homebrew source build on Intel, docs/packaging.md:156). Add one sentence when un-gating.",
+      "updated": "2026-11-03T13:48:42Z"
     },
     {
       "id": "R14-S1",
@@ -258,15 +282,43 @@
       "history": null,
       "commits": [],
       "actual_peak_k": null,
-      "status": "todo",
+      "status": "doing",
       "model": "opus",
       "effort": "max",
+      "attempts": 1,
+      "review_rounds": 0,
+      "worker_id": "a2f629926c967ad19",
+      "agent_id": "a2f629926c967ad19",
+      "branch": "p02/R14-S1",
+      "blocker": null,
+      "updated": "2026-11-03T11:34:13Z"
+    },
+    {
+      "id": "DEP-1",
+      "title": "Dependabot #5, #7, #8 after v0.2.0: mypy 2.4.1, ruff 0.17.3, platformdirs 4.14.0, each read, then applied",
+      "type": "behaviour",
+      "risk": [],
+      "executes": "Kris answer 2026-11-03 on GH-1",
+      "depends_on": [
+        "R13-S10"
+      ],
+      "executor": "worker",
+      "est_work_k": 25,
+      "split_point": "After the first upgrade",
+      "notes": "Before spawning, the lead runs one upstream-reader per PR (#5, #7, #8) and passes the verdicts in the prompt. The worker applies each bump on its branch (pyproject constraint + uv lock, ruff <0.18), one commit each, fixes any new ruff 0.17 finding without ruff format or --fix with a narrowed --select, and runs the full check plus the x86_64 suite. Dependabot closes each PR itself once main carries its version; never touch GitHub.",
+      "kris": null,
+      "history": null,
+      "commits": [],
+      "actual_peak_k": null,
+      "status": "todo",
       "attempts": 0,
       "review_rounds": 0,
       "worker_id": null,
       "agent_id": null,
       "branch": null,
-      "blocker": null
+      "blocker": null,
+      "model": "opus",
+      "effort": "xhigh"
     },
     {
       "id": "R14-S2",

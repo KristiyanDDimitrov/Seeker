@@ -69,6 +69,12 @@ investigation; `docs/history/README.md` resolves any `§N`.
   failing the build without it. `chromaprint_available` proves the
   bundle only where no other copy loads.
   [§262](../docs/history/241-270.md#262)
+- **Duplicates on an M4A or AAC file needs ffmpeg in either app.** The
+  bundled libsndfile 1.2.2 (soundfile 0.14.0) opens neither MP4 audio
+  (AAC or ALAC) nor raw ADTS `.aac` (observed 2026-11-03 with
+  `afconvert` files, arm64 and x86_64), so `fingerprint.py` falls back
+  to ffmpeg on PATH. The Intel app's libchromaprint spares chromaprint
+  only. [§266](../docs/history/241-270.md#266)
 - **Intel Macs are pinned to numba < 0.63, llvmlite < 0.46, numpy <
   2.4** (the last x86_64 wheels) by marker-scoped `[tool.uv]
   constraint-dependencies`, which fork `uv.lock`; permanent.
