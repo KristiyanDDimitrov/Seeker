@@ -1,5 +1,6 @@
 """The Intel CI job exists, is blocking, and cannot hide a library bug;
-`check` type-checks the Windows branches too.
+`check` type-checks the Windows branches too, and a Windows job runs
+the suite without failing the run until the suite passes there.
 
 PyYAML is not a dependency, so the workflow is read as text, one job
 per top-level key under `jobs:`.
@@ -13,10 +14,14 @@ WORKFLOW = (
 ).read_text()
 
 
-def _job(name: str) -> str:
+def _jobs() -> dict[str, str]:
     jobs = WORKFLOW.split("\njobs:\n", 1)[1]
     parts = re.split(r"^  (\w[\w-]*):\n", jobs, flags=re.MULTILINE)
-    return dict(zip(parts[1::2], parts[2::2], strict=True))[name]
+    return dict(zip(parts[1::2], parts[2::2], strict=True))
+
+
+def _job(name: str) -> str:
+    return _jobs()[name]
 
 
 def _uses(job: str) -> list[str]:
@@ -76,6 +81,53 @@ def test_check_type_checks_the_win32_branches_too():
 
     assert "uv run mypy --strict src/" in runs
     assert "uv run mypy --strict --platform win32 src/" in runs
+
+
+def test_check_windows_runs_on_the_windows_image_offscreen_with_a_timeout():
+    job = _job("check-windows")
+
+    assert "runs-on: windows-2025" in job
+    assert "QT_QPA_PLATFORM: offscreen" in job
+    assert re.search(r"timeout-minutes: \d+", job)
+
+
+def test_only_check_windows_may_fail_without_failing_the_run():
+    """The suite has never passed on Windows. The change that makes it
+    pass deletes the job's `continue-on-error` and this exception.
+    """
+    jobs = _jobs()
+    windows = jobs.pop("check-windows")
+
+    assert re.search(r"^    continue-on-error: true$", windows, re.MULTILINE)
+    # Every other job, a future one too; the jobs named here only prove
+    # the parse found them, so the sweep cannot pass over nothing.
+    assert {"check", "check-intel", "audit"} <= jobs.keys()
+    for name, job in jobs.items():
+        assert "continue-on-error" not in job, name
+
+
+def test_check_windows_runs_the_suite_alone():
+    """ruff, both mypy runs and the coverage gate run in `check`.
+    `-rfEs` lists each skip's reason beside the failures and errors,
+    and a test still running after five minutes dumps every thread's
+    stack, so a run the job's timeout kills still names the test that
+    hung.
+    """
+    runs = re.findall(r"- run: (.*)", _job("check-windows"))
+
+    assert runs == [
+        "uv sync --locked --all-extras --dev",
+        "uv run pytest -q -rfEs --durations=25 --durations-min=1.0"
+        " -o faulthandler_timeout=300",
+    ]
+
+
+def test_check_windows_pins_the_same_actions_as_check():
+    assert _uses(_job("check-windows")) == _uses(_job("check"))
+
+
+def test_check_windows_is_skipped_on_the_weekly_schedule_only():
+    assert "if: github.event_name != 'schedule'" in _job("check-windows")
 
 
 def test_check_intel_is_skipped_on_the_weekly_schedule_only():

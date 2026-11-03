@@ -12,6 +12,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **CI type-checks the Windows code paths:** `check` also runs
   `mypy --strict --platform win32 src/`; a run on macOS never checks
   what sits under `if sys.platform == "win32":`.
+- **CI runs the suite on Windows:** a `check-windows` job on
+  `windows-2025`, which does not fail the run until the suite passes
+  there.
 
 ## [0.2.0] - 2026-11-03
 
