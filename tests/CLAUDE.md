@@ -66,3 +66,13 @@ linked to the HISTORY entry holding its investigation;
   PATH or an empty PATH, as `test_duplicate_service.py` does. The
   `requires_ffmpeg` tests run in the arm64 `check` job only.
   [§262](../docs/history/241-270.md#262)
+- **A test that ends with a worker in flight fails the next test, not
+  itself:** the worker's Docker call lands between the next test's guard
+  and its own fake, so the guard names the victim. Look at the test
+  *before* the one that failed. `fakes.settle_workers(window)` waits and
+  delivers results (`_show_short_page` calls it); `wait_for_workers`
+  waits without processing events. [§264](../docs/history/241-270.md#264)
+- **A Settings test that starts slskd fakes `check_slskd_web_login`**
+  (`_fake_successful_bring_up` does): a start saves the default base URL
+  127.0.0.1:5030, where a developer's own slskd listens, and the page
+  POSTs a login there. [§264](../docs/history/241-270.md#264)

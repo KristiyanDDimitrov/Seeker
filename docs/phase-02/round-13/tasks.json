@@ -161,6 +161,14 @@
       "status": "done", "commits": ["e875cef", "085ff27"], "history": 261
     },
     {
+      "id": "S4b", "title": "A runner-only failure of check-intel: a Settings test's unwaited worker failed the next test's Docker guard",
+      "type": "investigation", "executes": "S4's split rule: a runner-only failure becomes its own row (added by the wave 4 lead)", "depends_on": ["S4"], "ask": false,
+      "gate": null, "model": null, "executor": "worker", "wave": 4,
+      "est_work_k": 40, "est_peak_k": 94, "actual_peak_k": 120,
+      "split_point": null,
+      "status": "done", "commits": ["5a8439b", "f4619ff"], "history": 264
+    },
+    {
       "id": "S5", "title": "seeker-ui --smoke-test, passing unfrozen (PF-06)",
       "type": "feature", "executes": "BRIEF.md §5 steps 1-2", "depends_on": ["S1"], "ask": false,
       "gate": null, "model": null, "executor": "worker", "wave": 2,
