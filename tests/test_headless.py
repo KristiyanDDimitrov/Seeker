@@ -30,20 +30,37 @@ OPENS_NOTHING = {
 # What starts a program, by the module it is reached through. The sweep
 # reads the program of a `subprocess` spawn whose argument list starts
 # with literal words; every other use of these names is unreadable.
-_MODULE_SPAWNS = {
-    "subprocess": {"run", "Popen", "call", "check_call", "check_output"},
-    "os": {
-        "system", "popen", "startfile", "posix_spawn", "posix_spawnp",
-        "execl", "execle", "execlp", "execlpe",
-        "execv", "execve", "execvp", "execvpe",
-        "spawnl", "spawnle", "spawnlp", "spawnlpe",
-        "spawnv", "spawnve", "spawnvp", "spawnvpe",
-    },
+_OS_SPAWNS = {
+    "system", "popen", "startfile", "posix_spawn", "posix_spawnp",
+    "execl", "execle", "execlp", "execlpe",
+    "execv", "execve", "execvp", "execvpe",
+    "spawnl", "spawnle", "spawnlp", "spawnlpe",
+    "spawnv", "spawnve", "spawnvp", "spawnvpe",
+    "_execvpe", "_spawnvef",
 }
-# Names that start a program whatever they are reached through.
+_MODULE_SPAWNS = {
+    "subprocess": {
+        "run", "Popen", "call", "check_call", "check_output",
+        "getoutput", "getstatusoutput", "_fork_exec",
+    },
+    # `posix` and `nt` are the modules `os` re-exports them from.
+    "os": _OS_SPAWNS, "posix": _OS_SPAWNS, "nt": _OS_SPAWNS,
+    # `pty.spawn` forks and runs `os.execlp` in the child.
+    "pty": {"spawn"},
+}
+# Modules any import of which is unreadable: the C cores `subprocess`
+# and `multiprocessing` start processes through, and `multiprocessing`
+# (with `ProcessPoolExecutor`, below), whose child on macOS is a fresh
+# interpreter started through `_posixsubprocess.fork_exec`, never
+# `Popen`, running src/ code without conftest (CPython 3.13.15's
+# multiprocessing/context.py and util.py, read 2026-11-03).
+_UNGUARDED_MODULES = {"multiprocessing", "_posixsubprocess", "_winapi"}
+# Names that start a program, or open something on the desktop,
+# whatever they are reached through: Qt's, asyncio's and Cocoa's.
 _ANY_SPAWNS = {
     "QProcess", "create_subprocess_exec", "create_subprocess_shell",
-    "subprocess_exec", "subprocess_shell",
+    "subprocess_exec", "subprocess_shell", "ProcessPoolExecutor",
+    "NSWorkspace", "NSTask", "NSAppleScript",
 }
 
 
@@ -74,19 +91,24 @@ def _literal_program(call: ast.Call) -> tuple[str, ...]:
 
 def _binds_a_spawn(node: ast.Import | ast.ImportFrom) -> bool:
     """Whether an import puts a spawn, or a module of them, under a
-    name the sweep does not follow: `import subprocess as sp`, `from
+    name the sweep does not follow (`import subprocess as sp`, `from
     subprocess import Popen`, `from os import *`, `from asyncio import
-    create_subprocess_exec`. `import subprocess`, `from os import path`
-    and `from subprocess import PIPE` bind nothing that starts a
-    program."""
+    create_subprocess_exec`), or imports an unguarded module (`import
+    multiprocessing`, `from multiprocessing.pool import Pool`).
+    `import subprocess`, `from os import path` and `from subprocess
+    import PIPE` bind nothing that starts a program."""
     if isinstance(node, ast.Import):
         return any(
-            alias.name in _MODULE_SPAWNS
-            and alias.asname not in (None, alias.name)
+            alias.name.partition(".")[0] in _UNGUARDED_MODULES
+            or (
+                alias.name in _MODULE_SPAWNS
+                and alias.asname not in (None, alias.name)
+            )
             for alias in node.names
         )
-    spawns = _MODULE_SPAWNS.get(node.module or "", set())
-    return any(
+    module = node.module or ""
+    spawns = _MODULE_SPAWNS.get(module, set())
+    return module.partition(".")[0] in _UNGUARDED_MODULES or any(
         alias.name in spawns | _ANY_SPAWNS | _MODULE_SPAWNS.keys()
         or (alias.name == "*" and bool(spawns))
         for alias in node.names
@@ -99,12 +121,21 @@ def _commands_src_spawns(
     """Every `subprocess` spawn in the modules under `root`, as the
     literal words its argument list starts with (`("docker",
     "inspect")` for `["docker", "inspect", name, ...]`), and where they
-    reach a spawn the sweep cannot read: a computed command, `os`'s
-    spawns, an alias, a `from` import, the module or function handed
-    on as a value, `asyncio`'s and Qt's. It reads source, so a module
-    imported by a string (`importlib.import_module("subprocess")`)
-    passes it; a library's own spawn (webbrowser's `osascript`) is
-    conftest's guard's, at run time."""
+    reach a spawn the sweep cannot read: a computed command; `os`'s,
+    `pty`'s, `asyncio`'s, Qt's or Cocoa's spawns; an alias, a `from`
+    import, the module or function handed on as a value; an unguarded
+    module.
+
+    What it passes opens nothing unseen: `os.fork`, `os.forkpty` and
+    `pty.fork` start no program, and their child keeps conftest's
+    guard and needs a spawn above to start one; a library's own spawn
+    (webbrowser's `osascript`) reaches `Popen` at run time, where the
+    guard refuses it. What it cannot see, since it reads names in
+    source: a module imported by a string
+    (`importlib.import_module("subprocess")`), and a C function called
+    through ctypes (libc's `system`); src/ calls libc's
+    `sysctlbyname` and libchromaprint that way, nothing that opens
+    anything."""
     commands: set[tuple[str, ...]] = set()
     unreadable: list[str] = []
     for path in sorted(root.rglob("*.py")):
@@ -279,6 +310,51 @@ _HIDDEN_SPAWNS = {
     "qprocess-attribute": (
         "from PySide6 import QtCore\n"
         "QtCore.QProcess.startDetached('open', ['/'])\n"
+    ),
+    "getoutput": "import subprocess\nsubprocess.getoutput('qlmanage -p x')\n",
+    "getstatusoutput": (
+        "from subprocess import getstatusoutput\ngetstatusoutput('open /')\n"
+    ),
+    "pty": "import pty\npty.spawn(['open', '/'])\n",
+    "posix": "import posix\nposix.system('open /')\n",
+    "private": "import os\nos._execvpe('open', ['open', '/'])\n",
+    "fork-exec": (
+        "from _posixsubprocess import fork_exec\nfork_exec(['open', '/'])\n"
+    ),
+    "multiprocessing": (
+        "import multiprocessing\n"
+        "import webbrowser\n"
+        "multiprocessing.Process(\n"
+        "    target=webbrowser.open, args=['https://example.com/'],\n"
+        ").start()\n"
+    ),
+    "multiprocessing-from-import": (
+        "from multiprocessing.pool import Pool\n"
+        "import webbrowser\n"
+        "Pool().map(webbrowser.open, ['https://example.com/'])\n"
+    ),
+    "process-pool": (
+        "import concurrent.futures\n"
+        "import webbrowser\n"
+        "concurrent.futures.ProcessPoolExecutor().submit(\n"
+        "    webbrowser.open, 'https://example.com/',\n"
+        ")\n"
+    ),
+    "nsworkspace": (
+        "from AppKit import NSURL, NSWorkspace\n"
+        "NSWorkspace.sharedWorkspace().openURL_(NSURL.fileURLWithPath_('/'))\n"
+    ),
+    "nstask": (
+        "import Foundation\n"
+        "Foundation.NSTask.launchedTaskWithLaunchPath_arguments_(\n"
+        "    '/usr/bin/open', ['/'],\n"
+        ")\n"
+    ),
+    "nsapplescript": (
+        "from Foundation import NSAppleScript\n"
+        "NSAppleScript.alloc().initWithSource_(\n"
+        "    'open location \"https://example.com/\"',\n"
+        ").executeAndReturnError_(None)\n"
     ),
 }
 
