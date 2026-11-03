@@ -571,7 +571,7 @@ def test_quit_waits_a_bounded_time_and_logs_work_still_running(
     monkeypatch.setattr(window_lifecycle, "QUIT_WAIT_MS", 200)
     window = MainWindow(FakeApplication())
     qtbot.addWidget(window)
-    window.thread_pool.waitForDone(WAIT_MS)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     release = threading.Event()
     window.thread_pool.start(_UnstoppableTask(release))
 
@@ -582,7 +582,7 @@ def test_quit_waits_a_bounded_time_and_logs_work_still_running(
             window.cleanup_before_quit()
     finally:
         release.set()
-        window.thread_pool.waitForDone(WAIT_MS)
+        assert window.thread_pool.waitForDone(WAIT_MS)
 
     assert (
         "cleanup_before_quit: 1 task(s) still running after 0.2s" in caplog.text
@@ -593,7 +593,7 @@ def test_quit_waits_for_stopped_work_to_end(qtbot, monkeypatch, caplog):
     force_tray_available(monkeypatch, True)
     window = MainWindow(FakeApplication())
     qtbot.addWidget(window)
-    window.thread_pool.waitForDone(WAIT_MS)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     release = threading.Event()
     window.thread_pool.start(_UnstoppableTask(release))
     # Ends within the bound, as a stopped fingerprint run does.
@@ -629,7 +629,7 @@ def test_quit_waits_a_bounded_time_for_a_settings_task_and_logs_it(
     application.slskd_api_key = "key"
     window = MainWindow(application)
     qtbot.addWidget(window)
-    window.thread_pool.waitForDone(WAIT_MS)
+    assert window.thread_pool.waitForDone(WAIT_MS)
     window.settings_page.test_connection_button.click()
     assert started.wait(WAIT_MS / 1000)
 
@@ -640,8 +640,8 @@ def test_quit_waits_a_bounded_time_for_a_settings_task_and_logs_it(
             window.cleanup_before_quit()
     finally:
         release.set()
-        window.thread_pool.waitForDone(WAIT_MS)
-        window.settings_page.thread_pool.waitForDone(WAIT_MS)
+        assert window.thread_pool.waitForDone(WAIT_MS)
+        assert window.settings_page.thread_pool.waitForDone(WAIT_MS)
 
     assert (
         "cleanup_before_quit: 1 task(s) still running after 0.2s" in caplog.text

@@ -58,7 +58,7 @@ def main() -> None:
             on_finished=make_on_finished(i), on_error=make_on_error(i),
         )
 
-    pool.waitForDone(15_000)
+    assert pool.waitForDone(15_000)
 
     # waitForDone() only waits for run() to return (i.e. emit() to have
     # been called) -- it does not pump the main thread's event loop,

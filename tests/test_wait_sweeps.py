@@ -237,6 +237,11 @@ def _bound_offenders(tree: ast.Module, kind: str) -> list[str]:
     called = {
         id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)
     }
+    # `waitForDone` reports a timeout only through its result, so one
+    # standing as its own statement lets a hung worker pass.
+    discarded = {
+        id(node.value) for node in ast.walk(tree) if isinstance(node, ast.Expr)
+    }
 
     for node in ast.walk(tree):
         if _is_wait_by_name(node) or (
@@ -254,6 +259,9 @@ def _bound_offenders(tree: ast.Module, kind: str) -> list[str]:
                 and node.func.attr in _CEILING_WAITS
         ):
             bound, named, floor = _bound_of(node), "WAIT_MS", WAIT_MS
+
+            if node.func.attr == "waitForDone" and id(node) in discarded:
+                offenders.append(f"{node.lineno} (result unchecked)")
         elif _is_asserted_event_wait(node):
             bound, named = _bound_of(node.test), "WAIT_MS / 1000"
             floor = WAIT_MS / 1000
@@ -355,7 +363,7 @@ def test_the_bound_sweep_fails_a_wait_ms_not_taken_from_fakes():
 
 
 def test_the_bound_sweep_fails_fakes_binding_wait_ms_twice():
-    defined = "WAIT_MS = 10_000\npool.waitForDone(WAIT_MS)\n"
+    defined = "WAIT_MS = 10_000\nassert pool.waitForDone(WAIT_MS)\n"
 
     assert _bound_offenders(ast.parse(defined), "fakes") == []
     assert _bound_offenders(
@@ -384,3 +392,12 @@ def test_the_bound_sweep_passes_an_asserted_event_wait_on_the_bound():
 ])
 def test_the_bound_sweep_fails_an_asserted_event_wait_off_the_bound(wait):
     assert _bound_offenders(ast.parse(_FROM_FAKES + wait), "test")
+
+
+@pytest.mark.parametrize("statement", [
+    "pool.waitForDone(WAIT_MS)",
+    "window.thread_pool.waitForDone(WAIT_MS)",
+])
+def test_the_bound_sweep_fails_a_wait_for_done_left_unchecked(statement):
+    # `waitForDone` reports a timeout only through what it returns.
+    assert _bound_offenders(ast.parse(_FROM_FAKES + statement), "test")

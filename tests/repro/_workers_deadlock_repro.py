@@ -63,7 +63,7 @@ def main() -> None:
 
     windows = [_build_window_with_worker(pool) for _ in range(ITERATIONS)]
 
-    pool.waitForDone(10_000)
+    assert pool.waitForDone(10_000)
     print(f"DONE ({len(windows)} windows)", flush=True)
 
 
