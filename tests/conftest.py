@@ -10,6 +10,11 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
 
+# Before any QApplication exists: a bare run is offscreen, and so is
+# every process a test starts. A platform the caller names wins
+# (`QT_QPA_PLATFORM=cocoa uv run pytest` puts the windows on screen).
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
 
 @pytest.fixture(autouse=True, scope="session")
 def _apply_real_theme(qapp):
