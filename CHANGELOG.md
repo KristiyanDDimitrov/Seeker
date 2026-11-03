@@ -7,6 +7,8 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-03
+
 ### Added
 
 - **An Intel Mac build, `Seeker-Intel.dmg`,** beside `Seeker.dmg`, which
@@ -45,7 +47,6 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   for a week. It never publishes. The Intel job builds libchromaprint
   from a pinned source with `packaging/build_chromaprint.sh`, since
   Homebrew no longer builds Intel bottles.
-
 - **Spotify Premium is named up front.** Spotify runs an app in
   Development Mode, which every Seeker user's own Spotify app is, only
   while its owner has Premium. The setup wizard's Spotify step and the
@@ -54,6 +55,11 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wheels after 0.62.1, so for Intel Macs the lock pins numba 0.62.1,
   llvmlite 0.45.1 and numpy 2.3, each with a macOS x86_64 wheel;
   Apple silicon and Windows keep their versions.
+- **A new SoulSeek setup runs slskd 0.26.2** (0.26.0 before). An
+  existing setup keeps the slskd version it was set up with. Seeker
+  reads slskd's log where 0.26.2 keeps it, falling back to 0.26.0's
+  place, so a wrong SoulSeek password or a login from elsewhere is
+  still reported with either version.
 
 ## [0.1.1] - 2026-10-26
 
@@ -125,6 +131,7 @@ command-line tool (`seeker`) over one shared core.
 - Windows and Linux packaging is written but has never run on real
   hardware.
 
-[Unreleased]: https://github.com/KristiyanDDimitrov/Seeker/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/KristiyanDDimitrov/Seeker/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/KristiyanDDimitrov/Seeker/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/KristiyanDDimitrov/Seeker/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/KristiyanDDimitrov/Seeker/releases/tag/v0.1.0
