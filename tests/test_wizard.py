@@ -1171,13 +1171,19 @@ def test_launch_docker_clicked_failure_shows_manual_instructions(
     assert "manually" in wizard.soulseek_notice.text().lower()
 
 
-def _blocking_connect_spotify(started: threading.Event, calls: list[str]):
+def _blocking_connect_spotify(
+        started: threading.Event, calls: list[str], released: list[bool],
+):
     """A connect_spotify stand-in that waits in the browser the way the
-    real one does, until its cancel event is set."""
+    real one does, until its cancel event is set.
+
+    The wait gives up after 5 s, shorter than `WAIT_MS`, so a test's
+    waits pass whether or not the code set `cancel`: `released` records
+    which, and a test that cancels asserts it is `[True]`."""
     def fake(client_id, force_reauthorize=False, cancel=None):
         calls.append(client_id)
         started.set()
-        cancel.wait(timeout=5.0)
+        released.append(cancel.wait(timeout=5.0))
         raise AuthorizationCancelledError
 
     return fake
@@ -1196,10 +1202,11 @@ def test_quit_ends_the_wait_for_spotify(
     application = make_application(tmp_path, monkeypatch)
     started = threading.Event()
     calls: list[str] = []
+    released: list[bool] = []
     monkeypatch.setattr(
         application,
         "connect_spotify",
-        _blocking_connect_spotify(started, calls),
+        _blocking_connect_spotify(started, calls, released),
     )
     wizard = OnboardingWizard(application, on_complete=lambda: None)
     qtbot.addWidget(wizard)
@@ -1216,6 +1223,7 @@ def test_quit_ends_the_wait_for_spotify(
     qtbot.waitUntil(
         wizard.spotify_authorization_wait.isHidden, timeout=WAIT_MS,
     )
+    assert released == [True]
 
 
 def test_waiting_for_spotify_offers_cancel_and_keeps_connect_disabled(
@@ -1229,10 +1237,11 @@ def test_waiting_for_spotify_offers_cancel_and_keeps_connect_disabled(
     application = make_application(tmp_path, monkeypatch)
     started = threading.Event()
     calls: list[str] = []
+    released: list[bool] = []
     monkeypatch.setattr(
         application,
         "connect_spotify",
-        _blocking_connect_spotify(started, calls),
+        _blocking_connect_spotify(started, calls, released),
     )
 
     wizard = OnboardingWizard(application, on_complete=lambda: None)
@@ -1263,6 +1272,7 @@ def test_waiting_for_spotify_offers_cancel_and_keeps_connect_disabled(
     assert wizard.spotify_status_label.text() == "Authorization cancelled."
     assert wizard.stack.currentIndex() == 0
     assert calls == ["mistyped-client-id"]
+    assert released == [True]
 
 
 def _built_wizard(qtbot, tmp_path, monkeypatch) -> OnboardingWizard:
