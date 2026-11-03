@@ -18,9 +18,10 @@ beside it. Every document: `docs/README.md`.
   `git push origin --delete r13/S7 r13/S7c` is Kris's).
 - **The three numbers (Cocoa):** pytest `2574 passed, 1 skipped`; mypy
   `--strict src/` clean, 149 files; ruff 0.
-- **CI:** the last result I have is run `41550884285` on `826608b`:
-  `check` green, `check-intel` failed one test (the S4c one, now fixed).
-  The run for this push is recorded in section 3, step 1.
+- **CI:** run `41607225022` on `e397410` (the S4c fix): `audit`, `check`
+  and `check-intel` green (`2545 passed, 31 skipped`, 17 m 40 s). The one
+  before it (`41550884285`, `826608b`) failed the test S4c fixed. The push
+  of this handoff starts a 7th Intel run (docs only; find it by SHA).
 
 ## 2. Where we are
 
@@ -39,10 +40,10 @@ launch reads Kris's real data) is Kris's.
 
 ## 3. Next steps
 
-1. **Read the 6th Intel run** (`gh run list --commit $(git rev-parse HEAD)`,
-   full SHA; record its id here). Its `--durations` list answers S4c's open
-   question: tests taking over 1 s on the runner that take ms locally mean
-   it stalls. If it fails again, read the failing test, not this note.
+1. **Read the 7th Intel run** (`gh run list --commit $(git rev-parse HEAD)`,
+   full SHA). The 6th's `--durations` list (§265) shows UI tests 5 to 10
+   times slower than on the Mac, evenly, and no stall. If a run fails, read
+   the failing test, not this note.
 2. **Blocker:** the Intel candidate needs a local libchromaprint. The
    classifier refused me `packaging/build_chromaprint.sh` (it downloads and
    compiles a tarball). Kris runs, once (`.chromaprint/` is gitignored and
@@ -87,9 +88,10 @@ None. `dist/` and `.chromaprint/` hold gitignored build outputs.
 
 - Run the libchromaprint command (3.2); the Help check and the rest of
   BRIEF §9 later.
-- **Decide, after a `--durations` sample or two:** give the suite's short
-  worker waits one longer named bound (the 355), or not. My view: yes if
-  the runner shows stalls, and not before; a green run costs nothing.
+- **Decide:** give the suite's 355 short `waitUntil`s one longer named
+  bound, or not. My view is now yes: the runner is 5 to 10 times slower on
+  UI work (§265), a green run costs nothing, and it is a mechanical change
+  (one constant in `tests/fakes.py`, then the call sites).
 - README's licence paragraph names libchromaprint's upstream source and
   an "LGPL 2.1" label (the vendored text says "2.1", Homebrew
   "-or-later"): confirm the wording.

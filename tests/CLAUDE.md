@@ -80,6 +80,7 @@ linked to the HISTORY entry holding its investigation;
   the whole process's, and a finish handler may start a worker of its own
   (Sharing's add ends in a refresh): wait on the outcome the flow produces
   or on `fakes.settle_workers(window)`. `tests/test_wait_sweeps.py` fails
-  the build. The Intel runner's `--durations` listing is the evidence to
-  read before giving the suite's 2 s waits a longer bound.
+  the build. The Intel runner is 5 to 10 times slower than the Apple
+  silicon Mac on UI work (one run's `--durations`), so a 2 s bound over a
+  0.3 s local wait has about no headroom there.
   [§265](../docs/history/241-270.md#265)
