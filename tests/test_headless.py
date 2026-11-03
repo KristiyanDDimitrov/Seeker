@@ -332,6 +332,13 @@ def test_the_suite_refuses_every_other_program_src_spawns(
     record.clear()
 
 
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason=(
+        "webbrowser runs osascript on macOS only (os.startfile on "
+        "Windows), and shlex.split strips a Windows path's backslashes"
+    ),
+)
 def test_the_suite_refuses_the_osascript_webbrowser_opens_through(
         tmp_path, _desktop_attempts,
 ):
