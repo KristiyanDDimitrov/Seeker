@@ -99,16 +99,19 @@ jobs:
   check-windows:
     # The suite on Windows, where it has never passed. Non-blocking
     # until it does: continue-on-error keeps this job's failure from
-    # failing the run, and the change that makes the suite pass here
-    # deletes that line. No libchromaprint is built for Windows yet, so
-    # the fingerprint tests skip (tests/chromaprint_gate.py). ruff, both
-    # mypy runs and the coverage gate run in `check` alone. Pinned for
-    # the same reason as macos-26 above.
+    # failing the run (run 41647752561 concluded success with this job
+    # failed), and the change that makes the suite pass here deletes
+    # that line. No libchromaprint is built for Windows yet, so the
+    # fingerprint tests skip (tests/chromaprint_gate.py; 25 in that
+    # run). ruff, both mypy runs and the coverage gate run in `check`
+    # alone. Pinned for the same reason as macos-26 above.
     runs-on: windows-2025
     # The weekly run is for the audit job alone.
     if: github.event_name != 'schedule'
     continue-on-error: true
-    timeout-minutes: 45
+    # About twice the 15m50s this job took in run 41647752561, its
+    # first run of the whole suite.
+    timeout-minutes: 30
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
