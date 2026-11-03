@@ -97,6 +97,27 @@ Planning seeded the list; each round-14 row appends to it.
   warm times on real hardware (round 14 S11 measured CI's).
 - The tray on Windows 11: does a new icon land in the overflow, and
   which app name do notifications carry?
+- A test's `HOME` does not move Seeker's data folder on Windows:
+  platformdirs 4.12.3 reads `WIN_PD_OVERRIDE_LOCAL_APPDATA`, else
+  `SHGetKnownFolderPath` (its source, not observed), so
+  `test_lazy_spotify_config.py`'s two fresh-environment tests, which
+  build an `Application` with only `HOME` redirected, open the
+  machine's own `%LOCALAPPDATA%\Seeker` database and config (round 14
+  S1's HISTORY entry). *Settle:* `dir /s /t:w "%LOCALAPPDATA%\Seeker"`
+  before and after one suite run.
+- Symlinks: every test that makes one passed on CI's `windows-2025`
+  runner (run 41647752561, user `runneradmin`; whether it runs elevated
+  or with Developer Mode is UNVERIFIED), so whether a standard account
+  can make one is open (PF-32's three symlink tests; the app bundles
+  `test_bundle_check.py`, `test_bundle_info.py` and `test_smoke_test.py`
+  build). *Settle:* those modules as a standard user, Developer Mode
+  off, then on.
+- The code page Python writes a pipe in: run 41647752561's log shows
+  pytest's em dash as U+FFFD, so CI's output is not UTF-8, but which
+  code page it is (PF-11 assumes cp1252) is UNVERIFIED. *Settle:*
+  `chcp`, then `python -c "import locale, sys;
+  print(locale.getencoding(), sys.stdout.encoding)"`, in a console and
+  piped through `more`.
 
 ---
 
