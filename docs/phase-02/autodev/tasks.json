@@ -113,19 +113,27 @@
       "split_point": "After the constant and half the files",
       "notes": "docs/phase-02/autodev/SESSION-PLAN.md -> Row notes (H2)",
       "kris": null,
-      "history": null,
-      "commits": [],
-      "actual_peak_k": null,
-      "status": "reviewing",
+      "history": "§269",
+      "commits": [
+        "a4420ab",
+        "7418534",
+        "e84c2f9",
+        "6c676f6",
+        "f9a74f8",
+        "53f8782",
+        "560bcda"
+      ],
+      "actual_peak_k": 120,
+      "status": "done",
       "model": "opus",
       "effort": "high",
       "attempts": 1,
-      "review_rounds": 0,
+      "review_rounds": 1,
       "worker_id": "ae7b7d5bd10ba6576",
-      "agent_id": "a0ed794c5841acd82",
+      "agent_id": "a6eae262d445bf053",
       "branch": "p02/H2",
       "blocker": null,
-      "updated": "2026-11-03T19:07:04Z"
+      "updated": "2026-11-03T23:36:29Z"
     },
     {
       "id": "R13-S10a",
@@ -667,7 +675,9 @@
       "worker_id": null,
       "agent_id": null,
       "branch": null,
-      "blocker": null
+      "blocker": null,
+      "lead_note": "check-windows run 41700942081 (main fff446d): 42 failed, 2517 passed, 58 skipped, 1 error. New since §268's list: test_headless::test_collecting_the_suite_looks_at_no_removable_volume fails because collection hits entry 28 (os.geteuid); fixed with entry 28. New skip test_headless.py:411 (webbrowser off macOS). Recorded as §268 addendum by H2's integrator.",
+      "updated": "2026-11-03T19:33:25Z"
     },
     {
       "id": "R15-S0",

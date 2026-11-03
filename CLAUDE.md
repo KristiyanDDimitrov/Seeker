@@ -288,8 +288,9 @@ UNVERIFIED). `docs/status.md` loads only when read.
   25 fingerprint tests skip) has `continue-on-error: true` until the
   suite passes there; the change that makes it pass deletes that line.
   A module that cannot import shows as one ERROR hiding its tests. Its
-  first run's 42 failures are numbered by cause in §268; a row that
-  fixes one cites its number. mypy decides `sys.platform` statically,
+  first run's 42 failures are numbered by cause in §268, and its
+  addendum adds the second run's one new failure as entry 43; a row
+  that fixes one cites its number. mypy decides `sys.platform` statically,
   so only `--platform win32` sees a `win32` branch.
   [§268](docs/history/241-270.md#268)
 
