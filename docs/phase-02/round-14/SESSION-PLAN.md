@@ -19,6 +19,10 @@ row without leaving the codebase worse than it found it.
 
 ---
 
+> **Execution moved (2026-11-03):** this round's open rows run in
+> [`../autodev/SESSION-PLAN.md`](../autodev/SESSION-PLAN.md), an
+> `autonomous-development` plan; status lives in its `tasks.json`.
+
 ## Session map
 
 `§` points into this round's `BRIEF.md`. **[ASK]** rows start only

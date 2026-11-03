@@ -25,6 +25,10 @@ a worker's peak is about 30 K + work.
    record exactly where you stopped (handoff field 7). A split point
    here supersedes the brief's.
 
+> **Execution moved (2026-11-03):** this round's open rows run in
+> [`../autodev/SESSION-PLAN.md`](../autodev/SESSION-PLAN.md), an
+> `autonomous-development` plan; status lives in its `tasks.json`.
+
 ## Session map
 
 `§` points into `BRIEF.md`. **[ASK]** rows start only after Kris's

@@ -157,7 +157,10 @@ and Docker cannot run macOS at all. Rosetta is the emulator.
 | [14](round-14/SESSION-PLAN.md) | Windows readiness, from the Mac and CI | a tested, CI-built `SeekerSetup.exe` artifact (not released) | nothing new; a VM optional | planned |
 | [15](round-15/SESSION-PLAN.md) | Windows on real hardware | **v0.3.0** with `SeekerSetup.exe` | an x64 Windows 11 machine | provisional: re-planned at its start against round 14's results |
 
-Round 14 can start before round 13's release if Kris prefers. The
+**From 2026-11-03 the rest of the phase runs as one autodev plan:**
+[`autodev/SESSION-PLAN.md`](autodev/SESSION-PLAN.md) (round 13's release,
+round 14, round 15's re-plan). Round 14's rows that change code wait
+for v0.2.0's release (Kris, 2026-11-03). The
 two share only `ci.yml`, `build.yml`, `pyproject.toml` with
 `uv.lock`, `RELEASING.md` and `packaging/`; whichever lands second
 builds on the other's change, never over it.

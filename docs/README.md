@@ -68,6 +68,8 @@ row-by-row map.
 - [`phase-02/`](phase-02/README.md) — rounds 13–15: Intel Macs
   (v0.2.0), then Windows (v0.3.0). Planned 2026-10-17; its
   [platform audit](phase-02/AUDIT.md) holds the findings (`PF-NN`).
+  - [`autodev`](phase-02/autodev/SESSION-PLAN.md) — the plan the rest
+    of the phase runs from (2026-11-03), status in its `tasks.json`.
   - [`round-13`](phase-02/round-13/BRIEF.md) — Intel Macs, released
     as v0.2.0; [session plan](phase-02/round-13/SESSION-PLAN.md).
   - [`round-14`](phase-02/round-14/BRIEF.md) — Windows readiness from

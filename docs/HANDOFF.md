@@ -4,57 +4,38 @@
 first. Overwrite it last.** Keep it under about 2 K tokens: a baton, not
 a log. The log is `docs/history/` (short tier: `docs/history/README.md`,
 grep it, never read it whole). **The plan is
-`docs/phase-02/round-13/SESSION-PLAN.md`**, with status in `tasks.json`
-beside it. Every document: `docs/README.md`.
+`docs/phase-02/autodev/SESSION-PLAN.md`** (an `autonomous-development`
+run), with status in `tasks.json` beside it, changed only through
+`autodev.py`. Every document: `docs/README.md`.
 
 ---
 
 ## 1. Current state
 
 - **Released: v0.1.1** (2026-10-26, §247).
-- **HEAD is the S4c handoff commit on `b3732b2`.** Untracked: Kris's PDF
-  only. No worktrees. `origin` still has `r13/S7` and `r13/S7c` (merged;
-  the auto-mode classifier refused the delete:
-  `git push origin --delete r13/S7 r13/S7c` is Kris's).
-- **The three numbers (Cocoa):** pytest `2574 passed, 1 skipped`; mypy
-  `--strict src/` clean, 149 files; ruff 0.
-- **CI:** run `41607225022` on `e397410` (the S4c fix): `audit`, `check`
-  and `check-intel` green (`2545 passed, 31 skipped`, 17 m 40 s). The one
-  before it (`41550884285`, `826608b`) failed the test S4c fixed. The push
-  of this handoff starts a 7th Intel run (docs only; find it by SHA).
+- **HEAD is the autodev plan commit on `d3403de`.** Tree clean. Kris's
+  libchromaprint is built (`.chromaprint/lib`, 1.6.2). `origin` still has
+  `r13/S7`, `r13/S7c` (row GH-1 deletes them).
+- **The three numbers (Cocoa, before H1):** pytest `2574 passed, 1
+  skipped`; mypy `--strict src/` clean, 149 files; ruff 0. H1 records the
+  offscreen baseline that replaces it.
+- **CI:** `41607225022` on `e397410` green (`check`, `check-intel`,
+  `audit`). The 6th/7th Intel runs: §265; read the latest by full SHA.
 
 ## 2. Where we are
 
-Round 13: waves 0 to 3 done; wave 4: S7, S7c, S8, S8b, S4b, **S4c** done
-(§262 to §265). S4c: the failing wait read `workers._callbacks`, the
-whole process's count, while the flow is two workers (§265). The runner's
-real cause is UNVERIFIED; `check-intel` now lists its slow tests.
-**S9's Code half is half done:** the Apple silicon candidate was built
-from `826608b` and is still current (nothing under `src/`, `packaging/`,
-`pyproject.toml` or `uv.lock` changed since). RELEASING step 3 passed
-(ad-hoc signed, `spctl` rejects, 0.1.1, thin arm64, smoke test exit 0,
-cold 3.49 s, warm 0.035 s). `dist/Seeker.dmg` SHA-256 `df191247696631dec…`
-(full: `shasum -a 256 dist/Seeker.dmg`, verified today). **Never quote
-`dist/Seeker.dmg.sha256`: it is v0.1.1's, stale.** The Help check (a GUI
-launch reads Kris's real data) is Kris's.
+Phase 02's rest is one autodev plan (2026-11-03): round 13's release
+(re-cut: tag first, both images built from the tag, then Kris's
+checklist; the old `826608b` candidate in `dist/` is superseded), round
+14 whole (S13 skipped, S10 option a), round 15's re-plan, plus H1
+(headless tests) and H2 (one wait bound). Kris's decisions: the plan's
+first section.
 
 ## 3. Next steps
 
-1. **Read the 7th Intel run** (`gh run list --commit $(git rev-parse HEAD)`,
-   full SHA). The 6th's `--durations` list (§265) shows UI tests 5 to 10
-   times slower than on the Mac, evenly, and no stall. If a run fails, read
-   the failing test, not this note.
-2. **Blocker:** the Intel candidate needs a local libchromaprint. The
-   classifier refused me `packaging/build_chromaprint.sh` (it downloads and
-   compiles a tarball). Kris runs, once (`.chromaprint/` is gitignored and
-   persists): `! packaging/build_chromaprint.sh "$PWD/.chromaprint"`.
-3. Then (RELEASING steps 2-3): `SEEKER_CHROMAPRINT_DIR="$PWD/.chromaprint/lib"
-   .venv-x86_64/bin/python packaging/build_dmg.py`, step 3 with
-   `ARCH=x86_64` (the build replaces `dist/Seeker.app`; the arm64 app
-   was checked first), then both checksums with `shasum`.
-4. Write `docs/phase-02/round-13/ACCEPTANCE.md`: both SHA-256s, then
-   Kris's checklist (BRIEF §9, already corrected). Commit, push; Kris's
-   gate; then S10 (solo, `[ASK]`).
+1. Kris starts the lead in a fresh terminal at the repo root:
+   `~/.claude/skills/autonomous-development/scripts/launch.sh docs/phase-02/autodev/tasks.json`
+2. The lead's first wave: GH-1 (lead), workers H1, R13-S10a, R14-S1.
 
 ## 4. Key context
 
@@ -76,9 +57,12 @@ launch reads Kris's real data) is Kris's.
 - The lead (S4c): the 355 short `waitUntil`s (346 at 2000 ms) were not
   audited or raised, and `--durations` was added instead (§265).
 
+- Kris (2026-11-03): the autodev plan's eight decisions (H2's wait bound,
+  R14-S10 option a, offscreen always, "LGPL-2.1-or-later", S13 skipped).
+
 ## 6. Blockers
 
-The Intel libchromaprint build (3.2).
+None.
 
 ## 7. Files in progress
 
@@ -86,20 +70,10 @@ None. `dist/` and `.chromaprint/` hold gitignored build outputs.
 
 ## 8. Waiting on Kris
 
-- Run the libchromaprint command (3.2); the Help check and the rest of
-  BRIEF §9 later.
-- **Decide:** give the suite's 355 short `waitUntil`s one longer named
-  bound, or not. My view is now yes: the runner is 5 to 10 times slower on
-  UI work (§265), a green run costs nothing, and it is a mechanical change
-  (one constant in `tests/fakes.py`, then the call sites).
-- README's licence paragraph names libchromaprint's upstream source and
-  an "LGPL 2.1" label (the vendored text says "2.1", Homebrew
-  "-or-later"): confirm the wording.
-- Before the final Intel release: an asset-aware update check, or a
-  notice in the release notes (RELEASING §7).
+The plan's "Waiting on Kris": the §9 checklist after R13-S9b, the
+publish approval, the post-release checks, round 15's machine.
 - FYI: six Settings tests POSTed a login to the real slskd on
   127.0.0.1:5030 until S4b (§264); fixed, effect on slskd unknown.
-- #1, #5, #7, #8 are still open though their changes are on `main`.
 
 ## 9. Open questions
 
