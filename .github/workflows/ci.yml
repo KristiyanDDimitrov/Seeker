@@ -125,10 +125,14 @@ jobs:
       # --durations lists the tests that took over a second; a test
       # still running after five minutes dumps every thread's stack
       # (pytest's faulthandler), so a run the job's timeout kills still
-      # names the test that hung.
+      # names the test that hung. --continue-on-collection-errors: a
+      # module that cannot import here is one ERROR and the rest still
+      # runs; without it pytest runs nothing (run 41632089121: one
+      # module's os.geteuid, "1 error in 8.40s"). The ERROR still fails
+      # the job (pytest 9.1.1 exits 1, observed in a local probe).
       - run: >-
           uv run pytest -q -rfEs --durations=25 --durations-min=1.0
-          -o faulthandler_timeout=300
+          -o faulthandler_timeout=300 --continue-on-collection-errors
 
   audit:
     # pip-audit over every locked dependency (tools/audit_dependencies.py
