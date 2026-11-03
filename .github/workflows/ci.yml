@@ -51,6 +51,11 @@ jobs:
       - run: uv sync --locked --all-extras --dev
       - run: uv run ruff check src tests tools
       - run: uv run mypy --strict src/
+      # mypy decides `sys.platform` checks statically, so the run above
+      # never checks an `if sys.platform == "win32":` body; this one does
+      # (and skips the darwin ones). It goes by the platform it is told,
+      # not the one it runs on, so it needs no Windows runner.
+      - run: uv run mypy --strict --platform win32 src/
       - run: >-
           uv run pytest --cov=seeker --cov-branch --cov-report=term-missing
           --cov-fail-under=92
