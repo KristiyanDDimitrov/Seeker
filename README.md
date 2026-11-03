@@ -230,7 +230,7 @@ Seeker's source code is MIT; see [`LICENSE`](LICENSE).
 The macOS app bundles third-party libraries under their own licences,
 among them mutagen (GPL-2.0-or-later), Qt and PySide6 (LGPL-3.0) and
 soxr (LGPL-2.1-or-later); the Intel app also carries libchromaprint,
-which `packaging/build_chromaprint.sh` builds from source (LGPL-2.1).
+which `packaging/build_chromaprint.sh` builds from source (LGPL-2.1-or-later).
 Because it includes mutagen, the app as a whole is distributed under the
 GNU General Public License, version 3. Its source is this repository at
 the release's tag; the bundled libraries' sources are their PyPI
