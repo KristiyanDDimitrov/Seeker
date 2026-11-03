@@ -43,9 +43,18 @@ def test_check_intel_requires_chromaprint_and_builds_it_from_source():
 
 def test_check_intel_runs_the_suite_without_the_coverage_gate():
     runs = re.findall(r"- run: (.*)", _job("check-intel"))
+    pytest_runs = [r for r in runs if r.startswith("uv run pytest -q")]
 
-    assert "uv run pytest -q" in runs
+    assert len(pytest_runs) == 1
     assert not [r for r in runs if re.search(r"--cov|ruff|mypy", r)]
+
+
+def test_check_intel_lists_its_slowest_tests():
+    # The runner has failed two different tests on a short wait (§264,
+    # §265) and nothing else records whether it stalls.
+    runs = re.findall(r"- run: (.*)", _job("check-intel"))
+
+    assert "uv run pytest -q --durations=25 --durations-min=1.0" in runs
 
 
 def test_check_intel_pins_the_same_actions_as_check():

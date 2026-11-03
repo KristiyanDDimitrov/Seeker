@@ -86,7 +86,10 @@ jobs:
       # app looks (and the Intel bundle stages it from).
       - run: packaging/build_chromaprint.sh
       - run: uv sync --locked --all-extras --dev
-      - run: uv run pytest -q
+      # --durations lists the tests that took over a second: this
+      # runner has failed two different tests on a short wait (HISTORY
+      # §264, §265) and nothing else records whether it stalls.
+      - run: uv run pytest -q --durations=25 --durations-min=1.0
 
   audit:
     # pip-audit over every locked dependency (tools/audit_dependencies.py
