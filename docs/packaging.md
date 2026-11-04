@@ -332,15 +332,17 @@ failure. The comparison with the Apple silicon app's BPM and key was
 skipped.
 [HISTORY §272](history/271-300.md#272)
 
-**Not yet verified for Intel:** the app on an Intel Mac, so
-Gatekeeper's first-launch block there (it is assumed to read as `Read
-Me First.txt` says: UNVERIFIED), Docker Desktop for Intel, and analysis
-speed on a real, older Intel Mac; and, anywhere, that the Intel app's
-key and confidence, or its BPM for a real file, match the Apple silicon
-app's. CI checks only a generated click track's BPM, within 2 of
-123.05, on both architectures, in the suite and in each frozen app;
-both apps found 123.046875 in the tag's Build run (observed in its
-logs, not asserted).
+**Not yet verified for Intel:** a person using the app on an Intel
+Mac; Gatekeeper's first-launch block on a quarantined download, which
+went unreported under Rosetta and is untried on an Intel Mac (it is
+assumed to read as `Read Me First.txt` says: UNVERIFIED); Docker
+Desktop for Intel; analysis speed on a user's older Intel Mac (the
+runner's times are above); and, anywhere, that the Intel app's key and
+confidence, or its BPM for a real file, match the Apple silicon app's.
+CI checks only a generated click track's BPM, within 2 of 123.05, on
+both architectures, in the suite and in each frozen app; both apps
+found 123.046875 in the tag's Build run (observed in its logs, not
+asserted).
 
 ### Signing and Gatekeeper
 
