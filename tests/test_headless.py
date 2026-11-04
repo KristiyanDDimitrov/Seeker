@@ -27,9 +27,16 @@ OPENS_NOTHING = {
     "path_helper": "prints the login shell's PATH, to find docker",
 }
 
+# The helper src/ starts every program through, as the one import the
+# sweep follows binds it (`from seeker import processes`), and its path
+# under src/seeker.
+_HELPER_MODULE = "seeker.processes"
+_HELPER = Path("processes.py")
+
 # What starts a program, by the module it is reached through. The sweep
-# reads the program of a `subprocess` spawn whose argument list starts
-# with literal words; every other use of these names is unreadable.
+# reads the program of a `subprocess` or helper spawn whose argument
+# list starts with literal words; every other use of these names is
+# unreadable.
 _OS_SPAWNS = {
     "system", "popen", "startfile", "posix_spawn", "posix_spawnp",
     "execl", "execle", "execlp", "execlpe",
@@ -43,6 +50,8 @@ _MODULE_SPAWNS = {
         "run", "Popen", "call", "check_call", "check_output",
         "getoutput", "getstatusoutput", "_fork_exec",
     },
+    "processes": {"run", "popen"},
+    _HELPER_MODULE: {"run", "popen"},
     # `posix` and `nt` are the modules `os` re-exports them from.
     "os": _OS_SPAWNS, "posix": _OS_SPAWNS, "nt": _OS_SPAWNS,
     # `pty.spawn` forks and runs `os.execlp` in the child.
@@ -65,15 +74,16 @@ _ANY_SPAWNS = {
 
 
 def _literal_program(call: ast.Call) -> tuple[str, ...]:
-    """The literal words `subprocess.<spawn>([...])`'s argument list
-    starts with, up to its first computed element; empty for any other
-    call, and for a list that starts computed."""
+    """The literal words `subprocess.<spawn>([...])`'s or
+    `processes.<spawn>([...])`'s argument list starts with, up to its
+    first computed element; empty for any other call, and for a list
+    that starts computed."""
     function = call.func
     if not (
             isinstance(function, ast.Attribute)
             and isinstance(function.value, ast.Name)
-            and function.value.id == "subprocess"
-            and function.attr in _MODULE_SPAWNS["subprocess"]
+            and function.value.id in {"subprocess", "processes"}
+            and function.attr in _MODULE_SPAWNS[function.value.id]
             and call.args
             and isinstance(call.args[0], ast.List)
     ):
@@ -94,12 +104,14 @@ def _binds_a_spawn(node: ast.Import | ast.ImportFrom) -> bool:
     name the sweep does not follow (`import subprocess as sp`, `from
     subprocess import Popen`, `from os import *`, `from asyncio import
     create_subprocess_exec`), or imports an unguarded module (`import
-    multiprocessing`, `from multiprocessing.pool import Pool`).
+    multiprocessing`, `from multiprocessing.pool import Pool`), or
+    binds the helper any way but `from seeker import processes`.
     `import subprocess`, `from os import path` and `from subprocess
     import PIPE` bind nothing that starts a program."""
     if isinstance(node, ast.Import):
         return any(
             alias.name.partition(".")[0] in _UNGUARDED_MODULES
+            or alias.name == _HELPER_MODULE
             or (
                 alias.name in _MODULE_SPAWNS
                 and alias.asname not in (None, alias.name)
@@ -109,17 +121,101 @@ def _binds_a_spawn(node: ast.Import | ast.ImportFrom) -> bool:
     module = node.module or ""
     spawns = _MODULE_SPAWNS.get(module, set())
     return module.partition(".")[0] in _UNGUARDED_MODULES or any(
-        alias.name in spawns | _ANY_SPAWNS | _MODULE_SPAWNS.keys()
+        (
+            alias.name in spawns | _ANY_SPAWNS | _MODULE_SPAWNS.keys()
+            and not _imports_the_helper(node, alias)
+        )
         or (alias.name == "*" and bool(spawns))
         for alias in node.names
     )
 
 
+def _imports_the_helper(node: ast.ImportFrom, alias: ast.alias) -> bool:
+    """`from seeker import processes`, the one import of the helper the
+    sweep follows: it reads `processes.run([...])` as it reads
+    `subprocess.run([...])`. Another module of that name, or the helper
+    under another name, would be read as the helper or not at all."""
+    return (
+        node.level == 0
+        and node.module == _HELPER_MODULE.partition(".")[0]
+        and alias.name == _HELPER_MODULE.partition(".")[2]
+        and alias.asname is None
+    )
+
+
+def _forwarding_call(function: ast.stmt) -> ast.Call | None:
+    """`function`'s spawn, when `function` is the helper's `run` or
+    `popen` and hands its caller's argument list on untouched: past its
+    docstring, its body is the one statement `return
+    subprocess.<spawn>(args, ...)`, with `args` its first parameter,
+    named there and nowhere else in the body. That spawn starts what
+    the caller names, and the sweep reads each caller where it calls
+    `processes.run([...])`, so passing it hides no program. Any other
+    shape (the list rebuilt, rebound, sliced or changed in place; a
+    second statement), and the same shape in any other module, stays
+    unreadable."""
+    if not (
+            isinstance(function, ast.FunctionDef)
+            and function.name in _MODULE_SPAWNS["processes"]
+            and function.args.args
+    ):
+        return None
+    body = function.body
+    if ast.get_docstring(function) is not None:
+        body = body[1:]
+    if not (len(body) == 1 and isinstance(body[0], ast.Return)):
+        return None
+    call = body[0].value
+    parameter = function.args.args[0].arg
+    named = [
+        node for node in ast.walk(body[0])
+        if isinstance(node, ast.Name) and node.id == parameter
+    ]
+    if not (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and isinstance(call.func.value, ast.Name)
+            and call.func.value.id == "subprocess"
+            and call.func.attr in _MODULE_SPAWNS["subprocess"]
+            and len(call.args) == 1
+            and len(named) == 1
+            and named[0] is call.args[0]
+    ):
+        return None
+    return call
+
+
+def _named_in_annotations(tree: ast.AST) -> set[int]:
+    """The ids of the names that spell `tree`'s annotations (`->
+    subprocess.Popen[bytes]`), which the sweep passes. Evaluating one
+    names a type and starts nothing, since a spawn needs a call: the
+    set follows an annotation only through what spells a type
+    (attributes, subscripts, `|`, the lists `Callable` takes), never
+    into a call, so a call in an annotation, which runs when its
+    function is defined, is read as it would be anywhere else."""
+    pending: list[ast.AST] = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            pending.append(node.returns)
+        elif isinstance(node, (ast.arg, ast.AnnAssign)):
+            pending.append(node.annotation)
+    named: set[int] = set()
+    while pending:
+        node = pending.pop()
+        if isinstance(node, (ast.Attribute, ast.Name)):
+            named.add(id(node))
+        if isinstance(node, (ast.Attribute, ast.Subscript, ast.Tuple, ast.List)) or (
+                isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr)
+        ):
+            pending.extend(ast.iter_child_nodes(node))
+    return named
+
+
 def _commands_src_spawns(
         root: Path,
 ) -> tuple[list[tuple[str, ...]], list[str]]:
-    """Every `subprocess` spawn in the modules under `root`, as the
-    literal words its argument list starts with (`("docker",
+    """Every `subprocess` or helper spawn in the modules under `root`,
+    as the literal words its argument list starts with (`("docker",
     "inspect")` for `["docker", "inspect", name, ...]`), and where they
     reach a spawn the sweep cannot read: a computed command; `os`'s,
     `pty`'s, `asyncio`'s, Qt's or Cocoa's spawns; an alias, a `from`
@@ -144,14 +240,20 @@ def _commands_src_spawns(
         # marks its function, and an attribute its module's name,
         # before the walk reaches either.
         read: set[int] = set()
+        if path.relative_to(root) == _HELPER:
+            read |= {
+                id(call.func) for function in tree.body
+                if (call := _forwarding_call(function)) is not None
+            }
         qualifying: set[int] = set()
+        typed = _named_in_annotations(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and (words := _literal_program(node)):
                 commands.add(words)
                 read.add(id(node.func))
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
                 qualifying.add(id(node.value))
-            if _reaches_a_spawn(node, read, qualifying):
+            if id(node) not in typed and _reaches_a_spawn(node, read, qualifying):
                 lineno = getattr(node, "lineno", "?")
                 unreadable.append(f"{path.relative_to(root)}:{lineno}")
     return sorted(commands), unreadable
@@ -161,15 +263,16 @@ def _reaches_a_spawn(node: ast.AST, read: set[int], qualifying: set[int]) -> boo
     """Whether `node` reaches a spawn some other way than a call whose
     program was read (`read`, by its function's id): `os.system`,
     `subprocess.run(command)`, `run = subprocess.run`, `QProcess`,
-    `loop.subprocess_exec`, an import that renames one, or the module
+    `loop.subprocess_exec`, an import that renames one, the module
     handed on as a value (`getattr(subprocess, "run")`): a module name
-    that is not the left of an attribute (`qualifying`, by its id)."""
+    that is not the left of an attribute (`qualifying`, by its id), or
+    the helper reached through its package (`seeker.processes`)."""
     if isinstance(node, ast.Attribute):
         module = node.value.id if isinstance(node.value, ast.Name) else ""
         return (
             node.attr in _MODULE_SPAWNS.get(module, set()) | _ANY_SPAWNS
             and id(node) not in read
-        )
+        ) or f"{module}.{node.attr}" == _HELPER_MODULE
     if isinstance(node, ast.Name):
         return node.id in _ANY_SPAWNS or (
             node.id in _MODULE_SPAWNS and id(node) not in qualifying
@@ -269,14 +372,17 @@ def test_the_sweep_reads_every_spawn_in_src():
 
 def test_the_sweep_reads_a_subprocess_call_by_its_module(tmp_path):
     """What src/ writes: `subprocess.<spawn>([...])` is read, and names
-    from `subprocess` and `os` that start nothing are not flagged."""
+    from `subprocess` and `os` that start nothing, annotations among
+    them, are not flagged."""
     (tmp_path / "opener.py").write_text(
         "import os.path\n"
         "import subprocess\n"
         "from os import path\n"
         "from subprocess import PIPE, CalledProcessError\n"
         "subprocess.run(['open', '-R', os.path.join('/', 'x')], stdout=PIPE)\n"
-        "subprocess.TimeoutExpired\n",
+        "subprocess.TimeoutExpired\n"
+        "started: list[subprocess.Popen[bytes]] = []\n"
+        "def wait(process: subprocess.Popen[str]) -> subprocess.Popen | None: ...\n",
         encoding="utf-8",
     )
 
@@ -310,6 +416,27 @@ _HIDDEN_SPAWNS = {
     "qprocess-attribute": (
         "from PySide6 import QtCore\n"
         "QtCore.QProcess.startDetached('open', ['/'])\n"
+    ),
+    "annotation-call": (
+        "import subprocess\ndef wait() -> subprocess.Popen(command): ...\n"
+    ),
+    "forwarding-outside-the-helper": (
+        "import subprocess\ndef run(args):\n    return subprocess.run(args)\n"
+    ),
+    "helper-computed": (
+        "from seeker import processes\nprocesses.run(command, check=False)\n"
+    ),
+    "helper-function-alias": (
+        "from seeker import processes\n"
+        "run = processes.run\n"
+        "run(['open', '/'], check=False)\n"
+    ),
+    "helper-getattr": (
+        "from seeker import processes\n"
+        "getattr(processes, 'run')(['open', '/'], check=False)\n"
+    ),
+    "helper-through-its-package": (
+        "import seeker\nseeker.processes.run(['open', '/'], check=False)\n"
     ),
     "getoutput": "import subprocess\nsubprocess.getoutput('qlmanage -p x')\n",
     "getstatusoutput": (
@@ -369,6 +496,97 @@ def test_the_sweep_flags_a_spawn_it_cannot_read(tmp_path, source):
     the real class before conftest's guard replaces it, so the guard
     would not see that spawn either."""
     (tmp_path / "opener.py").write_text(source, encoding="utf-8")
+
+    spawned, unreadable = _commands_src_spawns(tmp_path)
+
+    assert spawned == []
+    assert unreadable != []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "from seeker import processes as p",
+        "from seeker.processes import run",
+        "from seeker.processes import *",
+        "import seeker.processes",
+        "import seeker.processes as processes",
+        "from . import processes",
+        "from .processes import popen",
+        "from other import processes",
+    ],
+)
+def test_the_sweep_follows_the_helper_through_one_import_alone(tmp_path, line):
+    """`processes.run([...])` is read as the helper's spawn under `from
+    seeker import processes` alone: any other import of the helper puts
+    it under a name the sweep does not follow, and another module of
+    that name would be read as the helper."""
+    (tmp_path / "opener.py").write_text(f"{line}\n", encoding="utf-8")
+
+    assert _commands_src_spawns(tmp_path) == ([], ["opener.py:1"])
+
+
+def test_the_sweep_reads_a_program_started_through_the_helper(tmp_path):
+    """The real helper's own two spawns pass, and a caller's
+    `processes.run([...])` and `processes.popen([...])` are read as
+    `subprocess`'s are."""
+    (tmp_path / _HELPER).write_text(
+        (SRC / _HELPER).read_text(encoding="utf-8"), encoding="utf-8",
+    )
+    (tmp_path / "opener.py").write_text(
+        "from seeker import processes\n"
+        "processes.run(['open', '-R', path], check=False)\n"
+        "processes.popen(['ffmpeg', '-i', path])\n",
+        encoding="utf-8",
+    )
+
+    assert _commands_src_spawns(tmp_path) == (
+        [("ffmpeg", "-i"), ("open", "-R")], [],
+    )
+
+
+# Helper spawns that may start what no caller's list names, by how.
+_CHANGED_FORWARDS = {
+    "rebound": (
+        "def run(args):\n"
+        "    args = ['open', *args]\n"
+        "    return subprocess.run(args)\n"
+    ),
+    "changed-in-place": (
+        "def run(args):\n"
+        "    args.insert(0, 'open')\n"
+        "    return subprocess.run(args)\n"
+    ),
+    "changed-in-the-call": (
+        "def run(args):\n"
+        "    return subprocess.run(args, check=args.insert(0, 'open'))\n"
+    ),
+    "sliced": "def run(args):\n    return subprocess.run(args[1:])\n",
+    "not-its-first-parameter": (
+        "def run(flags, args):\n    return subprocess.run(args)\n"
+    ),
+    "not-run-or-popen": "def start(args):\n    return subprocess.run(args)\n",
+    "nested": (
+        "def run(args):\n"
+        "    def start():\n"
+        "        return subprocess.run(args)\n"
+        "    return start()\n"
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    "function", _CHANGED_FORWARDS.values(), ids=list(_CHANGED_FORWARDS),
+)
+def test_the_helper_passes_only_a_spawn_of_what_its_caller_named(
+        tmp_path, function,
+):
+    """The sweep passes the helper's `run` and `popen` only as one
+    statement handing their first parameter on untouched, since it reads
+    the program at their callers; any other spawn there is unreadable."""
+    (tmp_path / _HELPER).write_text(
+        f"import subprocess\n{function}", encoding="utf-8",
+    )
 
     spawned, unreadable = _commands_src_spawns(tmp_path)
 
