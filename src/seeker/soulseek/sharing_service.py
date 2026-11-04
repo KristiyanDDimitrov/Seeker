@@ -54,6 +54,7 @@ from pathlib import Path
 
 import httpx
 
+from seeker import processes
 from seeker.config_store import SeekerConfig
 from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
@@ -314,7 +315,7 @@ class SharingService:
         stopped. Compares every listed name exactly rather than through
         `--filter name=`, which matches substrings."""
         try:
-            result = subprocess.run(
+            result = processes.run(
                 ["docker", "ps", "-a", "--format", "{{.Names}}"],
                 capture_output=True,
                 text=True,
@@ -354,7 +355,7 @@ class SharingService:
         doesn't provably own.
         """
         try:
-            result = subprocess.run(
+            result = processes.run(
                 [
                     "docker", "inspect", self._container_name,
                     "--format",
@@ -647,7 +648,7 @@ def _get_live_container_mounts(container_name: str) -> dict[str, str]:
     even with slskd down.
     """
     try:
-        result = subprocess.run(
+        result = processes.run(
             [
                 "docker", "inspect", container_name,
                 "--format", "{{json .Mounts}}",

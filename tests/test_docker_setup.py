@@ -707,7 +707,7 @@ def test_bring_up_slskd_builds_correct_env_and_command(monkeypatch):
     # SoulSeek-network-vs-web-UI env var names wrong once already.
     captured = {}
 
-    def fake_run(command, env, capture_output, text, timeout, check):
+    def fake_run(command, env, capture_output, text, timeout, check, **kwargs):
         captured["command"] = command
         captured["env"] = env
         captured["capture_output"] = capture_output

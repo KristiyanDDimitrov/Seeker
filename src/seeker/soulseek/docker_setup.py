@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 import httpx
 import platformdirs
 
+from seeker import processes
 from seeker.errors import SeekerError
 from seeker.models.slskd_start import SlskdDataFolderState
 
@@ -40,7 +41,7 @@ def ensure_full_path_environment() -> None:
     mutating it here fixes every call site at once.
     """
     try:
-        result = subprocess.run(
+        result = processes.run(
             ["/usr/libexec/path_helper", "-s"],
             capture_output=True,
             text=True,
@@ -131,7 +132,7 @@ class DockerState(Enum):
 
 def detect_docker_state() -> DockerState:
     try:
-        subprocess.run(
+        processes.run(
             ["docker", "--version"],
             capture_output=True,
             timeout=5,
@@ -143,7 +144,7 @@ def detect_docker_state() -> DockerState:
         return DockerState.INSTALLED_NOT_RUNNING
 
     try:
-        result = subprocess.run(
+        result = processes.run(
             ["docker", "info"],
             capture_output=True,
             timeout=10,
@@ -467,7 +468,7 @@ def bring_up_slskd(
     started_at = time.monotonic()
     try:
         with _BRING_UPS_RUNNING:
-            result = subprocess.run(
+            result = processes.run(
                 ["docker", "compose", "-f", compose_file, "up", "-d"],
                 env=env,
                 capture_output=True,
