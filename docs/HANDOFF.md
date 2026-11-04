@@ -14,7 +14,8 @@ run), with status in `tasks.json` beside it, changed only through
 
 - **Released: v0.1.1** (2026-10-26, §247). **Main says 0.2.0**
   (R13-S10a, §266): version, lock, CHANGELOG `[0.2.0] - 2026-11-04`,
-  README → License "LGPL-2.1-or-later". Not tagged. CHANGELOG's
+  README → License "LGPL-2.1-or-later". **Tagged locally, not
+  pushed:** `v0.2.0` (tag object `3ff929d`) on `5d3c5e3` (R13-S9). CHANGELOG's
   `[Unreleased]` holds R14-S1's two CI bullets; they are not 0.2.0's.
   H2 added none (test-only).
 - **HEAD is H2's close-out (§269):** every ceiling wait in `tests/`
@@ -30,26 +31,28 @@ run), with status in `tasks.json` beside it, changed only through
   --platform win32 src/` clean, 149 files; ruff 0. Before H2: `2602
   passed, 29 skipped`. No `src/` change, so no x86_64 run.
 - **CI:** read the latest run by full SHA (`gh run list --commit`).
-  **H2's real evidence is the first `check-intel` run on its merge:**
-  whether 10 s ends the Intel flakes is UNVERIFIED until it runs.
+  `check-intel` passed on H2's merge and the next commit (runs
+  41740520331, 41742930471): two green runs, not yet proof the 10 s
+  bound ends the Intel flakes. `check-windows` on both: "42 failed,
+  2547 passed, 58 skipped, 1 error" (the +30 passed are H2's tests).
 
 ## 2. Where we are
 
 Phase 02's rest is one autodev plan (2026-11-03): round 13's release,
 round 14 whole (S13 skipped, S10 option a), round 15's re-plan, plus
-H1 and H2. Done: GH-1, R13-S10a, H1, R14-S1, H2. In flight: none.
+H1 and H2. Done: GH-1, R13-S10a, H1, R14-S1, H2, R13-S9. In flight: none.
 Status: `python3
 ~/.claude/skills/autonomous-development/scripts/autodev.py status`.
 
 ## 3. Next steps
 
-1. **R13-S9 (lead) tags v0.2.0** once `check`, `check-intel` and
-   `audit` are green on main's HEAD and `build.yml` is
-   green on a commit with HEAD's `pyproject.toml`, `uv.lock` and
-   `packaging/`. CHANGELOG's `[0.2.0]` is re-dated 2026-11-04 (RELEASING:
-   "today's date"); **if the tag lands later, re-date it again
-   first**. R14-S1's bullets stay in `[Unreleased]`. Tag local only;
-   record its sha here.
+1. **Done, R13-S9 (2026-11-04):** `v0.2.0` tagged locally (tag object
+   `3ff929d7`, commit `5d3c5e31`), never pushed: R13-S10 pushes it
+   with Kris's approval. Its evidence: CI 41742930471 green on
+   `5d3c5e3` (`check`, `check-intel`, `audit`); `build.yml` 41649408206
+   green on `8a1ef65`, the last change to `pyproject.toml`, `uv.lock`
+   and `packaging/`. CHANGELOG `[0.2.0] - 2026-11-04`; R14-S1's bullets
+   stay in `[Unreleased]`. Main moves on; the tag pins the release.
 2. R13-S9b builds both images from the tag and replaces the release
    notes' placeholders `SHA256_ARM64_PLACEHOLDER` and
    `SHA256_INTEL_PLACEHOLDER` with the `shasum -a 256` lines.
