@@ -364,3 +364,4 @@ under their entry and live in the same file, after it.
 - §267 — H1: tests offscreen by default (empty too); desktop openers and QDesktopServices links refused; a src spawn sweep; X9 Pro tests opt-in (Kris) → [241-270.md#267](241-270.md#267)
 - §268 — R14-S1: a non-blocking `check-windows`, `mypy --platform win32`; the first Windows run's 42 failures by cause, the second's one new as entry 43 → [241-270.md#268](241-270.md#268)
 - §269 — H2: one named bound, `fakes.WAIT_MS` (10 s), for every ceiling wait; a sweep fails any other bound; a fake the code releases records that it was → [241-270.md#269](241-270.md#269)
+- §270 — R13-S9b: both v0.2.0 images built from the tag, §3 green; the ctypes scan bundles a host x86_64 libchromaprint into the arm64 app → [241-270.md#270](241-270.md#270)

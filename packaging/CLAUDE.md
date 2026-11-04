@@ -69,6 +69,23 @@ investigation; `docs/history/README.md` resolves any `§N`.
   failing the build without it. `chromaprint_available` proves the
   bundle only where no other copy loads.
   [§262](../docs/history/241-270.md#262)
+- **PyInstaller's ctypes scan also bundles whatever
+  `ctypes.util.find_library("chromaprint")` finds on the build host**
+  (dyld's fallback: `/usr/local/lib`, never `/opt/homebrew`). On CI's
+  Intel job it adds a second name, a symlink (run `41649408206`'s
+  x86_64 artifact; its arm64 artifact has none). On an Apple silicon
+  Mac with an x86_64 copy in `/usr/local/lib` it adds a foreign-arch
+  copy, and the arm64 build fails `bundle_check`. Until the spec
+  filters it, build under `sandbox-exec` with `(allow default)` and
+  `(deny file-read* (regex #"^/usr/local/lib/libchromaprint"))`;
+  denying `/opt/homebrew/lib` and the Cellar copy too gives RELEASING
+  §3's Intel "move it aside" without sudo.
+  [§270](../docs/history/241-270.md#270)
+- `lsof -p <pid>` lists a Rosetta process's dylibs (and their `.aot`
+  in `/private/var/db/oah`) while they are loaded (observed). The
+  smoke test loads libchromaprint only just before it exits: sample
+  the running app after fingerprinting instead.
+  [§270](../docs/history/241-270.md#270)
 - **Duplicates on an M4A or AAC file needs ffmpeg in either app.** The
   bundled libsndfile 1.2.2 (soundfile 0.14.0) opens neither MP4 audio
   (AAC or ALAC) nor raw ADTS `.aac` (observed 2026-11-03 with

@@ -18,14 +18,13 @@ run), with status in `tasks.json` beside it, changed only through
   pushed:** `v0.2.0` (tag object `3ff929d`) on `5d3c5e3` (R13-S9). CHANGELOG's
   `[Unreleased]` holds R14-S1's two CI bullets; they are not 0.2.0's.
   H2 added none (test-only).
-- **HEAD is H2's close-out (§269):** every ceiling wait in `tests/`
-  (pytest-qt's waits, `waitForDone`, an asserted `Event.wait`) is
-  bounded by `fakes.WAIT_MS` (10 s); `tests/test_wait_sweeps.py` fails
-  any other bound; a fake the code under test releases records that it
-  was. Before it, R14-S1 (§268): non-blocking `check-windows`, mypy
-  `--platform win32`; its failures are numbered in §268 (42, plus entry
-  43 from the second run, `41700942081`, in §268's addendum: recorded,
-  not a baseline).
+- **HEAD is R13-S9b's close-out (§270):** both v0.2.0 images built
+  from the tag, RELEASING §3 green on each; Kris's checklist is
+  `docs/phase-02/round-13/ACCEPTANCE.md`. Before it, H2 (§269): every
+  ceiling wait in `tests/` is bounded by `fakes.WAIT_MS` (10 s), swept
+  by `tests/test_wait_sweeps.py`; R14-S1 (§268): non-blocking
+  `check-windows`, mypy `--platform win32`, its failures numbered in
+  §268 (42, plus entry 43 in its addendum: recorded, not a baseline).
 - **The three numbers on main (a bare run, offscreen, X9 Pro opt-in
   unset):** pytest `2632 passed, 29 skipped`; mypy `--strict src/` and `--strict
   --platform win32 src/` clean, 149 files; ruff 0. Before H2: `2602
@@ -40,7 +39,8 @@ run), with status in `tasks.json` beside it, changed only through
 
 Phase 02's rest is one autodev plan (2026-11-03): round 13's release,
 round 14 whole (S13 skipped, S10 option a), round 15's re-plan, plus
-H1 and H2. Done: GH-1, R13-S10a, H1, R14-S1, H2, R13-S9. In flight: none.
+H1 and H2. Done: GH-1, R13-S10a, H1, R14-S1, H2, R13-S9, R13-S9b. In
+flight: none.
 Status: `python3
 ~/.claude/skills/autonomous-development/scripts/autodev.py status`.
 
@@ -53,10 +53,15 @@ Status: `python3
    green on `8a1ef65`, the last change to `pyproject.toml`, `uv.lock`
    and `packaging/`. CHANGELOG `[0.2.0] - 2026-11-04`; R14-S1's bullets
    stay in `[Unreleased]`. Main moves on; the tag pins the release.
-2. R13-S9b builds both images from the tag and replaces the release
-   notes' placeholders `SHA256_ARM64_PLACEHOLDER` and
-   `SHA256_INTEL_PLACEHOLDER` with the `shasum -a 256` lines.
-3. R14-S2 after R13-S10: it also owns isolating platformdirs in tests
+2. **Done, R13-S9b (§270):** both images built from the tag in a
+   clean worktree. `.git/autodev/release/v0.2.0/` holds `Seeker.dmg`
+   (`f30f3d68…dfb7`), `Seeker-Intel.dmg` (`9009a6ef…c025`), their
+   `.sha256` files and `notes.md`, filled, no placeholder left.
+3. **Next, Kris:** run `docs/phase-02/round-13/ACCEPTANCE.md` (BRIEF
+   §9's checklist with the Intel image, in the test account), then
+   approve R13-S10, the publish (push the tag, the release, four
+   assets). Nothing else runs on the release until then.
+4. R14-S2 after R13-S10: it also owns isolating platformdirs in tests
    (round-14 BRIEF §2 step 5; plan → Round 14 rows; its `lead_note`).
 
 ## 4. Key context
@@ -83,8 +88,12 @@ Status: `python3
   exclusion in `test_wait_sweeps.py`, its reason stated (agreement 5).
   `test_soulseek_client.py` is the first non-UI test to import `fakes`
   (review: keep it).
-- **Release notes draft:** `.git/autodev/release/v0.2.0/notes.md`,
-  outside the tree; never commit it.
+- **Release notes:** `.git/autodev/release/v0.2.0/notes.md`, filled,
+  outside the tree; never commit it, never touch that folder or the tag.
+- **Building on this Mac (§270, packaging/CLAUDE.md):** PyInstaller's
+  ctypes scan bundles `/usr/local/lib`'s x86_64 libchromaprint (§266)
+  into the arm64 app, which fails `bundle_check`. Build under
+  `sandbox-exec` denying reads of `^/usr/local/lib/libchromaprint`.
 - R13-S10b: README → Install needs the M4A/AAC-needs-ffmpeg note and
   the three 0.2.0 gates un-gated (§266). `packaging/seeker.iss` still
   says "0.1.0": PF-36, R14-S11.
@@ -99,8 +108,8 @@ Status: `python3
   #5/#7/#8 wait for DEP-1 after v0.2.0; X9 Pro tests opt-in
   (`SEEKER_RUN_X9_PRO_TESTS=1`).
 - The integrator: R14-S1's CHANGELOG bullets went to a fresh
-  `[Unreleased]` above `[0.2.0]`; H2 gets no CHANGELOG entry (test-only
-  changes have none, H1 neither).
+  `[Unreleased]` above `[0.2.0]`; H2 and R13-S9b get no CHANGELOG
+  entry (test-only, and docs and release process).
 
 ## 6. Blockers
 
@@ -110,15 +119,24 @@ None.
 
 None. Merged branches and worktrees left for Kris to remove: `p02/H1`
 (`agent-a12ba60fe9f01f418`), `p02/R14-S1`
-(`agent-a2f629926c967ad19`), `p02/H2` (`agent-ae7b7d5bd10ba6576`);
+(`agent-a2f629926c967ad19`), `p02/H2` (`agent-ae7b7d5bd10ba6576`),
+`p02/R13-S9b` (`agent-a6b56d8b69bdca68f`; its `dist/` holds both
+images and the smoke reports);
 origin's `p02/R14-S1` holds the pre-rebase commits the two CI runs
 built. `dist/` and `.chromaprint/` hold gitignored build outputs.
 
 ## 8. Waiting on Kris
 
 - The X9 Pro opt-in path has not been run since H1 gated it (§267).
-- The plan's "Waiting on Kris": the §9 checklist after R13-S9b, the
-  publish approval, the post-release checks, round 15's machine.
+- **Now:** `docs/phase-02/round-13/ACCEPTANCE.md`, then the R13-S10
+  publish approval. Later: the post-release checks, round 15's machine.
+- **Proposed rows, awaiting Kris (not in tasks.json):** (A)
+  `seeker.spec` filters any libchromaprint the ctypes scan picks up
+  that `bundle_info` did not stage (a symlink twin on CI's Intel job, a
+  foreign-arch copy on this Mac), or RELEASING §2 hides that copy for
+  both builds; (B) `build.yml`'s `uv sync` takes the runner's
+  python.org 3.13.17 while the release uses python-build-standalone
+  3.13.15, so CI's build smoke test runs another runtime (§270).
 - FYI: six Settings tests POSTed a login to the real slskd on
   127.0.0.1:5030 until S4b (§264); fixed, effect on slskd unknown.
 
@@ -141,8 +159,8 @@ built. `dist/` and `.chromaprint/` hold gitignored build outputs.
   `WAIT_MS`. If `check-intel` flakes on a join/get or an unasserted
   wait, those are next.
 - A Rosetta run here finds the x86_64 libchromaprint in
-  `/usr/local/lib`, so it no longer covers a missing one: does any run
-  still need to?
+  `/usr/local/lib`, so it no longer covers a missing one (and it breaks
+  an unsandboxed arm64 build, §270): does any run still need it?
 - PyInstaller's Intel-only libomp SDK warning (§262); Module map lacks
   `ui/row_actions.py`, `soulseek/sweep.py`, `soulseek/leftovers.py`.
 

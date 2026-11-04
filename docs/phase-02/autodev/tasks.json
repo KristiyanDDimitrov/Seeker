@@ -183,9 +183,11 @@
       "notes": "docs/phase-02/autodev/SESSION-PLAN.md -> Row notes (R13-S9)",
       "kris": null,
       "history": null,
-      "commits": [],
+      "commits": [
+        "5d3c5e3"
+      ],
       "actual_peak_k": null,
-      "status": "todo",
+      "status": "done",
       "model": "opus",
       "effort": "high",
       "attempts": 0,
@@ -193,7 +195,9 @@
       "worker_id": null,
       "agent_id": null,
       "branch": null,
-      "blocker": null
+      "blocker": null,
+      "lead_note": "v0.2.0 tag 3ff929d7496cc1c5a4f2ba7da9ea8947e8342636 on 5d3c5e31f05e6aeb5a30946f357306e86a167d79, local only. CI 41742930471 green; build.yml 41649408206 green on 8a1ef65.",
+      "updated": "2026-11-04T00:16:32Z"
     },
     {
       "id": "R13-S9b",
@@ -214,18 +218,24 @@
         "question": "Run BRIEF §9's checklist with the Intel v0.2.0 image in the test account (docs/phase-02/round-13/ACCEPTANCE.md says how). Pass, or which item failed?",
         "answer": null
       },
-      "history": null,
-      "commits": [],
-      "actual_peak_k": null,
+      "history": "§270",
+      "commits": [
+        "94ca869",
+        "2044dd0",
+        "a529c44",
+        "5e4fe09"
+      ],
+      "actual_peak_k": 95,
       "effort": "xhigh",
-      "status": "todo",
+      "status": "done",
       "model": "opus",
-      "attempts": 0,
-      "review_rounds": 0,
-      "worker_id": null,
-      "agent_id": null,
-      "branch": null,
-      "blocker": null
+      "attempts": 1,
+      "review_rounds": 2,
+      "worker_id": "a6b56d8b69bdca68f",
+      "agent_id": "af20d75a7e93acb35",
+      "branch": "p02/R13-S9b",
+      "blocker": null,
+      "updated": "2026-11-04T01:37:42Z"
     },
     {
       "id": "R13-S10",
