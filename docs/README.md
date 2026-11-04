@@ -71,7 +71,8 @@ row-by-row map.
   - [`autodev`](phase-02/autodev/SESSION-PLAN.md) — the plan the rest
     of the phase runs from (2026-11-03), status in its `tasks.json`.
   - [`round-13`](phase-02/round-13/BRIEF.md) — Intel Macs, released
-    as v0.2.0; [session plan](phase-02/round-13/SESSION-PLAN.md).
+    as v0.2.0; [session plan](phase-02/round-13/SESSION-PLAN.md),
+    [acceptance checklist](phase-02/round-13/ACCEPTANCE.md).
   - [`round-14`](phase-02/round-14/BRIEF.md) — Windows readiness from
     the Mac and CI; [session plan](phase-02/round-14/SESSION-PLAN.md).
   - [`round-15`](phase-02/round-15/BRIEF.md) — Windows on real
