@@ -236,8 +236,11 @@ from the release with `gh release download`, both pass `shasum -a 256
   real Intel Mac. It does not: every `analyze_audio` test there reads
   the X9 Pro, so each skips unless `SEEKER_RUN_X9_PRO_TESTS=1`, and no
   workflow sets it (observed: a bare run skips 5 of the file's 11).
-  What does run on Intel hardware is `build.yml`'s smoke test of the
-  frozen app, which finds a click track's BPM: 123.046875 on both
-  architectures in Build run `41809457488` (the tag's). No automated
-  check compares the key or its confidence across architectures.
-  Whether the skip stands is open.
+  What CI does check, on both architectures, is one generated click
+  track's BPM, within 2 of 123.05: in the suite
+  (`tests/test_smoke_test.py`, which `check-intel` runs on a real
+  Intel Mac) and in `build.yml`'s smoke test of each frozen app. That
+  both frozen apps found exactly 123.046875 in Build run
+  `41809457488` (the tag's) is an observation from the logs, not an
+  assertion. No CI check asserts a key, a key confidence or any real
+  file's BPM, on any architecture. Whether the skip stands is open.
