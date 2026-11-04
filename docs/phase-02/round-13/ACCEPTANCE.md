@@ -116,19 +116,28 @@ Serve them on this Mac and download them in a browser:
    from `127.0.0.1` as it does one from GitHub: if this prints "No such
    xattr", the Gatekeeper box below tests nothing; record that under
    Results and leave the box for the post-release download (S10).
-5. `shasum -a 256 -c Seeker-Intel.dmg.sha256` and `shasum -a 256 -c
-   Seeker.dmg.sha256`, both in `~/Downloads`: each prints `OK`.
+5. In `~/Downloads`, each of these prints `OK`:
+
+   ```
+   shasum -a 256 -c Seeker-Intel.dmg.sha256
+   shasum -a 256 -c Seeker.dmg.sha256
+   ```
 
 **The test folder,** from your own account, with step 1 above:
 `mkdir -p /Users/Shared/SeekerTest`, copy in a few MP3 or FLAC files
 that match the test account's Spotify playlist, one of them twice
-under two names (for Duplicates), then `chmod -R a+rwX
-/Users/Shared/SeekerTest`. The `chmod` matters: tagging rewrites each
-file, in place or by a copy renamed over it, so the test account needs
-write access to the files and the folder, and without it "Tag
-selected" fails as if the app were broken. The folder stays yours, so you can delete it
-afterwards (`/Users/Shared` is sticky: you could not delete a folder
-the test account made). Leave out M4A and AAC: they need ffmpeg.
+under two names (for Duplicates), then:
+
+```
+chmod -R a+rwX /Users/Shared/SeekerTest
+```
+
+The `chmod` matters: tagging rewrites each file, in place or by a copy
+renamed over it, so the test account needs write access to the files
+and the folder, and without it "Tag selected" fails as if the app were
+broken. The folder stays yours, so you can delete it afterwards
+(`/Users/Shared` is sticky: you could not delete a folder the test
+account made). Leave out M4A and AAC: they need ffmpeg.
 
 **The Intel app** (`Seeker-Intel.dmg`):
 
@@ -145,16 +154,24 @@ the test account made). Leave out M4A and AAC: they need ffmpeg.
       folder (the wizard asks for it).
 - [ ] Library → Tag options → "Analyze audio (BPM/Key)" → "Tag
       selected" on the matched files. Note each file's BPM and key:
-      from your own account, `uv run mutagen-inspect
-      /Users/Shared/SeekerTest/<file>` in the repository.
+      from your own account, in the repository:
+
+  ```
+  uv run mutagen-inspect /Users/Shared/SeekerTest/<file>
+  ```
+
 - [ ] Duplicates: Compute fingerprints, then "Find duplicates" finds the
-      pair. Then, with the app still open, in the test account's
-      Terminal: `lsof -p "$(pgrep -x -u "$USER" Seeker)" | grep -i
-      chromaprint`. It lists a path ending in
+      pair. Then, with the app still open, run this in the test
+      account's Terminal. It lists a path ending in
       `Seeker.app/Contents/Frameworks/libchromaprint.1.dylib` (and a
       Rosetta `.aot` file under `/private/var/db/oah`), not one under
       `/usr/local/lib`, whose copy this account can still see. The
       app keeps the library loaded once fingerprinting has used it.
+
+  ```
+  lsof -p "$(pgrep -x -u "$USER" Seeker)" | grep -i chromaprint
+  ```
+
 - [ ] The tray: the icon and its menu; close the window and bring it
       back with the menu's "Open Seeker".
 - [ ] Quit with a task running (tray → Quit during Compute fingerprints
@@ -166,9 +183,9 @@ the test account made). Leave out M4A and AAC: they need ffmpeg.
       the mounted image (no install; the two share the test account's
       one Seeker folder, so run one at a time). The image is
       quarantined too, so this app needs its own Privacy & Security →
-      "Open Anyway", and it runs translocated (Gatekeeper runs it from a
-      random read-only path; UNVERIFIED). Help → Build reads the Apple silicon
-      line, Architecture "Apple silicon".
+      "Open Anyway", and it runs translocated (Gatekeeper runs it from
+      a random read-only path; UNVERIFIED). Help → Build reads the Apple
+      silicon line, Architecture "Apple silicon".
 - [ ] Tag the same files with "Analyze audio (BPM/Key)" and "Re-tag
       already tagged files" ticked (without it, a file with a BPM is
       skipped). The BPM and key match the Intel app's for each file.
