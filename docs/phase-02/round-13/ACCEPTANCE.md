@@ -213,7 +213,9 @@ Record failures here with what you saw; each becomes a fix row.
 **2026-11-04, Kris, the test account on the M4 Pro, the Intel image.**
 No failures. His words: "I went through the basic functionalities, it
 all seems to check out. Admittedly, I didn't the intel vs arm analyse
-BPM key comparison, but the task did succeed in the test account."
+BPM key comparison, but the task did succeed in the test account. If
+you believe it essential I do the AB testing, I will do it, if not, we
+can carry on for now."
 He worked from the release folder's copy (step 1), which is the
 published image: it and v0.2.0's `Seeker-Intel.dmg`, downloaded back
 from the release with `gh release download`, both pass `shasum -a 256
