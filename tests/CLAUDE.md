@@ -70,7 +70,7 @@ linked to the HISTORY entry holding its investigation;
   [§267](../docs/history/241-270.md#267)
 - **On Windows a test's `HOME` moves nothing of Seeker's.**
   `Path.expanduser()` reads `USERPROFILE` (observed on
-  `check-windows`), and platformdirs 4.12.3's source resolves Seeker's
+  `check-windows`), and platformdirs 4.14.0's source resolves Seeker's
   data, log and cache folders from `WIN_PD_OVERRIDE_LOCAL_APPDATA`,
   else the known-folder API, never `HOME` (UNVERIFIED on Windows).
   Until R14-S2's conftest isolation lands, no suite runs on a Windows
