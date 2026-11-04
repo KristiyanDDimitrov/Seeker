@@ -17,8 +17,9 @@ Treat the Windows and Linux rows as unverified until someone runs the
 build on those platforms, and the Intel row as open until someone
 launches the app on an Intel Mac: GitHub's runner and Rosetta cover the
 suite, the build, the headless smoke test and a person using the app
-under Rosetta, not Gatekeeper's first-launch block on an Intel Mac or
-Docker Desktop for Intel. Both macOS images
+under Rosetta, not Gatekeeper's first-launch block on a quarantined
+download (unreported under Rosetta, untried on an Intel Mac) or Docker
+Desktop for Intel. Both macOS images
 need macOS 15, the highest `minos` among their binaries (the Info.plist
 bullet below). Phase 02 ([`phase-02/README.md`](phase-02/README.md))
 adds the Intel build in round 13 and verifies Windows in rounds 14 and
@@ -359,9 +360,10 @@ acceptance tries it on macOS 26.
 The Intel app is signed the same way: PyInstaller's bundle step signs
 with no architecture test (read in the locked PyInstaller's
 `building/osx.py`, 2026-11-03), and the first launch is macOS's, not
-the architecture's. Nobody has yet run `codesign -dvvv` on an Intel
-app or opened a quarantined Intel download; RELEASING.md step 3 and
-round 13's acceptance do (UNVERIFIED until then).
+the architecture's. S9b's RELEASING §3 found the Intel app ad-hoc
+signed, `signature ok` ([HISTORY §270](history/241-270.md#270));
+nobody has yet opened a quarantined Intel download: RELEASING §5.2's
+browser download does (UNVERIFIED until then).
 
 Notarization needs a paid Apple Developer account. The hooks for it
 are marked in `packaging/seeker.spec`: `codesign_identity=` and
