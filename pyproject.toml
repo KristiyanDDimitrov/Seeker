@@ -150,10 +150,8 @@ ignore = [
 # a URL, not a credential.
 "src/seeker/spotify/auth.py" = ["S105"]
 # SLSKD_NETWORK_PASSWORD_ENV_VAR holds the NAME of an env var
-# ("SLSKD_SLSK_PASSWORD"), never a real password value. S603/S607 (see
-# the shared justification below) also apply to this file's own
-# subprocess calls (docker/docker compose).
-"src/seeker/soulseek/docker_setup.py" = ["S105", "S603", "S607"]
+# ("SLSKD_SLSK_PASSWORD"), never a real password value.
+"src/seeker/soulseek/docker_setup.py" = ["S105"]
 # DATA_LOCATION_SPOTIFY_TOKEN_LABEL/TOOLTIP_*_PASSWORD_FIELD are UI
 # copy (a label and two tooltip strings), never a real credential.
 "src/seeker/ui/help_text.py" = ["S105"]
@@ -170,7 +168,6 @@ ignore = [
 # own, never external/untrusted input) share the identical reasoning.
 "src/seeker/audio/fingerprint.py" = ["S603", "S607"]
 "src/seeker/processes.py" = ["S603"]
-"src/seeker/soulseek/sharing_service.py" = ["S603", "S607"]
 "src/seeker/ui/pages/static_pages.py" = ["S603", "S607"]
 "src/seeker/ui/wizard.py" = ["S603", "S607"]
 "tests/test_lazy_spotify_config.py" = ["S603"]
