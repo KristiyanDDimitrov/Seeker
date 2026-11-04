@@ -57,8 +57,8 @@ Est. work includes the type's risk factor; est. peak is B + work.
 | ☑ S7 | `build.yml`: both apps built and smoke-tested in CI | Feature | §7 | ~50 K | After the first dispatched run is recorded |
 | **D — Document, accept, release** | | | | | |
 | ☑ S8 | Documents for two Macs (PF-04, PF-07) | Docs | §8 | ~50 K | After README and RELEASING |
-| ☐ S9 | **Gate.** Release-candidate acceptance: Code's half, then Kris's checklist | Release | §9 | ~35 K | At the gate |
-| ☐ S10 | **[ASK]** Publish v0.2.0; close round 13 | Release | §10 | ~45 K | At each approval |
+| ☑ S9 | **Gate.** Release-candidate acceptance: Code's half, then Kris's checklist (run as autodev R13-S9 and R13-S9b; the checklist in part, `ACCEPTANCE.md`) | Release | §9 | ~35 K | At the gate |
+| ☑ S10 | **[ASK]** Publish v0.2.0; close round 13 (run as autodev R13-S10 and R13-S10b) | Release | §10 | ~45 K | At each approval |
 
 Total ≈ 980 K of work over 18 rows. The brief's §1.1 (commit the
 planning documents) ran at the re-plan.
