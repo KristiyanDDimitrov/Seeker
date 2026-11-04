@@ -58,10 +58,7 @@ Both built 2026-11-04 from the tag, in a clean worktree, on the M4 Pro.
       and Homebrew's Cellar copy (no sudo, nothing on disk changed). It
       passed with `chromaprint_available` true. The same profile made
       the x86_64 Python refuse both system copies, by path and by bare
-      name, and still load `.chromaprint/lib`'s (observed). `lsof`
-      polled through that run listed no libchromaprint for the Rosetta
-      process (observed), so `lsof` cannot show which copy a Rosetta
-      app loaded.
+      name, and still load `.chromaprint/lib`'s (observed).
 - [x] Each image mounted read-only with `hdiutil attach -nobrowse`:
       `Seeker.dmg` holds an arm64 app with no libchromaprint,
       `Seeker-Intel.dmg` an x86_64 app with `libchromaprint.1.dylib`,
@@ -122,6 +119,17 @@ Serve them on this Mac and download them in a browser:
 5. `shasum -a 256 -c Seeker-Intel.dmg.sha256` and `shasum -a 256 -c
    Seeker.dmg.sha256`, both in `~/Downloads`: each prints `OK`.
 
+**The test folder,** from your own account, with step 1 above:
+`mkdir -p /Users/Shared/SeekerTest`, copy in a few MP3 or FLAC files
+that match the test account's Spotify playlist, one of them twice
+under two names (for Duplicates), then `chmod -R a+rwX
+/Users/Shared/SeekerTest`. The `chmod` matters: tagging writes a copy
+beside each file and renames it over the original, so the test account
+needs write access to the folder, and without it "Tag selected" fails
+as if the app were broken. The folder stays yours, so you can delete it
+afterwards (`/Users/Shared` is sticky: you could not delete a folder
+the test account made). Leave out M4A and AAC: they need ffmpeg.
+
 **The Intel app** (`Seeker-Intel.dmg`):
 
 - [ ] Open the image, read `Read Me First.txt`, drag `Seeker.app` to
@@ -133,23 +141,20 @@ Serve them on this Mac and download them in a browser:
 - [ ] The wizard with a test Spotify account (the Spotify app's owner
       needs Premium, Spotify's Development Mode rule); SoulSeek → "Set
       up later".
-- [ ] Sync, then scan a test folder: put a few MP3 or FLAC files that
-      match the test playlist in `/Users/Shared/SeekerTest` (readable
-      from your own account too), including one file twice under two
-      names for Duplicates. An M4A or AAC file needs ffmpeg; leave
-      those out.
+- [ ] Sync, then scan, with `/Users/Shared/SeekerTest` as the library
+      folder (the wizard asks for it).
 - [ ] Library → Tag options → "Analyze audio (BPM/Key)" → "Tag
       selected" on the matched files. Note each file's BPM and key:
       from your own account, `uv run mutagen-inspect
       /Users/Shared/SeekerTest/<file>` in the repository.
 - [ ] Duplicates: Compute fingerprints, then "Find duplicates" finds the
-      pair. The app searches its own bundle for libchromaprint first,
-      and Code proved the bundled copy loads with every other copy
-      hidden; `/usr/local/lib`'s x86_64 copy is still visible to this
-      account, and nothing short of moving it aside (sudo) shows which
-      copy loaded here. Optional: `sudo mkdir /usr/local/lib/aside &&
-      sudo mv /usr/local/lib/libchromaprint* /usr/local/lib/aside/`
-      before the run, and move them back after.
+      pair. Then, with the app still open, in the test account's
+      Terminal: `lsof -p "$(pgrep -x -u "$USER" Seeker)" | grep -i
+      chromaprint`. It lists
+      `~/Applications/Seeker.app/Contents/Frameworks/libchromaprint.1.dylib`
+      (and a Rosetta `.aot` file under `/private/var/db/oah`), not
+      `/usr/local/lib`'s copy, which this account can still see. The
+      app keeps the library loaded once fingerprinting has used it.
 - [ ] The tray: the icon and its menu; close the window and bring it
       back with the menu's "Open Seeker".
 - [ ] Quit with a task running (tray → Quit during Compute fingerprints
@@ -159,8 +164,11 @@ Serve them on this Mac and download them in a browser:
 
 - [ ] Quit the Intel app. Open `Seeker.dmg` and run `Seeker.app` from
       the mounted image (no install; the two share the test account's
-      one Seeker folder, so run one at a time). Help → Build reads the
-      Apple silicon line, Architecture "Apple silicon".
+      one Seeker folder, so run one at a time). The image is
+      quarantined too, so this app needs its own Privacy & Security →
+      "Open Anyway", and it runs translocated (Gatekeeper runs it from a
+      random read-only path). Help → Build reads the Apple silicon
+      line, Architecture "Apple silicon".
 - [ ] Tag the same files with "Analyze audio (BPM/Key)" and "Re-tag
       already tagged files" ticked (without it, a file with a BPM is
       skipped). The BPM and key match the Intel app's for each file.
