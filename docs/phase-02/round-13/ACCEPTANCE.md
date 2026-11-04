@@ -141,9 +141,12 @@ account made). Leave out M4A and AAC: they need ffmpeg.
 
 **The Intel app** (`Seeker-Intel.dmg`):
 
-- [x] Open the image, read `Read Me First.txt`, drag `Seeker.app` to
-      `~/Applications`. First launch through Privacy & Security → "Open
-      Anyway". Are its steps true on macOS 26?
+- [x] Open the image, drag `Seeker.app` to `~/Applications`, launch
+      it.
+- [ ] Read `Read Me First.txt`; first launch through Privacy &
+      Security → "Open Anyway". Are its steps true on macOS 26? (Left
+      for the post-release browser download, as step 4 says; see
+      Results.)
 - [ ] Help → Build reads the Intel line above; Help → Architecture
       begins "Intel build on Apple silicon (Rosetta)" and points at
       `Seeker.dmg`.
@@ -153,7 +156,8 @@ account made). Leave out M4A and AAC: they need ffmpeg.
 - [x] Sync, then scan, with `/Users/Shared/SeekerTest` as the library
       folder (the wizard asks for it).
 - [x] Library → Tag options → "Analyze audio (BPM/Key)" → "Tag
-      selected" on the matched files. Note each file's BPM and key:
+      selected" on the matched files (values not noted). Note each
+      file's BPM and key:
       from your own account, in the repository:
 
   ```
@@ -207,22 +211,25 @@ yours would kick your Mac's session off). Help → Architecture reads
 Record failures here with what you saw; each becomes a fix row.
 
 **2026-11-04, Kris, the test account on the M4 Pro, the Intel image.**
-No failures. In his words, the basic functions all checked out, and
-"Analyze audio (BPM/Key)" succeeded. The candidate is the published
-image: v0.2.0's `Seeker-Intel.dmg`, downloaded back from the release
-with `gh release download`, and the copy in the release folder both
-pass `shasum -a 256 -c` against the SHA-256 above.
+No failures. His words: "I went through the basic functionalities, it
+all seems to check out. Admittedly, I didn't the intel vs arm analyse
+BPM key comparison, but the task did succeed in the test account."
+He worked from the release folder's copy (step 1), which is the
+published image: it and v0.2.0's `Seeker-Intel.dmg`, downloaded back
+from the release with `gh release download`, both pass `shasum -a 256
+-c` against the SHA-256 above. He did not report step 5's `shasum`.
 
-- **Ticked:** the four boxes his answer covers: the install and first
-  launch, the wizard, sync and scan, and the analysis, which needs
-  the other three. Not reported: whether Safari quarantined the copy
-  (step 4), so whether "Open Anyway" was the path, and whether
-  `Read Me First.txt`'s steps hold on macOS 26; nor the files' BPM
-  and key. The browser download of the published images, Kris's
+- **Ticked:** the install and launch, which he did; the wizard and
+  sync and scan, which the analysis needs; and the analysis, which he
+  named, with the files' BPM and key not noted.
+- **Not ticked:** `Read Me First.txt` and "Open Anyway". Not reported:
+  whether Safari quarantined the copy (step 4), so whether "Open
+  Anyway" was the path, and whether `Read Me First.txt`'s steps hold
+  on macOS 26. The browser download of the published images, Kris's
   post-release check (RELEASING §5), covers Gatekeeper.
-- **Not ticked:** Help → Build and Architecture, Duplicates with the
-  `lsof` check, the tray, and quitting with a task running. His answer
-  does not name them; tick each he confirms.
+- **Not ticked either:** Help → Build and Architecture, Duplicates with
+  the `lsof` check, the tray, and quitting with a task running. His
+  answer does not name them; tick each he confirms.
 - **Skipped: the comparison** (both boxes unticked). The lead accepted
   the skip on the grounds that `tests/test_audio_analysis.py` pins the
   BPM, Camelot key and confidence and that `check-intel` runs it on a

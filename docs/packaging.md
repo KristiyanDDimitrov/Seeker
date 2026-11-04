@@ -322,11 +322,13 @@ which reads as not translated.
 [HISTORY §261](history/241-270.md#261)
 
 **The Intel app, launched by a person** on 2026-11-04: Kris installed
-v0.2.0's `Seeker-Intel.dmg` (the published image's SHA-256) in a test
-account on an M4 Pro, so under Rosetta 2, and ran part of round 13's
-checklist (`phase-02/round-13/ACCEPTANCE.md` has which): the wizard,
-sync, scan and "Analyze audio (BPM/Key)" worked, with no failure. The
-comparison with the Apple silicon app's BPM and key was skipped.
+v0.2.0's `Seeker-Intel.dmg` (from the release folder, whose copy has
+the published image's SHA-256) in a test account on an M4 Pro, so
+under Rosetta 2, and ran part of round 13's checklist
+(`phase-02/round-13/ACCEPTANCE.md` has which): "Analyze audio
+(BPM/Key)" succeeded, which needs the wizard, sync and scan, with no
+failure. The comparison with the Apple silicon app's BPM and key was
+skipped.
 [HISTORY §271](history/271-300.md#271)
 
 **Not yet verified for Intel:** the app on an Intel Mac, so
