@@ -13,6 +13,7 @@ import pytest
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 
+from ast_annotations import annotation_names
 from x9_pro_gate import OPT_IN_VARIABLE
 
 TESTS = Path(__file__).resolve().parent
@@ -185,32 +186,6 @@ def _forwarding_call(function: ast.stmt) -> ast.Call | None:
     return call
 
 
-def _named_in_annotations(tree: ast.AST) -> set[int]:
-    """The ids of the names that spell `tree`'s annotations (`->
-    subprocess.Popen[bytes]`), which the sweep passes. Evaluating one
-    names a type and starts nothing, since a spawn needs a call: the
-    set follows an annotation only through what spells a type
-    (attributes, subscripts, `|`, the lists `Callable` takes), never
-    into a call, so a call in an annotation, which runs when its
-    function is defined, is read as it would be anywhere else."""
-    pending: list[ast.AST] = []
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            pending.append(node.returns)
-        elif isinstance(node, (ast.arg, ast.AnnAssign)):
-            pending.append(node.annotation)
-    named: set[int] = set()
-    while pending:
-        node = pending.pop()
-        if isinstance(node, (ast.Attribute, ast.Name)):
-            named.add(id(node))
-        if isinstance(node, (ast.Attribute, ast.Subscript, ast.Tuple, ast.List)) or (
-                isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr)
-        ):
-            pending.extend(ast.iter_child_nodes(node))
-    return named
-
-
 def _commands_src_spawns(
         root: Path,
 ) -> tuple[list[tuple[str, ...]], list[str]]:
@@ -246,7 +221,7 @@ def _commands_src_spawns(
                 if (call := _forwarding_call(function)) is not None
             }
         qualifying: set[int] = set()
-        typed = _named_in_annotations(tree)
+        typed = annotation_names(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Call) and (words := _literal_program(node)):
                 commands.add(words)
