@@ -364,8 +364,9 @@ with no architecture test (read in the locked PyInstaller's
 `building/osx.py`, 2026-11-03), and the first launch is macOS's, not
 the architecture's. S9b's RELEASING §3 found the Intel app ad-hoc
 signed, `signature ok` ([HISTORY §270](history/241-270.md#270));
-nobody has yet opened a quarantined Intel download: RELEASING §5.2's
-browser download does (UNVERIFIED until then).
+nobody has yet reported opening a quarantined Intel download (whether
+Kris's copy under Rosetta was quarantined went unreported): RELEASING
+§5.2's browser download tries it (UNVERIFIED until then).
 
 Notarization needs a paid Apple Developer account. The hooks for it
 are marked in `packaging/seeker.spec`: `codesign_identity=` and
