@@ -81,7 +81,7 @@ Forward-looking only; everything shipped is in `docs/history/`.
   not yet on an Intel Mac ([docs/packaging.md](packaging.md)). Open:
   Kris's post-release checks (`RELEASING.md` §5: the browser download,
   the first launch, Help → "Check for updates…" in both apps), the
-  website's download buttons, four unticked Intel boxes and the BPM
+  website's download buttons, five unticked Intel boxes and the BPM
   and key comparison
   ([round-13/ACCEPTANCE.md](phase-02/round-13/ACCEPTANCE.md)).
 - **Phase 02 (planned 2026-10-17): Intel Macs, then Windows**
