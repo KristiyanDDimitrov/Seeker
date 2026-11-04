@@ -66,7 +66,7 @@ def test_open_in_file_manager_dispatches_by_platform(tmp_path, monkeypatch):
 
     calls: list[tuple[list[str], dict]] = []
     monkeypatch.setattr(
-        "seeker.ui.pages.static_pages.subprocess.run",
+        "seeker.ui.pages.static_pages.processes.run",
         lambda args, **kwargs: calls.append((args, kwargs)),
     )
     target = tmp_path / "does" / "not" / "exist" / "yet"

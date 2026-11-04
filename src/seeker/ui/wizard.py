@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from seeker import processes
 from seeker.application import Application
 from seeker.models.library_location import LibraryLocation
 from seeker.models.slskd_start import SlskdStartResult
@@ -659,11 +660,11 @@ class OnboardingWizard(QMainWindow):
     def _on_launch_docker_clicked(self) -> None:
         try:
             if sys.platform == "darwin":
-                subprocess.run(
+                processes.run(
                     ["open", "-a", "Docker"], check=True, timeout=10,
                 )
             elif sys.platform == "win32":
-                subprocess.run(
+                processes.run(
                     ["cmd", "/c", "start", "", "Docker Desktop"],
                     check=True, timeout=10,
                 )

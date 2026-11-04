@@ -40,6 +40,7 @@ from typing import Self
 import numpy as np
 import soundfile as sf
 
+from seeker import processes
 from seeker.errors import SeekerError
 
 logger = logging.getLogger(__name__)
@@ -375,7 +376,7 @@ def _compute_fingerprint_via_ffmpeg(path: Path) -> Fingerprint:
             tempfile.TemporaryFile() as stderr_file,
             _StreamingFingerprinter() as fingerprinter,
     ):
-        process = subprocess.Popen(
+        process = processes.popen(
             [
                 "ffmpeg", "-v", "error", "-i", str(path),
                 "-f", "s16le",

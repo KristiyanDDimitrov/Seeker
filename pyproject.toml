@@ -155,21 +155,21 @@ ignore = [
 # DATA_LOCATION_SPOTIFY_TOKEN_LABEL/TOOLTIP_*_PASSWORD_FIELD are UI
 # copy (a label and two tooltip strings), never a real credential.
 "src/seeker/ui/help_text.py" = ["S105"]
-# S603/S607 (subprocess: untrusted input / partial executable path):
-# every real call site uses the list form — no `shell=True` anywhere in
-# this codebase. Invoking `docker`, `ffmpeg`, `open`/`explorer`/
-# `xdg-open` by bare name relies on PATH, which
-# `ensure_full_path_environment()` (application.py) deliberately extends
-# for GUI launches — hardcoding an absolute path would break on a
-# Homebrew-vs-Docker-Desktop install instead. processes.py runs the
-# argument list its caller hands it, so S603 fires on its two calls
-# whatever that list holds. tests/*'s own files (`sys.executable`
+# S603 (subprocess: untrusted input): every program src/ starts goes
+# through processes.py, which runs the argument list its caller hands
+# it, so S603 fires on its two calls whatever that list holds. Every
+# caller passes a list, never `shell=True` (none anywhere in this
+# codebase), and names `docker`, `ffmpeg`, `open`/`explorer`/`xdg-open`
+# by bare name, which relies on PATH: `ensure_full_path_environment()`
+# (application.py) deliberately extends it for GUI launches, and
+# hardcoding an absolute path would break on a Homebrew-vs-Docker-
+# Desktop install instead. S607 (partial executable path) needs no
+# ignore in src/: it fires where a literal program name meets a
+# `subprocess` call, and those names reach `subprocess` only through
+# processes.py's parameter. tests/*'s own files (`sys.executable`
 # against a real repro script under this same repo, or a probe of its
 # own, never external/untrusted input) share the identical reasoning.
-"src/seeker/audio/fingerprint.py" = ["S603", "S607"]
 "src/seeker/processes.py" = ["S603"]
-"src/seeker/ui/pages/static_pages.py" = ["S603", "S607"]
-"src/seeker/ui/wizard.py" = ["S603", "S607"]
 "tests/test_lazy_spotify_config.py" = ["S603"]
 "tests/test_processes.py" = ["S603"]
 "tests/test_workers_deadlock_regression.py" = ["S603"]

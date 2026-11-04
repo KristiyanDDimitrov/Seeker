@@ -3,7 +3,6 @@ one module since they share `_open_in_file_manager`/
 `build_support_links_row`.
 """
 
-import subprocess
 import sys
 from pathlib import Path
 
@@ -18,7 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from seeker import _build_info
+from seeker import _build_info, processes
 from seeker.cpu_architecture import describe_architecture
 from seeker.ui import help_text, theme
 from seeker.ui.dialogs import build_support_links_row
@@ -39,11 +38,11 @@ def _open_in_file_manager(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
     if sys.platform == "darwin":
-        subprocess.run(["open", str(path)], check=False)
+        processes.run(["open", str(path)], check=False)
     elif sys.platform == "win32":
-        subprocess.run(["explorer", str(path)], check=False)
+        processes.run(["explorer", str(path)], check=False)
     else:
-        subprocess.run(["xdg-open", str(path)], check=False)
+        processes.run(["xdg-open", str(path)], check=False)
 
 
 def _section(title: str, *items: QWidget | QLayout) -> QVBoxLayout:
