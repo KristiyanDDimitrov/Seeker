@@ -78,7 +78,12 @@ Forward-looking only; everything shipped is in `docs/history/`.
 - **v0.2.0 is released** (2026-11-04, [§271](history/271-300.md#271)):
   the Intel build, `Seeker-Intel.dmg`, beside `Seeker.dmg`. Round 13
   is closed; a person has launched the Intel app only under Rosetta 2,
-  not yet on an Intel Mac ([docs/packaging.md](packaging.md)).
+  not yet on an Intel Mac ([docs/packaging.md](packaging.md)). Open:
+  Kris's post-release checks (`RELEASING.md` §5: the browser download,
+  the first launch, Help → "Check for updates…" in both apps), the
+  website's download buttons, four unticked Intel boxes and the BPM
+  and key comparison
+  ([round-13/ACCEPTANCE.md](phase-02/round-13/ACCEPTANCE.md)).
 - **Phase 02 (planned 2026-10-17): Intel Macs, then Windows**
   ([docs/phase-02/README.md](phase-02/README.md), findings
   `PF-NN` in its `AUDIT.md`), run as one autodev plan

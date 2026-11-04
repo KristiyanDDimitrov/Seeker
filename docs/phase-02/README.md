@@ -153,7 +153,7 @@ and Docker cannot run macOS at all. Rosetta is the emulator.
 
 | Round | Goal | Ends with | Needs | Status |
 |---|---|---|---|---|
-| [13](round-13/SESSION-PLAN.md) | Intel Macs | **v0.2.0**: `Seeker.dmg` (Apple silicon) and `Seeker-Intel.dmg` | this Mac; a real Intel Mac optional | **done**: v0.2.0 released 2026-11-04 |
+| [13](round-13/SESSION-PLAN.md) | Intel Macs | **v0.2.0**: `Seeker.dmg` (Apple silicon) and `Seeker-Intel.dmg` | this Mac; a real Intel Mac optional | **done**: v0.2.0 released 2026-11-04 (post-release checks open) |
 | [14](round-14/SESSION-PLAN.md) | Windows readiness, from the Mac and CI | a tested, CI-built `SeekerSetup.exe` artifact (not released) | nothing new; a VM optional | **next** |
 | [15](round-15/SESSION-PLAN.md) | Windows on real hardware | **v0.3.0** with `SeekerSetup.exe` | an x64 Windows 11 machine | provisional: re-planned at its start against round 14's results |
 
