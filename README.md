@@ -80,23 +80,24 @@ You need:
   carries its own copy, built from source: the built app found it in a
   smoke test on GitHub's Intel runner ([run
   41537431447](https://github.com/KristiyanDDimitrov/Seeker/actions/runs/41537431447)),
-  though not yet on an Intel Mac of anyone's own.
+  though not yet on an Intel Mac of anyone's own. On an Intel Mac an
+  M4A or AAC file still needs ffmpeg to be fingerprinted, which neither
+  app bundles, and `brew install ffmpeg` builds it from source there, a
+  long build ([why](docs/packaging.md#the-intel-app)).
 
-**The app.** From 0.2.0, the [latest
+**The app.** The [latest
 release](https://github.com/KristiyanDDimitrov/Seeker/releases/latest)
 has one download for each kind of Mac. To pick yours, open the Apple
 menu → About This Mac. A **Chip** line (Apple M1, M2 and so on) means
 Apple silicon; a **Processor** line (an Intel Core or Xeon) means Intel
 ([Apple's guide](https://support.apple.com/en-us/116943)).
 
-| About This Mac shows | Download (from 0.2.0) |
+| About This Mac shows | Download |
 |---|---|
 | Chip: Apple M1 or later | `Seeker.dmg` |
 | Processor: Intel Core or Xeon | `Seeker-Intel.dmg` |
 
-Both need macOS 15 or later. Until 0.2.0 is published, the latest
-release (0.1.1) has only `Seeker.dmg`, the Apple silicon image, so an
-Intel Mac has no download yet.
+Both need macOS 15 or later.
 
 - **The Intel floor is macOS 15 too.** An Intel Mac that cannot run
   macOS 15 cannot run Seeker. Of the Macs on [Apple's
