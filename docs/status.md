@@ -75,11 +75,16 @@ Forward-looking only; everything shipped is in `docs/history/`.
   `docs/README.md`.
 - **v0.1.1 is released** (2026-10-26, [§247](history/241-270.md#247)):
   a security release (certifi, setuptools), nothing else.
-- **Phase 02 is planned (2026-10-17): Intel Macs, then Windows**
+- **v0.2.0 is released** (2026-11-04, [§271](history/271-300.md#271)):
+  the Intel build, `Seeker-Intel.dmg`, beside `Seeker.dmg`. Round 13
+  is closed; a person has launched the Intel app only under Rosetta 2,
+  not yet on an Intel Mac ([docs/packaging.md](packaging.md)).
+- **Phase 02 (planned 2026-10-17): Intel Macs, then Windows**
   ([docs/phase-02/README.md](phase-02/README.md), findings
-  `PF-NN` in its `AUDIT.md`). Round 13 (Intel, v0.2.0) is next; round
-  14 makes Windows ready from the Mac and CI; round 15 (provisional)
-  tests on real Windows hardware and releases v0.3.0.
+  `PF-NN` in its `AUDIT.md`), run as one autodev plan
+  ([SESSION-PLAN.md](phase-02/autodev/SESSION-PLAN.md)). Round 14,
+  making Windows ready from the Mac and CI, is next; round 15
+  (provisional) tests on real Windows hardware and releases v0.3.0.
 - **Windows and Linux packaging: written, never run on real
   hardware** until rounds 14–15; Linux stays out of scope, and no
   Linux installer format is scoped
