@@ -123,10 +123,10 @@ Serve them on this Mac and download them in a browser:
 `mkdir -p /Users/Shared/SeekerTest`, copy in a few MP3 or FLAC files
 that match the test account's Spotify playlist, one of them twice
 under two names (for Duplicates), then `chmod -R a+rwX
-/Users/Shared/SeekerTest`. The `chmod` matters: tagging writes a copy
-beside each file and renames it over the original, so the test account
-needs write access to the folder, and without it "Tag selected" fails
-as if the app were broken. The folder stays yours, so you can delete it
+/Users/Shared/SeekerTest`. The `chmod` matters: tagging rewrites each
+file, in place or by a copy renamed over it, so the test account needs
+write access to the files and the folder, and without it "Tag
+selected" fails as if the app were broken. The folder stays yours, so you can delete it
 afterwards (`/Users/Shared` is sticky: you could not delete a folder
 the test account made). Leave out M4A and AAC: they need ffmpeg.
 
@@ -150,10 +150,10 @@ the test account made). Leave out M4A and AAC: they need ffmpeg.
 - [ ] Duplicates: Compute fingerprints, then "Find duplicates" finds the
       pair. Then, with the app still open, in the test account's
       Terminal: `lsof -p "$(pgrep -x -u "$USER" Seeker)" | grep -i
-      chromaprint`. It lists
-      `~/Applications/Seeker.app/Contents/Frameworks/libchromaprint.1.dylib`
-      (and a Rosetta `.aot` file under `/private/var/db/oah`), not
-      `/usr/local/lib`'s copy, which this account can still see. The
+      chromaprint`. It lists a path ending in
+      `Seeker.app/Contents/Frameworks/libchromaprint.1.dylib` (and a
+      Rosetta `.aot` file under `/private/var/db/oah`), not one under
+      `/usr/local/lib`, whose copy this account can still see. The
       app keeps the library loaded once fingerprinting has used it.
 - [ ] The tray: the icon and its menu; close the window and bring it
       back with the menu's "Open Seeker".
@@ -167,7 +167,7 @@ the test account made). Leave out M4A and AAC: they need ffmpeg.
       one Seeker folder, so run one at a time). The image is
       quarantined too, so this app needs its own Privacy & Security →
       "Open Anyway", and it runs translocated (Gatekeeper runs it from a
-      random read-only path). Help → Build reads the Apple silicon
+      random read-only path; UNVERIFIED). Help → Build reads the Apple silicon
       line, Architecture "Apple silicon".
 - [ ] Tag the same files with "Analyze audio (BPM/Key)" and "Re-tag
       already tagged files" ticked (without it, a file with a BPM is
