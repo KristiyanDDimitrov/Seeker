@@ -12,57 +12,53 @@ run), with status in `tasks.json` beside it, changed only through
 
 ## 1. Current state
 
-- **Released: v0.1.1** (2026-10-26, §247). **Main says 0.2.0**
-  (R13-S10a, §266): version, lock, CHANGELOG `[0.2.0] - 2026-11-04`,
-  README → License "LGPL-2.1-or-later". **Tagged locally, not
-  pushed:** `v0.2.0` (tag object `3ff929d`) on `5d3c5e3` (R13-S9). CHANGELOG's
-  `[Unreleased]` holds R14-S1's two CI bullets; they are not 0.2.0's.
-  H2 added none (test-only).
-- **HEAD is R13-S9b's close-out (§270):** both v0.2.0 images built
-  from the tag, RELEASING §3 green on each; Kris's checklist is
-  `docs/phase-02/round-13/ACCEPTANCE.md`. Before it, H2 (§269): every
-  ceiling wait in `tests/` is bounded by `fakes.WAIT_MS` (10 s), swept
-  by `tests/test_wait_sweeps.py`; R14-S1 (§268): non-blocking
-  `check-windows`, mypy `--platform win32`, its failures numbered in
-  §268 (42, plus entry 43 in its addendum: recorded, not a baseline).
+- **Released: v0.2.0** (2026-11-04T09:43:50Z, R13-S10): tag `v0.2.0`
+  (object `3ff929d7`) on `5d3c5e3`, four assets, `releases/latest`;
+  GitHub's digests match notes.md. Its record and README's un-gating
+  are R13-S10b's, in review now. CHANGELOG's `[Unreleased]` holds
+  R14-S1's two CI bullets; DEP-1 added none (no security bump).
+- **HEAD is DEP-1's close-out (§271, the first entry of the new
+  `docs/history/271-300.md`):** mypy 2.4.1, ruff 0.17.3 (one new rule,
+  RUF071, no finding), platformdirs 4.14.0 (same folders on macOS and
+  Windows; an override that is not fully qualified is now ignored).
+  Before it: R13-S9b (§270), H2 (§269), R14-S1 (§268).
 - **The three numbers on main (a bare run, offscreen, X9 Pro opt-in
-  unset):** pytest `2632 passed, 29 skipped`; mypy `--strict src/` and `--strict
-  --platform win32 src/` clean, 149 files; ruff 0. Before H2: `2602
-  passed, 29 skipped`. No `src/` change, so no x86_64 run.
+  unset):** pytest `2632 passed, 29 skipped`, unchanged; mypy `--strict src/` and `--strict
+  --platform win32 src/` clean, 149 files; ruff 0. The branch's x86_64
+  suite: `2632 passed, 29 skipped`.
 - **CI:** read the latest run by full SHA (`gh run list --commit`).
-  `check-intel` passed on H2's merge and the next commit (runs
-  41740520331, 41742930471): two green runs, not yet proof the 10 s
-  bound ends the Intel flakes. `check-windows` on both: "42 failed,
-  2547 passed, 58 skipped, 1 error" (the +30 passed are H2's tests).
+  DEP-1's branch head `8223c25` (run 41812144334): `check`,
+  `check-intel`, `audit` green, Build 41812144395 green;
+  `check-windows` "42 failed, 2547 passed, 58 skipped, 1 error", its 43
+  names equal to main's run 41755383483 (diffed).
 
 ## 2. Where we are
 
 Phase 02's rest is one autodev plan (2026-11-03): round 13's release,
 round 14 whole (S13 skipped, S10 option a), round 15's re-plan, plus
-H1 and H2. Done: GH-1, R13-S10a, H1, R14-S1, H2, R13-S9, R13-S9b. In
-flight: none.
+H1, H2 and DEP-1. Done: GH-1, R13-S10a, H1, R14-S1, H2, R13-S9,
+R13-S9b, R13-S10, DEP-1. In flight: R13-S10b (review fixes), R14-S2.
 Status: `python3
 ~/.claude/skills/autonomous-development/scripts/autodev.py status`.
 
 ## 3. Next steps
 
-1. **Done, R13-S9 (2026-11-04):** `v0.2.0` tagged locally (tag object
-   `3ff929d7`, commit `5d3c5e31`), never pushed: R13-S10 pushes it
-   with Kris's approval. Its evidence: CI 41742930471 green on
-   `5d3c5e3` (`check`, `check-intel`, `audit`); `build.yml` 41649408206
-   green on `8a1ef65`, the last change to `pyproject.toml`, `uv.lock`
-   and `packaging/`. CHANGELOG `[0.2.0] - 2026-11-04`; R14-S1's bullets
-   stay in `[Unreleased]`. Main moves on; the tag pins the release.
-2. **Done, R13-S9b (§270):** both images built from the tag in a
-   clean worktree. `.git/autodev/release/v0.2.0/` holds `Seeker.dmg`
-   (`f30f3d68…dfb7`), `Seeker-Intel.dmg` (`9009a6ef…c025`), their
-   `.sha256` files and `notes.md`, filled, no placeholder left.
-3. **Next, Kris:** run `docs/phase-02/round-13/ACCEPTANCE.md` (BRIEF
-   §9's checklist with the Intel image, in the test account), then
-   approve R13-S10, the publish (push the tag, the release, four
-   assets). Nothing else runs on the release until then.
-4. R14-S2 after R13-S10: it also owns isolating platformdirs in tests
-   (round-14 BRIEF §2 step 5; plan → Round 14 rows; its `lead_note`).
+1. **R13-S10b** (in review fixes): its branch links
+   `history/271-300.md#271` in status.md and packaging.md (twice) for
+   its own entry. DEP-1 took §271, so its integrator renumbers to
+   §272, appends to the existing `271-300.md`, and merges its
+   README file-table and section lines with DEP-1's.
+2. **R14-S2** (in flight): it also owns isolating platformdirs in tests
+   (round-14 BRIEF §2 step 5; its `lead_note`). It edits
+   `tests/CLAUDE.md`'s Windows `HOME` fact, which DEP-1 changed to cite
+   "platformdirs 4.14.0's source": a one-line overlap at rebase.
+   Under 4.14.0 an override must be fully qualified (`C:\…` or
+   `\\server\share`); a pytest tmp path qualifies. Its new code must
+   pass ruff 0.17.
+3. Dependabot #5, #7 and #8 close themselves now that main carries
+   their versions; nobody touches them. platformdirs 4.14.4 is
+   upstream, unread: a new PR and a new read (§271).
+4. Then R14-S3 onward, per `autodev.py status`.
 
 ## 4. Key context
 
@@ -109,7 +105,12 @@ Status: `python3
   (`SEEKER_RUN_X9_PRO_TESTS=1`).
 - The integrator: R14-S1's CHANGELOG bullets went to a fresh
   `[Unreleased]` above `[0.2.0]`; H2 and R13-S9b get no CHANGELOG
-  entry (test-only, and docs and release process).
+  entry (test-only, and docs and release process). DEP-1 gets no
+  CHANGELOG line (only security bumps are recorded, as with `579cd0e`
+  and `08e24f5`) and takes §271, as §248 did for the last batch.
+- Kris (2026-11-04): ACCEPTANCE.md's checklist passed on the Intel
+  image (the cross-image BPM/key comparison skipped, accepted by the
+  lead); R13-S10's publish approved and done.
 
 ## 6. Blockers
 
@@ -121,15 +122,17 @@ None. Merged branches and worktrees left for Kris to remove: `p02/H1`
 (`agent-a12ba60fe9f01f418`), `p02/R14-S1`
 (`agent-a2f629926c967ad19`), `p02/H2` (`agent-ae7b7d5bd10ba6576`),
 `p02/R13-S9b` (`agent-a6b56d8b69bdca68f`; its `dist/` holds both
-images and the smoke reports);
+images and the smoke reports), `p02/DEP-1`
+(`agent-ad89972bf2bc73aa7`, also on origin);
 origin's `p02/R14-S1` holds the pre-rebase commits the two CI runs
 built. `dist/` and `.chromaprint/` hold gitignored build outputs.
 
 ## 8. Waiting on Kris
 
 - The X9 Pro opt-in path has not been run since H1 gated it (§267).
-- **Now:** `docs/phase-02/round-13/ACCEPTANCE.md`, then the R13-S10
-  publish approval. Later: the post-release checks, round 15's machine.
+- **After R13-S10b:** the browser download and first launch of each
+  image, Help -> Check for updates in both apps, the website's
+  Download buttons. Later: round 15's machine.
 - **Proposed rows, awaiting Kris (not in tasks.json):** (A)
   `seeker.spec` filters any libchromaprint the ctypes scan picks up
   that `bundle_info` did not stage (a symlink twin on CI's Intel job, a

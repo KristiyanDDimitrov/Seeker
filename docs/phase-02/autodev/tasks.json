@@ -216,7 +216,7 @@
         "kind": "live-check",
         "when": "after",
         "question": "Run BRIEF §9's checklist with the Intel v0.2.0 image in the test account (docs/phase-02/round-13/ACCEPTANCE.md says how). Pass, or which item failed?",
-        "answer": null
+        "answer": "Kris, 2026-11-04: ran the checklist with the Intel image in the test account; the basic functions all check out, and Analyze audio (BPM/Key) succeeded there. Skipped: the comparison (the Apple silicon image's BPM/key against the Intel app's). The lead accepted that: tests/test_audio_analysis.py pins BPM, Camelot key and confidence (lines 130-132), and check-intel passes them on a real Intel Mac with the Intel pins. R13-S10b records this under ACCEPTANCE.md Results."
       },
       "history": "§270",
       "commits": [
@@ -235,7 +235,14 @@
       "agent_id": "af20d75a7e93acb35",
       "branch": "p02/R13-S9b",
       "blocker": null,
-      "updated": "2026-11-04T01:37:42Z"
+      "updated": "2026-11-04T09:37:57Z",
+      "answers": [
+        {
+          "at": "2026-11-04T09:37:57Z",
+          "answer": "Kris, 2026-11-04: ran the checklist with the Intel image in the test account; the basic functions all check out, and Analyze audio (BPM/Key) succeeded there. Skipped: the comparison (the Apple silicon image's BPM/key against the Intel app's). The lead accepted that: tests/test_audio_analysis.py pins BPM, Camelot key and confidence (lines 130-132), and check-intel passes them on a real Intel Mac with the Intel pins. R13-S10b records this under ACCEPTANCE.md Results.",
+          "question": "Run BRIEF §9's checklist with the Intel v0.2.0 image in the test account (docs/phase-02/round-13/ACCEPTANCE.md says how). Pass, or which item failed?"
+        }
+      ]
     },
     {
       "id": "R13-S10",
@@ -254,20 +261,29 @@
         "kind": "approval",
         "when": "before",
         "question": "Approve publishing v0.2.0: the lead shows the exact git push and gh release create commands and the release notes first.",
-        "answer": null
+        "answer": "Kris, 2026-11-04: Publish now (approved the three commands and notes.md as shown)."
       },
       "history": null,
       "commits": [],
       "actual_peak_k": null,
-      "status": "todo",
+      "status": "done",
       "model": "opus",
       "effort": "high",
-      "attempts": 0,
+      "attempts": 1,
       "review_rounds": 0,
       "worker_id": null,
       "agent_id": null,
       "branch": null,
-      "blocker": null
+      "blocker": null,
+      "answers": [
+        {
+          "at": "2026-11-04T09:42:32Z",
+          "answer": "Kris, 2026-11-04: Publish now (approved the three commands and notes.md as shown).",
+          "question": "Approve publishing v0.2.0: the lead shows the exact git push and gh release create commands and the release notes first."
+        }
+      ],
+      "updated": "2026-11-04T09:44:20Z",
+      "lead_note": "Published 2026-11-04T09:43:50Z on Kris's yes: push-check ok; git push origin v0.2.0 (tag object 3ff929d7, commit 5d3c5e31); gh release create --verify-tag -> https://github.com/KristiyanDDimitrov/Seeker/releases/tag/v0.2.0, not draft, not prerelease, releases/latest = v0.2.0. Four assets; GitHub's digests for Seeker.dmg (f30f3d68...) and Seeker-Intel.dmg (9009a6ef...) match notes.md. The tag push started CI 41809457449 and Build 41809457488."
     },
     {
       "id": "R13-S10b",
@@ -291,17 +307,17 @@
       "history": null,
       "commits": [],
       "actual_peak_k": null,
-      "status": "todo",
+      "status": "reviewing",
       "model": "opus",
       "effort": "high",
-      "attempts": 0,
-      "review_rounds": 0,
-      "worker_id": null,
-      "agent_id": null,
-      "branch": null,
+      "attempts": 1,
+      "review_rounds": 1,
+      "worker_id": "afb1763b72e9a7acb",
+      "agent_id": "a48ea1d92505a08b6",
+      "branch": "p02/R13-S10b",
       "blocker": null,
       "note": "From R13-S10a's round-2 review: README → Install says the Intel download carries its own chromaprint, but not that an M4A or AAC file still needs ffmpeg (a heavy Homebrew source build on Intel, docs/packaging.md:156). Add one sentence when un-gating.",
-      "updated": "2026-11-03T13:48:42Z"
+      "updated": "2026-11-04T10:28:50Z"
     },
     {
       "id": "R14-S1",
@@ -352,18 +368,24 @@
       "split_point": "After the first upgrade",
       "notes": "Before spawning, the lead runs one upstream-reader per PR (#5, #7, #8) and passes the verdicts in the prompt. The worker applies each bump on its branch (pyproject constraint + uv lock, ruff <0.18), one commit each, fixes any new ruff 0.17 finding without ruff format or --fix with a narrowed --select, and runs the full check plus the x86_64 suite. Dependabot closes each PR itself once main carries its version; never touch GitHub.",
       "kris": null,
-      "history": null,
-      "commits": [],
-      "actual_peak_k": null,
-      "status": "todo",
-      "attempts": 0,
+      "history": "§271",
+      "commits": [
+        "0c7d86c",
+        "03946bb",
+        "8223c25"
+      ],
+      "actual_peak_k": 60,
+      "status": "done",
+      "attempts": 1,
       "review_rounds": 0,
-      "worker_id": null,
-      "agent_id": null,
-      "branch": null,
+      "worker_id": "ad89972bf2bc73aa7",
+      "agent_id": "a27a52aac9c082bca",
+      "branch": "p02/DEP-1",
       "blocker": null,
       "model": "opus",
-      "effort": "xhigh"
+      "effort": "xhigh",
+      "lead_note": "Integrator gates the merge on CI 41812144334: check-intel green, check-windows names equal to main's",
+      "updated": "2026-11-04T10:29:27Z"
     },
     {
       "id": "R14-S2",
@@ -385,17 +407,17 @@
       "history": null,
       "commits": [],
       "actual_peak_k": null,
-      "status": "todo",
+      "status": "doing",
       "model": "opus",
       "effort": "max",
-      "attempts": 0,
+      "attempts": 1,
       "review_rounds": 0,
-      "worker_id": null,
-      "agent_id": null,
-      "branch": null,
+      "worker_id": "a135fd3b734e4bead",
+      "agent_id": "a135fd3b734e4bead",
+      "branch": "p02/R14-S2",
       "blocker": null,
       "lead_note": "Owns isolating platformdirs in tests (R14-S1 review): a conftest fixture setting WIN_PD_OVERRIDE_LOCAL_APPDATA to a tmp path, with the CI probe (platformdirs.user_data_dir('Seeker', appauthor=False) with HOME moved, on check-windows) as its failing test. Guards round 15's Windows machine's real %LOCALAPPDATA%\\Seeker. See HISTORY for R14-S1.",
-      "updated": "2026-11-03T19:05:20Z"
+      "updated": "2026-11-04T09:45:37Z"
     },
     {
       "id": "R14-S3",

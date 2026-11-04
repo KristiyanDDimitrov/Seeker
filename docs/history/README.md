@@ -13,7 +13,7 @@ heading, so `file#N` lands on it. Link to an entry as
 heading-derived GitHub anchor, which breaks whenever a title changes.
 
 **Adding an entry (every session, per the round brief's §0.6).**
-Append it to the end of the last file, `241-270.md`: a
+Append it to the end of the last file, `271-300.md`: a
 `<a name="N"></a>` line directly above `### N — <title>`, numbering
 continuing from the last entry. Then add its line to that file's list
 below, in the same format. When the next number passes the last
@@ -40,7 +40,8 @@ file under about 150 KB.
 | [`151-180.md`](151-180.md) | §151–§180: round 11 |
 | [`181-210.md`](181-210.md) | §181–§210: round 11's close and round 12 |
 | [`211-240.md`](211-240.md) | §211–§240: round 12 |
-| [`241-270.md`](241-270.md) | §241 onward: round 12. **New entries go here.** |
+| [`241-270.md`](241-270.md) | §241–§270: rounds 12–14 |
+| [`271-300.md`](271-300.md) | §271 onward: the rest of phase 2. **New entries go here.** |
 
 No entry was ever written for §37, §57–§61, §97 or §108; those numbers
 are unused, not missing files. §62 exists only as a follow-up heading
@@ -365,3 +366,7 @@ under their entry and live in the same file, after it.
 - §268 — R14-S1: a non-blocking `check-windows`, `mypy --platform win32`; the first Windows run's 42 failures by cause, the second's one new as entry 43 → [241-270.md#268](241-270.md#268)
 - §269 — H2: one named bound, `fakes.WAIT_MS` (10 s), for every ceiling wait; a sweep fails any other bound; a fake the code releases records that it was → [241-270.md#269](241-270.md#269)
 - §270 — R13-S9b: both v0.2.0 images built from the tag, §3 green; the ctypes scan bundles a host x86_64 libchromaprint into the arm64 app → [241-270.md#270](241-270.md#270)
+
+### `271-300.md`
+
+- §271 — DEP-1: Dependabot #5, #7, #8 landed (mypy 2.4.1, ruff 0.17.3, platformdirs 4.14.0); RUF071 the one new rule; a plain `uv lock` takes the unread 4.14.4 → [271-300.md#271](271-300.md#271)
