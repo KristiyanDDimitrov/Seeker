@@ -141,18 +141,18 @@ account made). Leave out M4A and AAC: they need ffmpeg.
 
 **The Intel app** (`Seeker-Intel.dmg`):
 
-- [ ] Open the image, read `Read Me First.txt`, drag `Seeker.app` to
+- [x] Open the image, read `Read Me First.txt`, drag `Seeker.app` to
       `~/Applications`. First launch through Privacy & Security → "Open
       Anyway". Are its steps true on macOS 26?
 - [ ] Help → Build reads the Intel line above; Help → Architecture
       begins "Intel build on Apple silicon (Rosetta)" and points at
       `Seeker.dmg`.
-- [ ] The wizard with a test Spotify account (the Spotify app's owner
+- [x] The wizard with a test Spotify account (the Spotify app's owner
       needs Premium, Spotify's Development Mode rule); SoulSeek → "Set
       up later".
-- [ ] Sync, then scan, with `/Users/Shared/SeekerTest` as the library
+- [x] Sync, then scan, with `/Users/Shared/SeekerTest` as the library
       folder (the wizard asks for it).
-- [ ] Library → Tag options → "Analyze audio (BPM/Key)" → "Tag
+- [x] Library → Tag options → "Analyze audio (BPM/Key)" → "Tag
       selected" on the matched files. Note each file's BPM and key:
       from your own account, in the repository:
 
@@ -205,3 +205,32 @@ yours would kick your Mac's session off). Help → Architecture reads
 ## Results
 
 Record failures here with what you saw; each becomes a fix row.
+
+**2026-11-04, Kris, the test account on the M4 Pro, the Intel image.**
+No failures. In his words, the basic functions all checked out, and
+"Analyze audio (BPM/Key)" succeeded. The candidate is the published
+image: v0.2.0's `Seeker-Intel.dmg`, downloaded back from the release
+with `gh release download`, and the copy in the release folder both
+pass `shasum -a 256 -c` against the SHA-256 above.
+
+- **Ticked:** the four boxes his answer covers: the install and first
+  launch, the wizard, sync and scan, and the analysis, which needs
+  the other three. Not reported: whether Safari quarantined the copy
+  (step 4), so whether "Open Anyway" was the path, and whether
+  `Read Me First.txt`'s steps hold on macOS 26; nor the files' BPM
+  and key. The browser download of the published images, Kris's
+  post-release check (RELEASING §5), covers Gatekeeper.
+- **Not ticked:** Help → Build and Architecture, Duplicates with the
+  `lsof` check, the tray, and quitting with a task running. His answer
+  does not name them; tick each he confirms.
+- **Skipped: the comparison** (both boxes unticked). The lead accepted
+  the skip on the grounds that `tests/test_audio_analysis.py` pins the
+  BPM, Camelot key and confidence and that `check-intel` runs it on a
+  real Intel Mac. It does not: every `analyze_audio` test there reads
+  the X9 Pro, so each skips unless `SEEKER_RUN_X9_PRO_TESTS=1`, and no
+  workflow sets it (observed: a bare run skips 5 of the file's 11).
+  What does run on Intel hardware is `build.yml`'s smoke test of the
+  frozen app, which finds a click track's BPM: 123.046875 on both
+  architectures in Build run `41809457488` (the tag's). No automated
+  check compares the key or its confidence across architectures.
+  Whether the skip stands is open.
