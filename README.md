@@ -105,11 +105,12 @@ Both need macOS 15 or later.
   Intel: MacBook Pro (2018 to 2020), MacBook Air (2020), iMac (2019 and
   2020), iMac Pro (2017), Mac mini (2018) and Mac Pro (2019).
 - **The wrong download.** `Seeker.dmg` is Apple silicon only and does
-  not run on an Intel Mac. `Seeker-Intel.dmg` should also run on Apple
+  not run on an Intel Mac. `Seeker-Intel.dmg` also runs on Apple
   silicon, through Rosetta 2, but slower: its smoke test passed that
-  way, though no one has opened its window there. Help's Architecture
-  line names the build you have; under Rosetta it begins "Intel build on
-  Apple silicon (Rosetta)" and points at the faster download.
+  way, and 0.2.0's was launched and used that way in a test account.
+  Help's Architecture line names the build you have; under Rosetta it
+  begins "Intel build on Apple silicon (Rosetta)" and points at the
+  faster download.
 - **How far the Intel build has been tested.** On GitHub's Intel Mac
   runner the app builds, its contents pass a check and a headless smoke
   test, and the test suite passes; the app also built and passed that

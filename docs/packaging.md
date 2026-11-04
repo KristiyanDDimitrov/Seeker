@@ -9,16 +9,16 @@ wizard detects and starts.
 | Platform | Status |
 |---|---|
 | macOS 15+, Apple silicon | Built and verified on real hardware: the `.app`, the `.dmg`, and the app launched after being copied to `/Applications`. The frozen app also passes its own `--smoke-test` (2026-11-02, [HISTORY §257](history/241-270.md#257)). Image: `Seeker.dmg`. |
-| macOS 15+, Intel (x86_64) | **Built, bundle-checked and smoke-tested on GitHub's Intel runner and under Rosetta 2; no person has launched the app on any Mac (UNVERIFIED).** On 2026-11-02 `build.yml` built the app on `macos-15-intel`; its bundle check passed, and `--smoke-test` passed there with libchromaprint loading from the bundle ([Build run 41537431447](https://github.com/KristiyanDDimitrov/Seeker/actions/runs/41537431447), [HISTORY §262](history/241-270.md#262)). The test suite passed on the same runner ([HISTORY §261](history/241-270.md#261)). Under Rosetta 2 on Apple silicon the app built from an x86_64 interpreter and passed the same two checks ([HISTORY §260](history/241-270.md#260)). Image: `Seeker-Intel.dmg`. |
+| macOS 15+, Intel (x86_64) | **Built, bundle-checked and smoke-tested on GitHub's Intel runner and under Rosetta 2; launched by a person only under Rosetta 2, never on an Intel Mac (UNVERIFIED there).** On 2026-11-02 `build.yml` built the app on `macos-15-intel`; its bundle check passed, and `--smoke-test` passed there with libchromaprint loading from the bundle ([Build run 41537431447](https://github.com/KristiyanDDimitrov/Seeker/actions/runs/41537431447), [HISTORY §262](history/241-270.md#262)). The test suite passed on the same runner ([HISTORY §261](history/241-270.md#261)). Under Rosetta 2 on Apple silicon the app built from an x86_64 interpreter and passed the same two checks ([HISTORY §260](history/241-270.md#260)). v0.2.0's image was launched and used in a test account under Rosetta 2 on an M4 Pro (2026-11-04, [HISTORY §271](history/271-300.md#271)). Image: `Seeker-Intel.dmg`. |
 | Windows | **Written, never verified on real hardware.** `seeker.spec` is cross-platform and `packaging/seeker.iss` is a complete Inno Setup script, but neither has run on a Windows machine. |
 | Linux | **Written, never verified on real hardware.** The same `seeker.spec`; no installer format (AppImage, `.deb`) is scoped. |
 
 Treat the Windows and Linux rows as unverified until someone runs the
-build on those platforms, and the Intel row's "no person has launched
-the app" as open until someone launches it on an Intel Mac: GitHub's
-runner and Rosetta cover the suite, the build and the headless smoke
-test, not a person double-clicking the app, Gatekeeper's first-launch
-block on an Intel Mac, or Docker Desktop for Intel. Both macOS images
+build on those platforms, and the Intel row as open until someone
+launches the app on an Intel Mac: GitHub's runner and Rosetta cover the
+suite, the build, the headless smoke test and a person using the app
+under Rosetta, not Gatekeeper's first-launch block on an Intel Mac or
+Docker Desktop for Intel. Both macOS images
 need macOS 15, the highest `minos` among their binaries (the Info.plist
 bullet below). Phase 02 ([`phase-02/README.md`](phase-02/README.md))
 adds the Intel build in round 13 and verifies Windows in rounds 14 and
@@ -321,11 +321,19 @@ test expectation: a real Intel Mac has no `sysctl.proc_translated` key,
 which reads as not translated.
 [HISTORY §261](history/241-270.md#261)
 
-**Not yet verified for Intel:** a person double-clicking the app,
-Gatekeeper's first-launch block on an Intel Mac (it is assumed to read
-as `Read Me First.txt` says: UNVERIFIED), Docker Desktop for Intel, and
-analysis speed on a real, older Intel Mac. Round 13's acceptance
-checklist covers what Rosetta can show.
+**The Intel app, launched by a person** on 2026-11-04: Kris installed
+v0.2.0's `Seeker-Intel.dmg` (the published image's SHA-256) in a test
+account on an M4 Pro, so under Rosetta 2, and ran part of round 13's
+checklist (`phase-02/round-13/ACCEPTANCE.md` has which): the wizard,
+sync, scan and "Analyze audio (BPM/Key)" worked, with no failure. The
+comparison with the Apple silicon app's BPM and key was skipped.
+[HISTORY §271](history/271-300.md#271)
+
+**Not yet verified for Intel:** the app on an Intel Mac, so
+Gatekeeper's first-launch block there (it is assumed to read as `Read
+Me First.txt` says: UNVERIFIED), Docker Desktop for Intel, and analysis
+speed on a real, older Intel Mac; and, anywhere, that the Intel app's
+BPM and key match the Apple silicon app's for the same file.
 
 ### Signing and Gatekeeper
 
