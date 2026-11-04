@@ -9,7 +9,7 @@ wizard detects and starts.
 | Platform | Status |
 |---|---|
 | macOS 15+, Apple silicon | Built and verified on real hardware: the `.app`, the `.dmg`, and the app launched after being copied to `/Applications`. The frozen app also passes its own `--smoke-test` (2026-11-02, [HISTORY §257](history/241-270.md#257)). Image: `Seeker.dmg`. |
-| macOS 15+, Intel (x86_64) | **Built, bundle-checked and smoke-tested on GitHub's Intel runner and under Rosetta 2; launched by a person only under Rosetta 2, never on an Intel Mac (UNVERIFIED there).** On 2026-11-02 `build.yml` built the app on `macos-15-intel`; its bundle check passed, and `--smoke-test` passed there with libchromaprint loading from the bundle ([Build run 41537431447](https://github.com/KristiyanDDimitrov/Seeker/actions/runs/41537431447), [HISTORY §262](history/241-270.md#262)). The test suite passed on the same runner ([HISTORY §261](history/241-270.md#261)). Under Rosetta 2 on Apple silicon the app built from an x86_64 interpreter and passed the same two checks ([HISTORY §260](history/241-270.md#260)). v0.2.0's image was launched and used in a test account under Rosetta 2 on an M4 Pro (2026-11-04, [HISTORY §271](history/271-300.md#271)). Image: `Seeker-Intel.dmg`. |
+| macOS 15+, Intel (x86_64) | **Built, bundle-checked and smoke-tested on GitHub's Intel runner and under Rosetta 2; launched by a person only under Rosetta 2, never on an Intel Mac (UNVERIFIED there).** On 2026-11-02 `build.yml` built the app on `macos-15-intel`; its bundle check passed, and `--smoke-test` passed there with libchromaprint loading from the bundle ([Build run 41537431447](https://github.com/KristiyanDDimitrov/Seeker/actions/runs/41537431447), [HISTORY §262](history/241-270.md#262)). The test suite passed on the same runner ([HISTORY §261](history/241-270.md#261)). Under Rosetta 2 on Apple silicon the app built from an x86_64 interpreter and passed the same two checks ([HISTORY §260](history/241-270.md#260)). v0.2.0's image was launched and used in a test account under Rosetta 2 on an M4 Pro (2026-11-04, [HISTORY §272](history/271-300.md#272)). Image: `Seeker-Intel.dmg`. |
 | Windows | **Written, never verified on real hardware.** `seeker.spec` is cross-platform and `packaging/seeker.iss` is a complete Inno Setup script, but neither has run on a Windows machine. |
 | Linux | **Written, never verified on real hardware.** The same `seeker.spec`; no installer format (AppImage, `.deb`) is scoped. |
 
@@ -329,7 +329,7 @@ under Rosetta 2, and ran part of round 13's checklist
 (BPM/Key)" succeeded, which needs the wizard, sync and scan, with no
 failure. The comparison with the Apple silicon app's BPM and key was
 skipped.
-[HISTORY §271](history/271-300.md#271)
+[HISTORY §272](history/271-300.md#272)
 
 **Not yet verified for Intel:** the app on an Intel Mac, so
 Gatekeeper's first-launch block there (it is assumed to read as `Read

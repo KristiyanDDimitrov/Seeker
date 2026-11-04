@@ -75,7 +75,7 @@ Forward-looking only; everything shipped is in `docs/history/`.
   `docs/README.md`.
 - **v0.1.1 is released** (2026-10-26, [§247](history/241-270.md#247)):
   a security release (certifi, setuptools), nothing else.
-- **v0.2.0 is released** (2026-11-04, [§271](history/271-300.md#271)):
+- **v0.2.0 is released** (2026-11-04, [§272](history/271-300.md#272)):
   the Intel build, `Seeker-Intel.dmg`, beside `Seeker.dmg`. Round 13
   is closed; a person has launched the Intel app only under Rosetta 2,
   not yet on an Intel Mac ([docs/packaging.md](packaging.md)). Open:
