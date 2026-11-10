@@ -6,10 +6,13 @@ add what a bare `subprocess` call leaves to the platform:
 - On Windows, `CREATE_NO_WINDOW`. A console program (`docker`,
   `ffmpeg`, `cmd`) started from the windowed app otherwise opens a
   console window of its own for as long as it runs (UNVERIFIED on
-  hardware); `tests/test_processes.py` shows on `check-windows` that a
-  child started here has none (run 42812791705). Windows ignores the
-  flag for a GUI program such as `explorer` (Microsoft's
-  documentation, UNVERIFIED).
+  hardware). On `check-windows`, `tests/test_processes.py` saw a child
+  started here read no console window (run 42812791705), but its
+  control skipped there, so the run does not show that a child started
+  without the flag would have had one: if pytest there has a console
+  with no window, such a child shares it and reads none too
+  (UNVERIFIED). Windows ignores the flag for a GUI program such as
+  `explorer` (Microsoft's documentation, UNVERIFIED).
 - In text mode, UTF-8 with `errors="replace"`. Text mode otherwise
   decodes with the locale's encoding, which on Windows is its ANSI code
   page (cp1252 on a Western install, UNVERIFIED), and fails the whole

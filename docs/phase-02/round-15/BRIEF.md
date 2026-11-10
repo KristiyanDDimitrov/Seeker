@@ -116,9 +116,11 @@ Planning seeded the list; each round-14 row appends to it.
 - PF-10: no console window flashes from the windowed app.
   `processes.py` adds `CREATE_NO_WINDOW` to every program Seeker
   starts; `tests/test_processes.py` shows on `check-windows` only that
-  a child has no console (`GetConsoleWindow()` is 0, run 42812791705;
-  its control skipped there: the runner's pytest has no console to
-  share). *Settle:* the
+  a child has no console window (`GetConsoleWindow()` is 0, run
+  42812791705). That does not show the flag at work: its control
+  skipped there, since the runner's pytest has no console window to
+  share, and a child without the flag that shares a console with no
+  window would read 0 too (UNVERIFIED). *Settle:* the
   installed app in the tray with Sharing open (its `docker ps` and
   `docker inspect` polls), then a duplicate-detection run (one
   `ffmpeg` per file): no window appears.
