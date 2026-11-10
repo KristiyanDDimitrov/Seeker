@@ -182,6 +182,10 @@ def test_the_flag_is_windows_own():
 
 @_windows_only
 def test_on_windows_a_real_program_has_no_console_window():
+    """A child started through the helper reads no console window. That
+    shows the flag at work only where the control below runs: a child
+    started without it reads none either when it shares a console that
+    has no window (UNVERIFIED)."""
     result = processes.run(
         _CONSOLE_WINDOW_PROBE, check=True, capture_output=True, text=True,
         timeout=30,
@@ -195,9 +199,15 @@ def test_on_windows_a_real_program_has_no_console_window():
 @_windows_only
 def test_on_windows_the_probe_sees_a_console_window_it_shares():
     # Shows the probe above can see a window at all: started without the
-    # flag, a console program shares its parent's console. A pytest with
-    # no console of its own would hand that child a new window, which is
-    # why this skips there instead.
+    # flag, a console program shares its parent's console (Microsoft's
+    # documentation, UNVERIFIED). It skips where pytest reads no console
+    # window, and that covers two cases it cannot tell apart, both
+    # UNVERIFIED: pytest has no console, so a child without the flag
+    # would open a new window, which no test may do; or pytest has a
+    # console with no window, which such a child shares and reads 0
+    # from, as a child started with the flag does. check-windows skipped
+    # it (run 42812791705), so the probe above shows nothing there about
+    # the flag itself.
     import ctypes
 
     if not ctypes.windll.kernel32.GetConsoleWindow():
