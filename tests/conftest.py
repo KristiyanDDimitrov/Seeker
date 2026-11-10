@@ -319,12 +319,13 @@ def _no_real_seeker_folders(tmp_path_factory):
     which it reads from `WIN_PD_OVERRIDE_LOCAL_APPDATA` when that holds a
     fully qualified path, as pytest's temporary folders there do, and
     otherwise from the known-folder API (platformdirs 4.14.0's
-    windows.py, read 2026-11-10; tests/test_platformdirs_isolation.py
-    probes it on `check-windows`). A child inherits it when its
-    environment copies `os.environ`, as every test's that runs Seeker's
-    code does. Session-long, like the spawn guard, so a worker that
-    outlives its test resolves it too. Elsewhere platformdirs ignores it,
-    and a test patches platformdirs or moves `HOME` itself.
+    windows.py, read 2026-11-10; observed on `check-windows`, run
+    42812791705, by tests/test_platformdirs_isolation.py). A child
+    inherits it when its environment copies `os.environ`, as every
+    test's that runs Seeker's code does. Session-long, like the spawn
+    guard, so a worker that outlives its test resolves it too. Elsewhere
+    platformdirs ignores it, and a test patches platformdirs or moves
+    `HOME` itself.
     """
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv(
