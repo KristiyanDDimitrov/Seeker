@@ -144,17 +144,34 @@ def _imports_the_helper(node: ast.ImportFrom, alias: ast.alias) -> bool:
     )
 
 
+# The spawns the helper may hand its caller's list to, and the keywords
+# it may pass with it: with these, the program is the one the list's
+# first word names (`env` changes only the PATH that word is looked up
+# on). `executable` would start another file under that name;
+# `shell=True` would hand the list to `/bin/sh -c` or `%ComSpec% /c`,
+# as `getoutput` and `getstatusoutput` do; `**options` could hold either
+# (CPython 3.13.15's subprocess.py, read 2026-11-10). A keyword the
+# helper starts to pass joins the set once it is shown to be as
+# harmless.
+_FORWARDING_SPAWNS = {"run", "Popen"}
+_FORWARDED_KEYWORDS = {
+    "check", "capture_output", "timeout", "env", "creationflags",
+    "text", "encoding", "errors", "stdout", "stderr",
+}
+
+
 def _forwarding_call(function: ast.stmt) -> ast.Call | None:
     """`function`'s spawn, when `function` is the helper's `run` or
     `popen` and hands its caller's argument list on untouched: past its
     docstring, its body is the one statement `return
-    subprocess.<spawn>(args, ...)`, with `args` its first parameter,
-    named there and nowhere else in the body. That spawn starts what
-    the caller names, and the sweep reads each caller where it calls
-    `processes.run([...])`, so passing it hides no program. Any other
-    shape (the list rebuilt, rebound, sliced or changed in place; a
-    second statement), and the same shape in any other module, stays
-    unreadable."""
+    subprocess.run(args, ...)` or `return subprocess.Popen(args, ...)`,
+    with `args` its first parameter, named there and nowhere else in
+    the body, and each keyword one of `_FORWARDED_KEYWORDS`. That spawn
+    starts what the caller names, and the sweep reads each caller where
+    it calls `processes.run([...])`, so passing it hides no program.
+    Any other shape (the list rebuilt, rebound, sliced or changed in
+    place; a second statement; another spawn, or a keyword outside that
+    set), and the same shape in any other module, stays unreadable."""
     if not (
             isinstance(function, ast.FunctionDef)
             and function.name in _MODULE_SPAWNS["processes"]
@@ -177,8 +194,9 @@ def _forwarding_call(function: ast.stmt) -> ast.Call | None:
             and isinstance(call.func, ast.Attribute)
             and isinstance(call.func.value, ast.Name)
             and call.func.value.id == "subprocess"
-            and call.func.attr in _MODULE_SPAWNS["subprocess"]
+            and call.func.attr in _FORWARDING_SPAWNS
             and len(call.args) == 1
+            and all(keyword.arg in _FORWARDED_KEYWORDS for keyword in call.keywords)
             and len(named) == 1
             and named[0] is call.args[0]
     ):
@@ -547,6 +565,18 @@ _CHANGED_FORWARDS = {
         "        return subprocess.run(args)\n"
         "    return start()\n"
     ),
+    "another-executable": (
+        "def run(args):\n"
+        "    return subprocess.run(args, executable='/usr/bin/open')\n"
+    ),
+    "through-a-shell": (
+        "def run(args):\n    return subprocess.run(args, shell=True)\n"
+    ),
+    "options-unpacked": (
+        "def run(args, **options):\n"
+        "    return subprocess.run(args, **options)\n"
+    ),
+    "a-shell-spawn": "def run(args):\n    return subprocess.getoutput(args)\n",
 }
 
 
@@ -557,8 +587,10 @@ def test_the_helper_passes_only_a_spawn_of_what_its_caller_named(
         tmp_path, function,
 ):
     """The sweep passes the helper's `run` and `popen` only as one
-    statement handing their first parameter on untouched, since it reads
-    the program at their callers; any other spawn there is unreadable."""
+    statement handing their first parameter on untouched to
+    `subprocess.run` or `Popen`, with keywords that keep the program its
+    caller named, since it reads the program at their callers; any
+    other spawn there is unreadable."""
     (tmp_path / _HELPER).write_text(
         f"import subprocess\n{function}", encoding="utf-8",
     )
