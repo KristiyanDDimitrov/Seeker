@@ -20,6 +20,9 @@ add what a bare `subprocess` call leaves to the platform:
 Both look `subprocess.run` and `subprocess.Popen` up on the module when
 called, never at import, so a test's fake of either, and the suite's
 spawn guard, still see every call.
+
+No other module names a spawn (`subprocess`'s, `os.system`,
+`os.popen`): `tests/test_subprocess_sweep.py` fails the build.
 """
 
 import subprocess
