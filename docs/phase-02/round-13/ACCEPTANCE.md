@@ -11,7 +11,7 @@ Both built 2026-11-04 from the tag, in a clean worktree, on the M4 Pro.
 
 | | |
 |---|---|
-| Tag | `v0.2.0`, annotated (`3ff929d`), local only, not pushed |
+| Tag | `v0.2.0`, annotated (`3ff929d`), local only, not pushed (pushed and published 2026-11-04, §272) |
 | Commit | `5d3c5e3` ("release: 0.2.0 dated 2026-11-04") |
 | CI on it | run `41742930471`: `check`, `check-intel`, `audit` green (`check-windows` failed, non-blocking) |
 | Build workflow | run `41649408206` green on `8a1ef65`; `pyproject.toml`, `uv.lock` and `packaging/` unchanged since |
