@@ -116,7 +116,9 @@ Planning seeded the list; each round-14 row appends to it.
 - PF-10: no console window flashes from the windowed app.
   `processes.py` adds `CREATE_NO_WINDOW` to every program Seeker
   starts; `tests/test_processes.py` shows on `check-windows` only that
-  a child has no console (`GetConsoleWindow()` is 0). *Settle:* the
+  a child has no console (`GetConsoleWindow()` is 0, run 42812791705;
+  its control skipped there: the runner's pytest has no console to
+  share). *Settle:* the
   installed app in the tray with Sharing open (its `docker ps` and
   `docker inspect` polls), then a duplicate-detection run (one
   `ffmpeg` per file): no window appears.
@@ -131,8 +133,9 @@ Planning seeded the list; each round-14 row appends to it.
   share `C:\SeekerTest\Café 東京`, then Sharing lists it as live.
 - The suite's platformdirs isolation (§0.3's precondition):
   `tests/conftest.py`'s `_no_real_seeker_folders`, probed by
-  `tests/test_platformdirs_isolation.py` on `check-windows` only.
-  *Settle:* before the first suite run, list `%LOCALAPPDATA%\Seeker`
+  `tests/test_platformdirs_isolation.py` on `check-windows` only
+  (passed, run 42812791705). *Settle:* before the first suite run,
+  list `%LOCALAPPDATA%\Seeker`
   with its times (if it exists), run that test file, then the suite,
   and list it again: nothing changed.
 

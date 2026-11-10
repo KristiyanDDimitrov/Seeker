@@ -73,12 +73,13 @@ linked to the HISTORY entry holding its investigation;
   `check-windows`), and platformdirs 4.14.0's source resolves Seeker's
   data, log and cache folders from `WIN_PD_OVERRIDE_LOCAL_APPDATA` when
   it holds a fully qualified path, else the known-folder API, never
-  `HOME` (UNVERIFIED on Windows). So conftest's
-  `_no_real_seeker_folders` points that variable at a temporary folder
-  for the whole session; a child inherits it from `os.environ`, and a
-  test that builds a child's environment from scratch for Seeker's code
-  adds it. `tests/test_platformdirs_isolation.py` probes it on
-  `check-windows`. [§268](../docs/history/241-270.md#268)
+  `HOME`. So conftest's `_no_real_seeker_folders` points that variable
+  at a temporary folder for the whole session; a child inherits it from
+  `os.environ`, and a test that builds a child's environment from
+  scratch for Seeker's code adds it. `tests/test_platformdirs_isolation.py`
+  shows both on `check-windows` (run 42812791705): a child with `HOME`
+  moved names `%LOCALAPPDATA%\Seeker` without the variable, a temporary
+  folder with it. [§268](../docs/history/241-270.md#268)
 - **Skips:** `tests/test_stress_e2e.py` (`requires_stress_opt_in`) runs
   only with `SEEKER_RUN_STRESS_TEST=1`: it drives real Spotify, slskd and
   the X9 Pro for minutes and mutates the production DB. Run it
