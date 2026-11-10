@@ -84,6 +84,11 @@ linked to the HISTORY entry holding its investigation;
   macOS guards a removable volume, and without the opt-in nothing looks
   at it. A bare run, like CI, skips 29: those 28 and the stress test.
   [§32](../docs/history/032-046.md#32), [§267](../docs/history/241-270.md#267)
+- **CI checks audio analysis only as one generated click track's BPM
+  within 2 of 123.05**, on both architectures (`test_smoke_test.py`, and
+  build.yml's frozen-app smoke test). Every real-file `analyze_audio`
+  test is X9 Pro opt-in, so no CI check asserts a key, a confidence or a
+  real file's BPM. [§272](../docs/history/271-300.md#272)
 - **A test needing a real libchromaprint takes `requires_chromaprint`
   from `tests/chromaprint_gate.py`**, never its own `skipif`. The skip
   also hides a library-lookup bug, so a runner that must have the

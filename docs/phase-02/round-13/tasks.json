@@ -271,20 +271,20 @@
       "id": "S9", "title": "Release-candidate acceptance: Code's half, then Kris's checklist",
       "type": "release", "executes": "BRIEF.md §9", "depends_on": ["S7", "S8"], "ask": false,
       "gate": "Kris runs BRIEF §9's checklist in the test account before S10", "model": null, "executor": "lead", "wave": 4,
-      "est_work_k": 35, "est_peak_k": 89, "actual_peak_k": null,
+      "est_work_k": 35, "est_peak_k": 89, "actual_peak_k": 95,
       "split_point": "At the gate",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "519-546", "est_k": 0.5},
         {"path": "RELEASING.md", "range": "27-76", "est_k": 0.5},
         {"path": "docs/phase-01/round-12/ACCEPTANCE.md", "range": "headings only (the format)", "est_k": 0.3}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["5d3c5e3", "94ca869", "2044dd0", "a529c44", "5e4fe09"], "history": 270
     },
     {
       "id": "S10", "title": "Publish v0.2.0; close round 13",
       "type": "release", "executes": "BRIEF.md §10", "depends_on": ["S9"], "ask": true,
       "gate": "Kris approves each outward step (tag, push, release, notes)", "model": null, "executor": "solo", "wave": 5,
-      "est_work_k": 45, "est_peak_k": 99, "actual_peak_k": null,
+      "est_work_k": 45, "est_peak_k": 99, "actual_peak_k": 95,
       "split_point": "At each approval",
       "reading_list": [
         {"path": "docs/phase-02/round-13/BRIEF.md", "range": "548-556", "est_k": 0.2},
@@ -292,7 +292,7 @@
         {"path": "docs/phase-02/round-13/SESSION-PLAN.md", "range": "Exit criteria", "est_k": 0.5},
         {"path": "docs/history/241-270.md", "range": "148-222", "est_k": 1.2}
       ],
-      "status": "todo", "commits": [], "history": null
+      "status": "done", "commits": ["4465dc2", "bd75c5c", "637b5bf", "ba21e2a", "6938e43", "e1b50a3", "e030c62", "54ed2fe", "5c21ee6", "2b5370a", "1887fe7", "c979927", "1911e49", "06fe4ec", "0c760d1", "d1f30d2", "6aa2211"], "history": 272
     }
   ]
 }
