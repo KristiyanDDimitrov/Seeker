@@ -113,6 +113,28 @@ Planning seeded the list; each round-14 row appends to it.
   machine reports is open. *Settle:* in a console, `chcp`, then
   `python -c "import locale, sys; print(locale.getencoding(),
   sys.stdout.encoding)"`.
+- PF-10: no console window flashes from the windowed app.
+  `processes.py` adds `CREATE_NO_WINDOW` to every program Seeker
+  starts; `tests/test_processes.py` shows on `check-windows` only that
+  a child has no console (`GetConsoleWindow()` is 0). *Settle:* the
+  installed app in the tray with Sharing open (its `docker ps` and
+  `docker inspect` polls), then a duplicate-detection run (one
+  `ffmpeg` per file): no window appears.
+- PF-10: the flag on a GUI program and through `cmd`. Microsoft
+  documents it as ignored for a program that is not a console one, so
+  `explorer` still opens a folder, and the wizard's `cmd /c start ""
+  "Docker Desktop"` still starts Docker Desktop. *Settle:* Help → Open
+  data folder; the wizard's Launch Docker with Docker Desktop quit.
+- PF-11, the subprocess half: `docker` writes UTF-8 on Windows, which
+  `processes.run(..., text=True)` reads, so a non-ASCII share path
+  matches; read in the code page, its bytes never would. *Settle:*
+  share `C:\SeekerTest\Café 東京`, then Sharing lists it as live.
+- The suite's platformdirs isolation (§0.3's precondition):
+  `tests/conftest.py`'s `_no_real_seeker_folders`, probed by
+  `tests/test_platformdirs_isolation.py` on `check-windows` only.
+  *Settle:* before the first suite run, list `%LOCALAPPDATA%\Seeker`
+  with its times (if it exists), run that test file, then the suite,
+  and list it again: nothing changed.
 
 ---
 
