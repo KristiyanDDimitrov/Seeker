@@ -601,6 +601,41 @@ def test_the_suite_refuses_every_other_program_src_spawns(
     record.clear()
 
 
+# Programs the guard refuses, spelled as they start all the same: with
+# the extension a Windows path names (`shutil.which` there finds
+# `docker.exe`, PF-34), or in another case, which a file system that
+# ignores case finds (this Mac's APFS ran `/USR/BIN/TRUE`, observed
+# 2026-11-10; NTFS's lookup is Microsoft's documentation, UNVERIFIED).
+_SPELLINGS = {
+    "docker.exe": ["ps"],
+    "DOCKER": ["ps"],
+    "Docker.EXE": ["compose", "up", "-d"],
+    "OPEN.EXE": ["-R", "/"],
+    "Explorer.exe": ["/"],
+    "cmd.exe": ["/c", "start", "", "Docker Desktop"],
+    "CMD": ["/C", "START", "", "Docker Desktop"],
+}
+
+
+@pytest.mark.parametrize("name", _SPELLINGS)
+def test_the_suite_refuses_a_program_by_its_stem_in_any_case(
+        tmp_path, name, _docker_attempts, _desktop_attempts,
+):
+    """Each by its full path, as `shutil.which` hands it back."""
+    program, ran = _stand_in(tmp_path, name)
+    command = [str(program), *_SPELLINGS[name]]
+
+    with pytest.raises(FileNotFoundError):
+        subprocess.run(command, check=False)  # noqa: S603 — a stand-in
+
+    assert not ran.exists()
+    docker = Path(name).stem.casefold() == "docker"
+    record = _docker_attempts if docker else _desktop_attempts
+    assert record == [" ".join(command)]
+    # Recorded and refused; cleared so this test alone passes.
+    record.clear()
+
+
 @pytest.mark.skipif(
     sys.platform != "darwin",
     reason=(

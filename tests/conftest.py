@@ -131,8 +131,16 @@ class _DesktopSpawnRefused(FileNotFoundError):
 _DESKTOP_PROGRAMS = frozenset({"open", "osascript", "explorer", "xdg-open"})
 
 
+def _program(word):
+    """The program a command's first word starts, by its stem, case-folded.
+    `docker.exe`, the path `shutil.which` finds on Windows, starts docker
+    as `docker` does, and so does `DOCKER` on a file system that ignores
+    case (this Mac's APFS ran `/USR/BIN/TRUE`, observed 2026-11-10)."""
+    return Path(word).stem.casefold()
+
+
 def _opens_on_the_desktop(argv):
-    program = Path(argv[0]).name
+    program = _program(argv[0])
     return program in _DESKTOP_PROGRAMS or (
         program == "cmd" and "start" in (word.casefold() for word in argv[1:])
     )
@@ -204,7 +212,7 @@ def _refuse_real_spawns(
                 )
             if (
                     argv
-                    and Path(os.fsdecode(argv[0])).name == "docker"
+                    and _program(os.fsdecode(argv[0])) == "docker"
                     and not (
                         _docker_inspect_allowed.is_set()
                         and [os.fsdecode(part) for part in argv[1:2]] == ["inspect"]
