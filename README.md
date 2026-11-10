@@ -107,7 +107,8 @@ Both need macOS 15 or later.
 - **The wrong download.** `Seeker.dmg` is Apple silicon only and does
   not run on an Intel Mac. `Seeker-Intel.dmg` also runs on Apple
   silicon, through Rosetta 2, but slower: its smoke test passed that
-  way, and 0.2.0's was launched and used that way in a test account.
+  way, and 0.2.0's Intel app was launched and used that way in a test
+  account.
   Help's Architecture line names the build you have; under Rosetta it
   begins "Intel build on Apple silicon (Rosetta)" and points at the
   faster download.
