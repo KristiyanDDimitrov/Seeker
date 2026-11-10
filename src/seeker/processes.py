@@ -13,9 +13,9 @@ add what a bare `subprocess` call leaves to the platform:
   decodes with the locale's encoding, which on Windows is its ANSI code
   page (cp1252 on a Western install, UNVERIFIED), and fails the whole
   call on one byte it cannot decode: cp1252 has no character for 0x9D,
-  which the UTF-8 of 東京 holds. macOS decodes UTF-8 already, under no
-  locale too (Python's UTF-8 mode; observed 2026-11-04 with `env -i`
-  and `LC_ALL=C`), so there only the replacement is new.
+  which the UTF-8 of U+6771 (E6 9D B1) holds. macOS decodes UTF-8
+  already, under no locale too (Python's UTF-8 mode; observed 2026-11-04
+  with `env -i` and `LC_ALL=C`), so there only the replacement is new.
 
 Both look `subprocess.run` and `subprocess.Popen` up on the module when
 called, never at import, so a test's fake of either, and the suite's

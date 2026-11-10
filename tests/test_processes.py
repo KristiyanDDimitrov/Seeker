@@ -20,8 +20,10 @@ _CONSOLE_WINDOW_PROBE = [
 
 # A child that writes UTF-8 and then a byte UTF-8 never uses. Its own
 # source is ASCII, so no command-line encoding stands between it and
-# the bytes. 東京's UTF-8 holds 0x9D, which cp1252, a Western Windows
-# code page, cannot decode at all.
+# the bytes. The UTF-8 of U+6771 holds 0x9D, which cp1252, a Western
+# Windows code page, cannot decode at all. The expected text below is
+# in escapes too: the suite's sweeps read this file in the locale's
+# encoding, and on check-windows a 0x9D failed them (run 42812791705).
 _UTF8_THEN_A_BAD_BYTE = (
     "import sys; "
     "sys.stdout.buffer.write('Caf\\u00e9 \\u6771\\u4eac'.encode() + b'\\xff'); "
@@ -160,7 +162,7 @@ def test_a_real_programs_utf8_reads_whole_and_a_bad_byte_is_replaced():
     )
 
     assert (result.stdout, result.stderr) == (
-        "Café 東京�", "Über�",
+        "Caf\u00e9 \u6771\u4eac\ufffd", "\u00dcber\ufffd",
     )
 
 
