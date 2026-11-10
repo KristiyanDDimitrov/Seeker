@@ -308,6 +308,32 @@ def _nothing_opened_on_the_desktop(_desktop_attempts):
     )
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _no_real_seeker_folders(tmp_path_factory):
+    """Points platformdirs' Windows folders at a temporary one for the
+    whole session, so no test, and no process one starts, reaches this
+    machine's own `%LOCALAPPDATA%\\Seeker`.
+
+    On Windows a moved `HOME` moves nothing of Seeker's: platformdirs
+    builds its data, log and cache folders from `CSIDL_LOCAL_APPDATA`,
+    which it reads from `WIN_PD_OVERRIDE_LOCAL_APPDATA` when that holds a
+    fully qualified path, as pytest's temporary folders there do, and
+    otherwise from the known-folder API (platformdirs 4.14.0's
+    windows.py, read 2026-11-10; tests/test_platformdirs_isolation.py
+    probes it on `check-windows`). A child inherits it when its
+    environment copies `os.environ`, as every test's that runs Seeker's
+    code does. Session-long, like the spawn guard, so a worker that
+    outlives its test resolves it too. Elsewhere platformdirs ignores it,
+    and a test patches platformdirs or moves `HOME` itself.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv(
+            "WIN_PD_OVERRIDE_LOCAL_APPDATA",
+            str(tmp_path_factory.mktemp("local-appdata")),
+        )
+        yield
+
+
 _SCREENSHOTS_TOOL = (
     Path(__file__).resolve().parent.parent / "tools" / "screenshots.py"
 )
