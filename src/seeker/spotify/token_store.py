@@ -30,7 +30,7 @@ class TokenStore:
             return None
 
         try:
-            data = json.loads(self.path.read_text())
+            data = json.loads(self.path.read_text(encoding="utf-8"))
             return SpotifyToken(
                 access_token=data["access_token"],
                 refresh_token=data["refresh_token"],

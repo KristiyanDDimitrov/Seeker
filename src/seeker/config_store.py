@@ -139,7 +139,7 @@ def load_config(path: Path) -> SeekerConfig:
         return SeekerConfig()
 
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return SeekerConfig()
 

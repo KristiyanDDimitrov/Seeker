@@ -537,8 +537,8 @@ class SharingService:
         # so a parse failure leaves both untouched and a retry can't add
         # the same volume line twice (HISTORY §74).
         originals = _OriginalTexts(
-            compose=self._compose_path.read_text(),
-            slskd_yml=slskd_yml_path.read_text(),
+            compose=self._compose_path.read_text(encoding="utf-8"),
+            slskd_yml=slskd_yml_path.read_text(encoding="utf-8"),
         )
         updated_compose_text = _insert_compose_volume_line(
             originals.compose, plan.compose_volume_line

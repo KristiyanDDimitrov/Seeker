@@ -62,7 +62,7 @@ class AlbumArtCache:
             return None
 
         try:
-            meta = json.loads(meta_path.read_text())
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
             image_bytes = data_path.read_bytes()
             mime_type = str(meta["mime_type"])
         except (OSError, ValueError, KeyError):
@@ -84,7 +84,8 @@ class AlbumArtCache:
             make_private_dir(self.cache_dir)
             (self.cache_dir / f"{key}.bin").write_bytes(image_bytes)
             (self.cache_dir / f"{key}.json").write_text(
-                json.dumps({"url": url, "mime_type": mime_type})
+                json.dumps({"url": url, "mime_type": mime_type}),
+                encoding="utf-8",
             )
         except OSError:
             # Disk cache is purely an optimization — a write failure

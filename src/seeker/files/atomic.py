@@ -17,7 +17,7 @@ def write_text_atomic(path: Path, text: str) -> None:
     over `path`, so a crash, full disk or power cut mid-write leaves the
     old file intact rather than a truncated one. An existing file's
     permission bits carry over; the temp file is removed if anything
-    fails.
+    fails. `text` is written as UTF-8, whatever the locale.
     """
     _write_atomic(path, text, mode=None)
 
@@ -70,7 +70,7 @@ def _write_atomic(path: Path, text: str, mode: int | None) -> None:
         0o666 if mode is None else mode,
     )
     try:
-        with os.fdopen(fd, "w") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
