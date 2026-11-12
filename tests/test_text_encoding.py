@@ -178,7 +178,10 @@ def test_text_files_are_utf8_whatever_the_locale(tmp_path):
     The child runs under ISO 8859-1 (`LC_ALL`, on macOS), or under
     Windows' ANSI code page, which `LC_ALL` does not change; in either,
     `_NAME` cannot be written in the locale's encoding, and UTF-8 read
-    as it comes back garbled."""
+    as it comes back garbled. Each file is decoded as strict UTF-8 and
+    compared line by line: Windows' text mode ends a line with CRLF
+    (check-windows, run 43324253654), which is the platform's
+    convention, not the encoding this test is for."""
     result = subprocess.run(  # noqa: S603 — this interpreter, a fixed script
         [sys.executable, "-c", _WRITE_AND_READ_BACK, str(tmp_path)],
         env={**os.environ, "LC_ALL": "en_US.ISO8859-1"},
@@ -190,9 +193,15 @@ def test_text_files_are_utf8_whatever_the_locale(tmp_path):
     # The control: text opened with no encoding would not be UTF-8 here.
     assert codecs.lookup(locale_encoding).name != "utf-8"
     assert settings_name == ascii(_NAME)
-    assert (tmp_path / "written.txt").read_bytes() == f"{_NAME}\n".encode()
-    assert (tmp_path / "docker-compose.yml").read_bytes() == (
-        "services:\n  slskd:\n    volumes:\n"
-        f'      - "/{_NAME}/a:/shared/a:ro"\n'
-        f'      - "/{_NAME}/b:/shared/b:ro"\n'
-    ).encode()
+    assert _utf8_lines(tmp_path / "written.txt") == [_NAME]
+    assert _utf8_lines(tmp_path / "docker-compose.yml") == [
+        "services:", "  slskd:", "    volumes:",
+        f'      - "/{_NAME}/a:/shared/a:ro"',
+        f'      - "/{_NAME}/b:/shared/b:ro"',
+    ]
+
+
+def _utf8_lines(path: Path) -> list[str]:
+    """`path`'s lines, its bytes decoded as strict UTF-8, which raises
+    on a byte the locale's encoding would have written instead."""
+    return path.read_bytes().decode("utf-8").splitlines()
