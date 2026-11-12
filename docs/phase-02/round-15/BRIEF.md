@@ -108,11 +108,22 @@ Planning seeded the list; each round-14 row appends to it.
   `test_smoke_test.py` build). *Settle:* those tests and modules as a
   standard user, Developer Mode off, then on.
 - A console's code page: run 41647752561's log shows pytest's em dash
-  as U+FFFD, so the runner's pipe is not UTF-8; a pipe's code page is
-  round 14 S3's to settle in CI (PF-11), and what a console on a real
-  machine reports is open. *Settle:* in a console, `chcp`, then
-  `python -c "import locale, sys; print(locale.getencoding(),
-  sys.stdout.encoding)"`.
+  as U+FFFD, so the runner's pipe is not UTF-8. Round 14 S3's control
+  (`tests/test_main.py`, Windows only) has a child's piped stdout in
+  `locale.getencoding()`, never UTF-8, on `check-windows`; what a
+  console on a real machine reports is open. *Settle:* in a console,
+  `chcp`, then `python -c "import locale, sys;
+  print(locale.getencoding(), sys.stdout.encoding)"`.
+- PF-12: the CLI writes UTF-8 to a console, a pipe and a file
+  (`main.py` reconfigures both streams; PEP 528 says a console is
+  UTF-8 already). `check-windows` shows a pipe only. *Settle:* a
+  playlist named `Café 東京`, then `seeker playlists` in a console,
+  and `seeker playlists > out.txt` opened as UTF-8.
+- PF-11, the file half: Sharing writes the Compose file and
+  `slskd.yml` as UTF-8 (`files/atomic.py`), and Compose and slskd read
+  them so (UNVERIFIED). *Settle:* share `C:\SeekerTest\Café 東京`,
+  then `docker compose config` shows the path whole and slskd lists
+  the share.
 - PF-10: no console window flashes from the windowed app.
   `processes.py` adds `CREATE_NO_WINDOW` to every program Seeker
   starts; `tests/test_processes.py` shows on `check-windows` only that
