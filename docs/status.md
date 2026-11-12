@@ -70,6 +70,16 @@ Genuinely open only, checked against every CI run on record (187, to
   CRITICAL and the app quits. A hand edit made mid-session makes
   `update_settings`' main-thread callers log it and not save. A dialog
   is the follow-up. [§N](history/271-300.md#N)
+- **A `config.json` that is not valid JSON still loads as defaults,
+  and the next save writes them over the user's Spotify and Soulseek
+  credentials.** That includes a UTF-8 file that starts with a BOM,
+  which Notepad can save (which versions do so by default is
+  UNVERIFIED); `json.loads` refuses it ("Unexpected UTF-8 BOM",
+  observed). This is a candidate row: refuse the file as
+  `TextFileNotUtf8Error` does. Also true on main: on Windows,
+  Sharing's first edit rewrites the LF template as CRLF (text mode's
+  line endings), so `_roll_back` restores its text but not its bytes.
+  [§N](history/271-300.md#N)
 
 ## Roadmap
 
