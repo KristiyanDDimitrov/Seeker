@@ -47,8 +47,10 @@ linked to the HISTORY entry holding its investigation;
   fake `detect_docker_state`, `bring_up_slskd` or `subprocess.run`.
   A run once recreated Kris's slskd container. The stress test alone
   runs the read-only `docker inspect` (`allow_real_docker_inspect`);
-  anything else of docker's stays refused there too.
-  [§213](../docs/history/211-240.md#213), [§243](../docs/history/241-270.md#243)
+  anything else of docker's stays refused there too. The guard reads a
+  program by its stem, case-folded (`docker.exe`, `DOCKER`, `CMD.EXE`).
+  [§213](../docs/history/211-240.md#213), [§243](../docs/history/241-270.md#243),
+  [§273](../docs/history/271-300.md#273)
 - **Nothing a test runs opens on the desktop.** The same guard refuses
   `open`, `osascript` (which `webbrowser.open` runs on macOS through
   `os.popen`), `explorer`, `xdg-open` and `cmd /c start`, and a
@@ -59,7 +61,10 @@ linked to the HISTORY entry holding its investigation;
   click calls Qt's C++, past any Python fake of `openUrl`; observed
   offscreen 2026-11-03). A link of a new scheme joins conftest's
   `_URL_SCHEMES`. `tests/test_headless.py` reads every `subprocess`
-  spawn in `src/` and runs each against a stand-in; a new program fails
+  and `processes` spawn in `src/` and runs each against a stand-in; a
+  new keyword on the helper's own spawn fails it until it joins
+  `_FORWARDED_KEYWORDS`, once shown not to change the program
+  (`executable` and `shell` never qualify); a new program fails
   it until it joins conftest's `_DESKTOP_PROGRAMS` or the test's
   `OPENS_NOTHING`, with what it does. A spawn it cannot read (a
   computed command, `os.system`, `from subprocess import Popen`, an
@@ -67,7 +72,13 @@ linked to the HISTORY entry holding its investigation;
   `multiprocessing`) fails it too: such a spawn may bind the real
   `Popen` before the guard, or never reach it. Its link test runs
   offscreen only: elsewhere a broken handler would open its links.
-  [§267](../docs/history/241-270.md#267)
+  [§267](../docs/history/241-270.md#267), [§273](../docs/history/271-300.md#273)
+- **Until R14-S3, five sweeps read source in the locale's encoding**
+  (a bare `read_text()`: cp1252 on `check-windows`). Keep `src/` and
+  `tests/` free of a byte cp1252 leaves undefined (0x81, 0x8D, 0x8F,
+  0x90, 0x9D; U+201D and U+6771 each hold one); write such text in
+  escapes. Scan with Python: this Mac's `grep` (ugrep) misses these
+  bytes in a bracket expression. [§273](../docs/history/271-300.md#273)
 - **On Windows a test's `HOME` moves nothing of Seeker's.**
   `Path.expanduser()` reads `USERPROFILE` (observed on
   `check-windows`), and platformdirs 4.14.0's source resolves Seeker's
@@ -79,7 +90,8 @@ linked to the HISTORY entry holding its investigation;
   scratch for Seeker's code adds it. `tests/test_platformdirs_isolation.py`
   shows both on `check-windows` (run 42812791705): a child with `HOME`
   moved names `%LOCALAPPDATA%\Seeker` without the variable, a temporary
-  folder with it. [§268](../docs/history/241-270.md#268)
+  folder with it. [§268](../docs/history/241-270.md#268),
+  [§273](../docs/history/271-300.md#273)
 - **Skips:** `tests/test_stress_e2e.py` (`requires_stress_opt_in`) runs
   only with `SEEKER_RUN_STRESS_TEST=1`: it drives real Spotify, slskd and
   the X9 Pro for minutes and mutates the production DB. Run it
@@ -87,8 +99,11 @@ linked to the HISTORY entry holding its investigation;
   28 real-file tests take `requires_x9_pro` from `tests/x9_pro_gate.py`
   and run only with `SEEKER_RUN_X9_PRO_TESTS=1` and the drive mounted:
   macOS guards a removable volume, and without the opt-in nothing looks
-  at it. A bare run, like CI, skips 29: those 28 and the stress test.
-  [§32](../docs/history/032-046.md#32), [§267](../docs/history/241-270.md#267)
+  at it. A bare run on macOS, like CI's, skips 35: those 28, the stress
+  test and six Windows-only tests (`test_processes.py`,
+  `test_platformdirs_isolation.py`).
+  [§32](../docs/history/032-046.md#32), [§267](../docs/history/241-270.md#267),
+  [§273](../docs/history/271-300.md#273)
 - **CI checks audio analysis only as one generated click track's BPM
   within 2 of 123.05**, on both architectures (`test_smoke_test.py`, and
   build.yml's frozen-app smoke test). Every real-file `analyze_audio`

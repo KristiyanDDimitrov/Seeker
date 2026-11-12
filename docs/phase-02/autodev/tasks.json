@@ -302,7 +302,7 @@
         "kind": "live-check",
         "when": "after",
         "question": "v0.2.0: download each image in a browser, first launch, Help -> Check for updates says up to date in both apps; point the website's Download buttons at both images. Done?",
-        "answer": null
+        "answer": "Not yet (2026-11-10): the browser download, first launch, update check in both apps and the website's Download buttons are still Kris's to do; they stay on HANDOFF's Waiting on Kris list. No row depends on R13-S10b."
       },
       "history": "§272",
       "commits": [
@@ -335,8 +335,15 @@
       "branch": "p02/R13-S10b-r4",
       "blocker": null,
       "note": "From R13-S10a's round-2 review: README → Install says the Intel download carries its own chromaprint, but not that an M4A or AAC file still needs ffmpeg (a heavy Homebrew source build on Intel, docs/packaging.md:156). Add one sentence when un-gating.",
-      "updated": "2026-11-10T14:04:35Z",
-      "lead_note": "Escalated after review round 3 (fix): a fresh worker at max. Its first try (2026-11-04) was cut off when the lead session ended, after 06fe4ec and 0c760d1; respawned 2026-11-10 on p02/R13-S10b-r4 @ 0c760d1, in worktree agent-a27fd92dc76658f05. A further failed review becomes a failure blocker for Kris. Dependabot #8 is still OPEN (Dependabot cannot update it: uv version); closing it is Kris's call at the post-release gate."
+      "updated": "2026-11-10T14:07:05Z",
+      "lead_note": "Integrated 2026-11-10 at 9ab238a (HISTORY 272); CI 42830514266. Dependabot #8 closed by the lead on Kris's yes, 2026-11-10, with the comment 'Already on main: 8223c25'. The next HANDOFF overwrite must drop #8 from Waiting on Kris.",
+      "answers": [
+        {
+          "at": "2026-11-10T14:07:05Z",
+          "answer": "Not yet (2026-11-10): the browser download, first launch, update check in both apps and the website's Download buttons are still Kris's to do; they stay on HANDOFF's Waiting on Kris list. No row depends on R13-S10b.",
+          "question": "v0.2.0: download each image in a browser, first launch, Help -> Check for updates says up to date in both apps; point the website's Download buttons at both images. Done?"
+        }
+      ]
     },
     {
       "id": "R14-S1",
@@ -423,20 +430,34 @@
       "split_point": "After docker_setup and sharing move",
       "notes": "docs/phase-02/autodev/SESSION-PLAN.md -> Row notes (R14-S2)",
       "kris": null,
-      "history": null,
-      "commits": [],
-      "actual_peak_k": null,
-      "status": "doing",
+      "history": "§273",
+      "commits": [
+        "4fa4df7",
+        "05e2c95",
+        "e3f7a42",
+        "e93d93e",
+        "f534957",
+        "8911832",
+        "49362a4",
+        "6d43ecd",
+        "216c1a3",
+        "516d984",
+        "c954168",
+        "abb6112"
+      ],
+      "actual_peak_k": 150,
+      "status": "done",
       "model": "opus",
       "effort": "max",
       "attempts": 2,
       "review_rounds": 1,
       "worker_id": "a622aacbbafc0ca45",
-      "agent_id": "a622aacbbafc0ca45",
+      "agent_id": "a39a233a14f932380",
       "branch": "p02/R14-S2",
       "blocker": null,
       "lead_note": "Owns isolating platformdirs in tests (R14-S1 review). Built to 4714674 on 2026-11-10 (CI 42812791705, 42817632165; check-windows' 43 names equal main's). Review round 1 (2026-11-10): fix (processes.py docstring and test_processes.py:195-204 overclaim what check-windows showed, the control skipped there; test_headless _forwarding_call should reject executable/shell; HISTORY to note U+FFFD on undecodable docker output). The built worker's session had ended, so a fresh worker continues p02/R14-S2 from its own worktree and reports to the lead's scratchpad; the lead files the report and fast-forwards the branch.",
-      "updated": "2026-11-10T13:58:27Z"
+      "updated": "2026-11-12T18:25:30Z",
+      "note": "Round-1 fixes f176d96, e038df3 fast-forwarded onto p02/R14-S2 and pushed 2026-11-12 (CI 43270539077); report filed on top of .git/autodev/reports/R14-S2.md. Review round 2 in progress."
     },
     {
       "id": "R14-S3",
@@ -465,7 +486,9 @@
       "worker_id": null,
       "agent_id": null,
       "branch": null,
-      "blocker": null
+      "blocker": null,
+      "note": "Carried from R14-S2's review round 2 (nit, tests/test_headless.py:163-204): _forwarding_call ignores function.decorator_list, and the sweep accepts a later top-level rebinding of run or popen in processes.py. Both let the sweep credit the caller's program while another starts (the reviewer reproduced each with a scratch helper: @rewrite wrapping a well-formed forward; a well-formed def run, then _real = run and a second def run(args) returning _real(['open', *args])). Fix: refuse a forward that has decorators; treat a second top-level binding of run/popen, other than an @overload stub, as unreadable; add both shapes to _CHANGED_FORWARDS, test first.",
+      "updated": "2026-11-12T17:41:27Z"
     },
     {
       "id": "R14-S4",

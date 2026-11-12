@@ -15,6 +15,9 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **CI runs the suite on Windows:** a `check-windows` job on
   `windows-2025`, which does not fail the run until the suite passes
   there.
+- **On Windows, the programs Seeker starts open no console window**,
+  and their output reads as UTF-8 (a byte that is not UTF-8 reads as
+  U+FFFD instead of failing the call, on macOS too).
 
 ## [0.2.0] - 2026-11-04
 

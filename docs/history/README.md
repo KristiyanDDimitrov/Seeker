@@ -371,3 +371,4 @@ under their entry and live in the same file, after it.
 
 - §271 — DEP-1: Dependabot #5, #7, #8 landed (mypy 2.4.1, ruff 0.17.3, platformdirs 4.14.0); RUF071 the one new rule; a plain `uv lock` takes the unread 4.14.4 → [271-300.md#271](271-300.md#271)
 - §272 — R13-S10/S10b: v0.2.0 published, its four assets verified by SHA-256; README un-gated; round 13 closed → [271-300.md#272](271-300.md#272)
+- §273 — R14-S2: one way to run a subprocess (`processes.py`: no console window, UTF-8) and its sweep; the docker guard by stem; platformdirs isolated in tests → [271-300.md#273](271-300.md#273)

@@ -124,6 +124,12 @@ short, under `src/seeker/`:
   place, and a crash mid-shift corrupts MP3, FLAC and faststart M4A
   (measured). A FLAC key goes to both `INITIALKEY` and `KEY`.
   [§167](docs/history/151-180.md#167)
+- **Every program `src/` starts goes through `processes.run()` or
+  `popen()`** (`from seeker import processes`): `CREATE_NO_WINDOW` on
+  Windows, UTF-8 text with `errors="replace"`. They look `subprocess`
+  up at call time, so a fake of `subprocess.run` still sees each call.
+  `tests/test_subprocess_sweep.py` fails the build on a spawn named
+  anywhere else. [§273](docs/history/271-300.md#273)
 - **`.env` is read only by an entry point.** `config.py`'s values are
   functions over `os.environ`, read at call time; `main()` in
   `main.py`/`main_ui.py` calls `config.load_env_file()` (cwd upward;
