@@ -36,11 +36,12 @@ class TokenStore:
                 refresh_token=data["refresh_token"],
                 expires_at=data["expires_at"],
             )
-        except (OSError, json.JSONDecodeError, KeyError):
-            # A corrupt/truncated token file (an older non-atomic
-            # write, or simple disk corruption) must mean "no token" — i.e. a
-            # fresh authorization — the same tolerance load_config()
-            # already has, not a traceback out of get_valid_token().
+        except (OSError, ValueError, KeyError):
+            # A corrupt, truncated or non-UTF-8 token file (an older
+            # non-atomic write, disk corruption, a hand edit; ValueError
+            # covers json.JSONDecodeError and UnicodeDecodeError) means
+            # "no token", i.e. a fresh authorization, not a traceback
+            # out of get_valid_token(): the file only caches a login.
             return None
 
     def clear(self) -> None:

@@ -106,3 +106,15 @@ def test_token_store_load_returns_none_for_incomplete_json(tmp_path):
     store = TokenStore(path)
 
     assert store.load() is None
+
+
+def test_token_store_load_returns_none_for_a_file_that_is_not_utf8(tmp_path):
+    # Read as UTF-8, a byte such as 0xE9 (cp1252's e-acute, say from a
+    # hand edit in an ANSI editor) raises UnicodeDecodeError. The token
+    # is only a cache of a login, so it reads as "no token", as any
+    # other corrupt file does, never as a traceback.
+    path = tmp_path / "token.json"
+    path.write_bytes(b'{"access_token": "caf\xe9"}')
+    store = TokenStore(path)
+
+    assert store.load() is None
