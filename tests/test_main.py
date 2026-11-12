@@ -167,6 +167,15 @@ def test_the_cli_writes_utf8_to_a_pipe(tmp_path):
     sys.platform != "win32",
     reason="a pipe is UTF-8 on macOS already; Windows gives it the code page",
 )
+# Where the code page is UTF-8 (Windows' "Use Unicode UTF-8 for
+# worldwide language support", ACP 65001) or Python runs in UTF-8 mode,
+# a pipe is UTF-8 without main(), so the premise this control checks
+# does not hold. The pipe test above still checks main()'s output.
+@pytest.mark.skipif(
+    bool(sys.flags.utf8_mode)
+    or codecs.lookup(locale.getencoding()).name == "utf-8",
+    reason="the code page here is UTF-8, so a pipe is UTF-8 already",
+)
 def test_on_windows_a_pipe_takes_the_ansi_code_page():
     """The control for the test above: on Windows a child's piped
     stdout is in the ANSI code page (`locale.getencoding()`), never
