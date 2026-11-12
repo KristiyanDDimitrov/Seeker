@@ -5,18 +5,20 @@ PLW1514 sees such a call only on a receiver it can tell is a `Path`,
 and never `os.fdopen`; this sweep reads each call by the name it is
 made through, whatever the receiver.
 
-Python picks the locale's encoding for text opened with none in one
-place, `io.text_encoding()` (PEP 597): the builtin `open` (also
-`io.open`, `codecs.open`) and `io.TextIOWrapper` reach it in C; in
-CPython 3.13.15's Lib (read 2026-11-12) `os.fdopen`, `Path.open`,
-`read_text` and `write_text` (zipfile's `Path` too), tempfile's three
-functions, logging's file handlers and `basicConfig`, socket's
-`makefile`, `bz2`, `gzip` and `lzma`'s `open`, `subprocess`,
-`configparser`, `fileinput` and `logging.config` call it. So a call
-through one of `_OPENS`' names is read: it passes when it names
-`encoding="..."` as a string, or opens in a binary mode written as a
-string. `configparser`, `fileinput` and `logging.config` are refused at
-their import, and another module's `open` (`gzip.open`) at its call.
+Text opened with no encoding takes the locale's, and Python warns of
+it under `-X warn_default_encoding` (PEP 597) where it decides: in the
+builtin `open` (behind `io.open` and `codecs.open` too) and
+`io.TextIOWrapper`, and, in CPython 3.13.15's Lib (read 2026-11-12),
+wherever `io.text_encoding()` is called or the warning raised:
+`os.fdopen`, `Path.open`, `read_text` and `write_text` (zipfile's
+`Path` too), tempfile's three functions, logging's file handlers and
+`basicConfig`, socket's `makefile`, the `open` of `bz2`, `gzip` and
+`lzma`, `subprocess`, `configparser`, `fileinput` and
+`logging.config`. So a call through one of `_OPENS`' names is read: it
+passes when it names `encoding="..."` as a string, or opens in a binary
+mode written as a string. `configparser`, `fileinput` and
+`logging.config` are refused at their import, and another module's
+`open` (`gzip.open`) at its call; `subprocess` is below.
 Anything the sweep cannot read is refused too: a computed mode or
 encoding, an encoding passed by position, `*` or `**` arguments, and
 any use of these names but a call (as a value, rebound, imported under
