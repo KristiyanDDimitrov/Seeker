@@ -120,10 +120,12 @@ Planning seeded the list; each round-14 row appends to it.
   playlist named `Café 東京`, then `seeker playlists` in a console,
   and `seeker playlists > out.txt` opened as UTF-8.
 - PF-11, the file half: Sharing writes the Compose file and
-  `slskd.yml` as UTF-8 (`files/atomic.py`), and Compose and slskd read
-  them so (UNVERIFIED). *Settle:* share `C:\SeekerTest\Café 東京`,
-  then `docker compose config` shows the path whole and slskd lists
-  the share.
+  `slskd.yml` as UTF-8 (`files/atomic.py`), and on Windows with CRLF
+  line endings (text mode's, observed on `check-windows`, run
+  43324253654); that Compose and slskd read both is UNVERIFIED.
+  *Settle:* share `C:\SeekerTest\Café 東京`, then `docker compose
+  config` shows the path whole and slskd lists the share, from the
+  CRLF files that edit wrote.
 - PF-10: no console window flashes from the windowed app.
   `processes.py` adds `CREATE_NO_WINDOW` to every program Seeker
   starts; `tests/test_processes.py` shows on `check-windows` only that
