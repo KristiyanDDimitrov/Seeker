@@ -162,20 +162,23 @@ _FORWARDED_KEYWORDS = {
 
 def _forwarding_call(function: ast.stmt) -> ast.Call | None:
     """`function`'s spawn, when `function` is the helper's `run` or
-    `popen` and hands its caller's argument list on untouched: past its
-    docstring, its body is the one statement `return
-    subprocess.run(args, ...)` or `return subprocess.Popen(args, ...)`,
-    with `args` its first parameter, named there and nowhere else in
-    the body, and each keyword one of `_FORWARDED_KEYWORDS`. That spawn
-    starts what the caller names, and the sweep reads each caller where
-    it calls `processes.run([...])`, so passing it hides no program.
-    Any other shape (the list rebuilt, rebound, sliced or changed in
-    place; a second statement; another spawn, or a keyword outside that
-    set), and the same shape in any other module, stays unreadable."""
+    `popen` and hands its caller's argument list on untouched: with no
+    decorator, and past its docstring, its body is the one statement
+    `return subprocess.run(args, ...)` or `return subprocess.Popen(args,
+    ...)`, with `args` its first parameter, named there and nowhere else
+    in the body, and each keyword one of `_FORWARDED_KEYWORDS`. That
+    spawn starts what the caller names, and the sweep reads each caller
+    where it calls `processes.run([...])`, so passing it hides no
+    program (`_rebindings` makes sure the caller reaches it). Any other
+    shape (the list rebuilt, rebound, sliced or changed in place; a
+    decorator, which could hand the spawn another list; a second
+    statement; another spawn, or a keyword outside that set), and the
+    same shape in any other module, stays unreadable."""
     if not (
             isinstance(function, ast.FunctionDef)
             and function.name in _MODULE_SPAWNS["processes"]
             and function.args.args
+            and not function.decorator_list
     ):
         return None
     body = function.body
@@ -202,6 +205,64 @@ def _forwarding_call(function: ast.stmt) -> ast.Call | None:
     ):
         return None
     return call
+
+
+def _is_overload_stub(node: ast.stmt) -> bool:
+    """An `@overload` signature for mypy: a `def` decorated with
+    `overload` alone, its body `...`."""
+    return (
+        isinstance(node, ast.FunctionDef)
+        and [ast.unparse(decorator) for decorator in node.decorator_list]
+        == ["overload"]
+        and len(node.body) == 1
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+        and node.body[0].value.value is Ellipsis
+    )
+
+
+def _rebindings(tree: ast.Module) -> list[int]:
+    """The lines where the helper binds `run` or `popen` but in their
+    forwards and the `@overload` stubs before them. A caller reaches the
+    last binding of the name, so a forward is read at its callers only
+    as the one binding left: a second `def run` that wraps the first, an
+    assignment, an import, a `global run` in a function, or a stub after
+    the forward (whose decorator is whatever `overload` is bound to
+    there) could start a program no caller names. A local of either
+    name counts too; the helper needs none."""
+    names = _MODULE_SPAWNS["processes"]
+    kept: set[int] = set()
+    forwarded: set[str] = set()
+    for node in tree.body:
+        if _forwarding_call(node) is not None:
+            assert isinstance(node, ast.FunctionDef)
+            kept.add(id(node))
+            forwarded.add(node.name)
+        elif _is_overload_stub(node) and node.name not in forwarded:
+            kept.add(id(node))
+    lines: list[int] = []
+    for node in ast.walk(tree):
+        if id(node) in kept:
+            continue
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound = {node.name}
+        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            bound = {node.id}
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            bound = {
+                alias.asname or alias.name.partition(".")[0] for alias in node.names
+            }
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            bound = set(node.names)
+        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)):
+            bound = {node.name}
+        elif isinstance(node, ast.MatchMapping):
+            bound = {node.rest}
+        else:
+            continue
+        if bound & names:
+            lines.append(node.lineno)
+    return lines
 
 
 def _commands_src_spawns(
@@ -238,6 +299,9 @@ def _commands_src_spawns(
                 id(call.func) for function in tree.body
                 if (call := _forwarding_call(function)) is not None
             }
+            unreadable += [
+                f"{path.relative_to(root)}:{lineno}" for lineno in _rebindings(tree)
+            ]
         qualifying: set[int] = set()
         typed = annotation_names(tree)
         for node in ast.walk(tree):
@@ -577,6 +641,29 @@ _CHANGED_FORWARDS = {
         "    return subprocess.run(args, **options)\n"
     ),
     "a-shell-spawn": "def run(args):\n    return subprocess.getoutput(args)\n",
+    "decorated": (
+        "def rewrite(start):\n"
+        "    return lambda args, **options: start(['open', *args], **options)\n"
+        "@rewrite\n"
+        "def run(args):\n"
+        "    return subprocess.run(args)\n"
+    ),
+    "rebound-after-it": (
+        "def run(args):\n"
+        "    return subprocess.run(args)\n"
+        "_forward = run\n"
+        "def run(args):\n"
+        "    return _forward(['open', *args])\n"
+    ),
+    "rebound-by-a-stub-after-it": (
+        "def run(args):\n"
+        "    return subprocess.run(args)\n"
+        "_forward = run\n"
+        "def overload(stub):\n"
+        "    return lambda args: _forward(['open', *args])\n"
+        "@overload\n"
+        "def run(args): ...\n"
+    ),
 }
 
 
