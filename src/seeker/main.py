@@ -1,3 +1,4 @@
+import io
 import logging
 import sys
 
@@ -5,6 +6,21 @@ from seeker import config
 from seeker.application import Application
 from seeker.cli import dispatch, parse_args
 from seeker.soulseek import poller
+
+
+def _write_utf8() -> None:
+    # Redirected to a file or a pipe on Windows, stdout and stderr take
+    # the ANSI code page (cp1252 on a Western install, UNVERIFIED on
+    # hardware), and print() of a track or peer name outside it raises
+    # UnicodeEncodeError, ending the command (AUDIT PF-12). macOS
+    # writes UTF-8 already (tests/test_main.py's pipe test passed there
+    # without this), so only "replace" is new there: `?` for what UTF-8
+    # cannot encode, a lone surrogate from an undecodable filename
+    # byte. A stream that is not a TextIOWrapper (None, with no
+    # console) is left alone.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors="replace")
 
 
 def _configure_logging() -> None:
@@ -21,6 +37,7 @@ def _configure_logging() -> None:
 
 
 def main() -> None:
+    _write_utf8()
     _configure_logging()
     config.load_env_file()
     if config.debug_poll():
