@@ -2,6 +2,7 @@
 
 import hashlib
 import importlib.util
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -136,6 +137,28 @@ def test_vendored_licence_texts_are_the_published_ones():
         "PyObjC-MIT.txt":
             "0ca04b07928d4872b9d9bb22187ca0426dd8bfab08f26eada0999a71dc81aaff",
     }
+
+
+def test_vendored_licence_texts_are_checked_out_as_committed():
+    """git on Windows converts a text file's line endings to CRLF as it
+    checks it out, which changed each digest above on check-windows
+    (HISTORY §268, entry 29) and would ship those bytes. The
+    repository's `.gitattributes` marks the vendored texts `-text`, so
+    every checkout has the committed bytes."""
+    vendored = sorted(
+        path.relative_to(PROJECT_ROOT).as_posix()
+        for path in (PROJECT_ROOT / "packaging" / "licenses").iterdir()
+    )
+
+    command = ["git", "check-attr", "text", "--", *vendored]
+    result = subprocess.run(  # noqa: S603 — fixed arguments
+        command, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=60,
+        check=True,
+    )
+
+    assert result.stdout.splitlines() == [
+        f"{path}: text: unset" for path in vendored
+    ]
 
 
 def test_a_vendored_licence_is_only_for_a_wheel_without_its_own():

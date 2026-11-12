@@ -1,0 +1,5 @@
+# The vendored licence texts are pinned by their SHA-256
+# (tests/test_bundle_info.py) and ship as committed: no line-ending
+# conversion on checkout, which on Windows would write CRLF (HISTORY
+# §268, entry 29).
+packaging/licenses/** -text
