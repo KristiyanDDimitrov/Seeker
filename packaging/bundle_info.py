@@ -55,7 +55,7 @@ def project_version(project_root: Path) -> str:
 
 
 def copyright_line(project_root: Path) -> str:
-    for line in (project_root / "LICENSE").read_text().splitlines():
+    for line in (project_root / "LICENSE").read_text(encoding="utf-8").splitlines():
         if line.startswith("Copyright"):
             return line
     raise ValueError("LICENSE has no Copyright line.")

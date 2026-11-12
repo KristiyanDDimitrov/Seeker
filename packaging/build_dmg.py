@@ -53,7 +53,8 @@ def _write_build_info() -> None:
         'overwrites this every time."""\n\n'
         f'GIT_SHA = {git_sha!r}\n'
         f'GIT_DESCRIBE = {git_describe!r}\n'
-        f'BUILT_AT = {built_at!r}\n'
+        f'BUILT_AT = {built_at!r}\n',
+        encoding="utf-8",
     )
     print(f"Wrote {BUILD_INFO_PATH} ({git_describe}, {built_at})")
 

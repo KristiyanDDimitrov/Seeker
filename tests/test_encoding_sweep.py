@@ -42,6 +42,7 @@ PROJECT = Path(__file__).resolve().parent.parent
 # The project's Python, by folder, with a module each holds, so a moved
 # folder fails here instead of sweeping nothing.
 SWEPT = {
+    "packaging": "bundle_info.py",
     "src": "seeker/files/atomic.py",
     "tests": "conftest.py",
     "tools": "screenshots.py",

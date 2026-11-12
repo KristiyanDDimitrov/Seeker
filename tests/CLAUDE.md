@@ -78,8 +78,8 @@ linked to the HISTORY entry holding its investigation;
   bare `read_text()` reads in the locale's encoding, cp1252 on
   `check-windows`, where a sweep reading source then failed on a byte
   cp1252 leaves undefined (0x9D, which U+201D holds).
-  `tests/test_encoding_sweep.py` fails the build over `src/`, `tests/`
-  and `tools/`. A test's subprocess output is not swept:
+  `tests/test_encoding_sweep.py` fails the build over `src/`, `tests/`,
+  `tools/` and `packaging/`. A test's subprocess output is not swept:
   its child writes in its own stream's encoding.
   [§273](../docs/history/271-300.md#273)
 - **On Windows a test's `HOME` moves nothing of Seeker's.**
