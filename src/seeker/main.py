@@ -12,12 +12,12 @@ def _write_utf8() -> None:
     # Redirected to a file or a pipe on Windows, stdout and stderr take
     # the ANSI code page (cp1252 on a Western install, UNVERIFIED on
     # hardware), and print() of a track or peer name outside it raises
-    # UnicodeEncodeError, ending the command (AUDIT PF-12). macOS
-    # writes UTF-8 already (tests/test_main.py's pipe test passed there
-    # without this), so only "replace" is new there: `?` for what UTF-8
-    # cannot encode, a lone surrogate from an undecodable filename
-    # byte. A stream that is not a TextIOWrapper (None, with no
-    # console) is left alone.
+    # UnicodeEncodeError, ending the command. macOS writes UTF-8
+    # already (tests/test_main.py's pipe test passed there without
+    # this), so only "replace" is new there: `?` for what UTF-8 cannot
+    # encode, a lone surrogate from an undecodable filename byte. A
+    # stream that is not a TextIOWrapper (None, with no console) is
+    # left alone.
     for stream in (sys.stdout, sys.stderr):
         if isinstance(stream, io.TextIOWrapper):
             stream.reconfigure(encoding="utf-8", errors="replace")
