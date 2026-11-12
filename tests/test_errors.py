@@ -50,10 +50,23 @@ def test_every_public_error_class_is_a_seeker_error():
 
 
 def test_each_shared_error_is_defined_once():
+    """Every error errors.py defines is defined nowhere else: a second
+    class of the same name beside a module would slip past an `except`
+    of the shared one."""
+    errors_module = SRC_ROOT / "seeker" / "errors.py"
+    shared = [
+        node.name
+        for node in ast.parse(errors_module.read_text(encoding="utf-8")).body
+        if isinstance(node, ast.ClassDef)
+    ]
     names = [name for _module, name in _public_error_classes()]
 
-    assert names.count("PlaylistNotFoundError") == 1
-    assert names.count("LibraryLocationNotFoundError") == 1
+    # The sweep must see the errors it exists to check.
+    assert {
+        "PlaylistNotFoundError", "LibraryLocationNotFoundError",
+        "TextFileNotUtf8Error",
+    } <= set(shared)
+    assert [name for name in shared if names.count(name) != 1] == []
 
 
 def test_the_format_list_names_every_downloadable_extension():
