@@ -202,3 +202,26 @@ def test_settings_seeker_cannot_read_stop_the_cli_with_their_sentence(
         "config.json is not UTF-8 text, so Seeker has left it as it is. "
         "Save it as UTF-8 in a text editor, then try again.\n"
     )
+
+
+def test_the_cli_leaves_a_stream_that_is_not_a_text_wrapper_alone(
+        unwritable_data_dir, monkeypatch,
+):
+    """With no console sys.stdout is None, and a caller may hand it a
+    StringIO: neither can be reconfigured, so main() leaves both as
+    they are and runs the command."""
+    stderr = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", stderr)
+    monkeypatch.setattr(main, "Application", lambda: None)
+    ran = []
+    monkeypatch.setattr(
+        main, "dispatch", lambda application, parsed: ran.append(parsed.command),
+    )
+    monkeypatch.setattr(sys, "argv", ["seeker", "sync"])
+
+    main.main()
+
+    assert ran == ["sync"]
+    assert sys.stdout is None
+    assert sys.stderr is stderr
