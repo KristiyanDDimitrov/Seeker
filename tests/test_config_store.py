@@ -13,6 +13,8 @@ from seeker.config_store import (
     resolve_config_path,
     save_config,
 )
+from seeker.error_text import describe_error
+from seeker.errors import TextFileNotUtf8Error
 
 skip_on_windows = pytest.mark.skipif(
     sys.platform.startswith("win"),
@@ -549,3 +551,23 @@ def test_load_config_falls_back_to_the_default_for_a_wrongly_typed_value(
     assert config.slskd_api_key == "kept"
     if raw != expected:
         assert key in caplog.text
+
+
+def test_load_config_refuses_a_file_that_is_not_utf8_and_leaves_it(tmp_path):
+    """A byte UTF-8 cannot decode (0xE9, cp1252's e-acute, from a hand
+    edit in an editor that saves in the system's code page) stops the
+    load with a sentence naming the file. Defaults instead would let
+    the next save write them over the user's credentials, so the file
+    stays as it is."""
+    path = tmp_path / "config.json"
+    original = b'{"slskd_username": "caf\xe9", "slskd_password": "kept"}'
+    path.write_bytes(original)
+
+    with pytest.raises(TextFileNotUtf8Error) as raised:
+        load_config(path)
+
+    assert describe_error(raised.value, details_hint="") == (
+        f"{path} is not UTF-8 text, so Seeker has left it as it is. "
+        "Save it as UTF-8 in a text editor, then try again."
+    )
+    assert path.read_bytes() == original

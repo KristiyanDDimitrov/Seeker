@@ -7,6 +7,7 @@ from typing import get_args
 
 import platformdirs
 
+from seeker.errors import TextFileNotUtf8Error
 from seeker.files.atomic import make_private_dir, write_text_locked
 
 logger = logging.getLogger(__name__)
@@ -140,6 +141,11 @@ def load_config(path: Path) -> SeekerConfig:
 
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
+    except UnicodeDecodeError as error:
+        # Defaults here would let the next save write them over the
+        # user's Spotify and Soulseek credentials, so the file is left
+        # for them to fix (a hand edit saved in a code page, say).
+        raise TextFileNotUtf8Error(path) from error
     except (OSError, json.JSONDecodeError):
         return SeekerConfig()
 

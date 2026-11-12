@@ -17,11 +17,13 @@ from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
 )
+from seeker.errors import TextFileNotUtf8Error
 from seeker.models.library_location import LibraryLocation
 from seeker.soulseek.client import SlskdUnauthorizedError, SoulseekClient
 from seeker.soulseek.sharing_service import (
     ContainerPresence,
     ShareAlreadyExistsError,
+    SharingPlan,
     SharingService,
     SharingWriteNotAllowedError,
     SlskdCredentialsMissingError,
@@ -1397,3 +1399,34 @@ def test_insert_slskd_share_directory_goes_after_an_entrys_continuation():
         "      /shared/music",
         "    - /shared/new",
     ]
+
+
+def test_a_compose_file_that_is_not_utf8_stops_the_edit_and_is_left(tmp_path):
+    """A Compose file a code-page editor saved (0xE9 for an e-acute in a
+    share path) stops the edit with a sentence naming it, before either
+    file is written."""
+    compose_path = tmp_path / "docker-compose.yml"
+    compose = (
+        b"services:\n  slskd:\n    volumes:\n"
+        b'      - "/Volumes/Caf\xe9:/shared/a:ro"\n'
+    )
+    compose_path.write_bytes(compose)
+    slskd_yml_path = tmp_path / "slskd.yml"
+    slskd_yml = b"shares:\n  directories:\n    - /shared/a\n"
+    slskd_yml_path.write_bytes(slskd_yml)
+    plan = SharingPlan(
+        location=LibraryLocation(
+            name="Music", path="/Volumes/Music",
+            added_at="2026-11-13T00:00:00+00:00", id=1,
+        ),
+        container_path="/shared/b",
+        compose_volume_line='      - "/Volumes/Music:/shared/b:ro"',
+        slskd_share_directory_line="    - /shared/b",
+    )
+    service = make_service(tmp_path, compose_path=compose_path)
+
+    with pytest.raises(TextFileNotUtf8Error, match=r"docker-compose\.yml is not"):
+        service._edit_both_files(plan, slskd_yml_path)
+
+    assert compose_path.read_bytes() == compose
+    assert slskd_yml_path.read_bytes() == slskd_yml

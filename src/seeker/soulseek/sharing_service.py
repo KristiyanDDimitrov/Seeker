@@ -60,7 +60,7 @@ from seeker.database.connection import Database
 from seeker.database.repositories.library_location_repository import (
     LibraryLocationRepository,
 )
-from seeker.errors import SeekerError
+from seeker.errors import SeekerError, TextFileNotUtf8Error
 from seeker.files.atomic import write_text_atomic
 from seeker.files.sanitize import sanitize_path_component
 from seeker.models.library_location import LibraryLocation
@@ -537,8 +537,8 @@ class SharingService:
         # so a parse failure leaves both untouched and a retry can't add
         # the same volume line twice (HISTORY §74).
         originals = _OriginalTexts(
-            compose=self._compose_path.read_text(encoding="utf-8"),
-            slskd_yml=slskd_yml_path.read_text(encoding="utf-8"),
+            compose=_read_utf8(self._compose_path),
+            slskd_yml=_read_utf8(slskd_yml_path),
         )
         updated_compose_text = _insert_compose_volume_line(
             originals.compose, plan.compose_volume_line
@@ -717,6 +717,16 @@ def _as_optional_int(value: object) -> int | None:
         return value
 
     return None
+
+
+def _read_utf8(path: Path) -> str:
+    """`path`'s text. A byte that is not UTF-8 (a Compose file a
+    code-page editor saved) stops the edit with a sentence naming the
+    file, before anything is written."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        raise TextFileNotUtf8Error(path) from error
 
 
 def _prune_backups(path: Path) -> None:
