@@ -63,6 +63,13 @@ Genuinely open only, checked against every CI run on record (187, to
   With the X9 Pro mounted, Kris runs Settings → Library → Fix…,
   keeping `Music` (rehearsed: 43 matches kept, 0 lost).
   [§172](history/151-180.md#172)
+- **The GUI shows no window for settings it cannot read.** A
+  `config.json` that is not UTF-8 raises `TextFileNotUtf8Error`. The
+  CLI prints its sentence, but `main_ui` builds the `Application`
+  before a `QApplication` exists, so the excepthook logs the error at
+  CRITICAL and the app quits. A hand edit made mid-session makes
+  `update_settings`' main-thread callers log it and not save. A dialog
+  is the follow-up. [§N](history/271-300.md#N)
 
 ## Roadmap
 
