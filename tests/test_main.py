@@ -98,7 +98,7 @@ def test_a_command_runs_against_a_real_application_instance(
 # A name that cp1252, the ANSI code page of a Western Windows install,
 # cannot encode, in escapes so no command line or source encoding
 # stands between it and the bytes.
-_NAME = "Nova Reyes — 東京"
+_NAME = "Nova Reyes \u2014 \u6771\u4eac"
 
 
 def _code_page_stream() -> io.TextIOWrapper:
