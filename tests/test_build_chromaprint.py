@@ -59,9 +59,11 @@ def _install(tmp_path: Path, prefix: Path) -> list[str]:
     log = tmp_path / "calls.log"
     (stubs / "cmake").write_text(
         f'#!/bin/bash\necho "cmake $*" >> "{log}"\n',
+        encoding="utf-8",
     )
     (stubs / "sudo").write_text(
         f'#!/bin/bash\necho "sudo $*" >> "{log}"\nexec "$@"\n',
+        encoding="utf-8",
     )
     for stub in stubs.iterdir():
         stub.chmod(0o755)
@@ -73,7 +75,7 @@ def _install(tmp_path: Path, prefix: Path) -> list[str]:
         env={"PATH": f"{stubs}:/usr/bin:/bin"},
         capture_output=True, text=True, check=True,
     )
-    return log.read_text().splitlines()
+    return log.read_text(encoding="utf-8").splitlines()
 
 
 # The sudo decision asks the file system, and root can write anywhere:
@@ -92,7 +94,7 @@ def test_the_script_is_valid_shell_and_executable():
 
 
 def test_the_source_is_checked_against_a_pinned_hash_before_it_is_unpacked():
-    text = SCRIPT.read_text()
+    text = SCRIPT.read_text(encoding="utf-8")
 
     assert re.search(r"^SHA256=[0-9a-f]{64}$", text, re.MULTILINE)
     assert re.search(r"^VERSION=\d+\.\d+\.\d+$", text, re.MULTILINE)
@@ -101,7 +103,7 @@ def test_the_source_is_checked_against_a_pinned_hash_before_it_is_unpacked():
 
 
 def test_it_builds_for_intel_at_the_bundles_floor_without_ffmpeg():
-    text = SCRIPT.read_text()
+    text = SCRIPT.read_text(encoding="utf-8")
     floor = _bundle_info().MINIMUM_SYSTEM_VERSION
 
     assert f"DEPLOYMENT_TARGET={floor}\n" in text
@@ -115,7 +117,7 @@ def test_it_builds_for_intel_at_the_bundles_floor_without_ffmpeg():
 
 def test_it_installs_where_the_spec_stages_the_library_from():
     info = _bundle_info()
-    text = SCRIPT.read_text()
+    text = SCRIPT.read_text(encoding="utf-8")
 
     assert f"prefix=${{1:-{info.INTEL_HOMEBREW_LIB.parent}}}" in text
     assert f'"$prefix/lib/{info.CHROMAPRINT_LIBRARY}"' in text
@@ -212,7 +214,7 @@ def test_a_prefix_that_cannot_be_created_installs_through_sudo(tmp_path):
 
 def test_the_usage_names_the_variable_that_points_the_spec_at_the_prefix():
     info = _bundle_info()
-    text = SCRIPT.read_text()
+    text = SCRIPT.read_text(encoding="utf-8")
 
     assert f"{info.CHROMAPRINT_DIR_VARIABLE}=" in text
 
@@ -230,4 +232,5 @@ def test_a_prefix_in_the_repository_leaves_the_tree_clean():
     )
 
     assert ignored.returncode == 0
-    assert prefix in SCRIPT.read_text()  # the usage names the same folder
+    # the usage names the same folder
+    assert prefix in SCRIPT.read_text(encoding="utf-8")

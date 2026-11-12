@@ -1107,7 +1107,7 @@ def _old_slskd_data(tmp_path):
     """An earlier container's /app, as the repository's slskd-data/."""
     folder = tmp_path / "repo" / "slskd-data"
     folder.mkdir(parents=True)
-    (folder / "slskd.yml").write_text("soulseek: {}\n")
+    (folder / "slskd.yml").write_text("soulseek: {}\n", encoding="utf-8")
     return folder
 
 

@@ -1573,7 +1573,7 @@ def test_a_data_folder_state_says_what_slskd_keeps(tmp_path):
     )
     assert slskd_data_folder_state(str(tmp_path)) is SlskdDataFolderState.FRESH
 
-    (tmp_path / "slskd.yml").write_text("soulseek: {}\n")
+    (tmp_path / "slskd.yml").write_text("soulseek: {}\n", encoding="utf-8")
 
     assert slskd_data_folder_state(str(tmp_path)) is (
         SlskdDataFolderState.HOLDS_STATE

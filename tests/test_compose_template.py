@@ -21,7 +21,7 @@ REQUIRED_VARIABLE = re.compile(r"^\$\{[A-Z][A-Z0-9_]*(:\?[^}]*)?\}$")
 
 
 def _template_lines() -> list[str]:
-    return TEMPLATE_PATH.read_text().splitlines()
+    return TEMPLATE_PATH.read_text(encoding="utf-8").splitlines()
 
 
 def _uncommented(lines: list[str]) -> list[str]:

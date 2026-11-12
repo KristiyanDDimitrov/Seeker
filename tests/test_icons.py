@@ -32,7 +32,7 @@ def test_every_nav_icon_is_vendored_and_every_vendored_icon_is_used():
 
 
 def test_the_lucide_licence_ships_beside_the_icons():
-    licence = (icons.LUCIDE_DIR / "LICENSE").read_text()
+    licence = (icons.LUCIDE_DIR / "LICENSE").read_text(encoding="utf-8")
 
     assert "ISC License" in licence
     assert "Lucide Icons and Contributors" in licence

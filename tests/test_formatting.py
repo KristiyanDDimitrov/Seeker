@@ -78,7 +78,7 @@ def test_nothing_outside_ui_imports_the_qt_package():
         if relative.parts[0] == "ui" or relative.name == "main_ui.py":
             continue
 
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.ImportFrom):
                 names = [node.module or ""]
             elif isinstance(node, ast.Import):

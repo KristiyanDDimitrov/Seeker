@@ -129,9 +129,9 @@ def test_compose_file_path_seeds_a_per_user_copy_outside_a_frozen_build(
     result = compose_file_path()
 
     assert result == data_dir / "slskd-data" / "docker-compose.yml"
-    assert result.read_text() == (
+    assert result.read_text(encoding="utf-8") == (
         REPO_ROOT / "docker-compose.yml"
-    ).read_text()
+    ).read_text(encoding="utf-8")
 
 
 def test_compose_file_path_copies_bundled_file_into_slskd_data_dir_when_frozen(
@@ -147,7 +147,9 @@ def test_compose_file_path_copies_bundled_file_into_slskd_data_dir_when_frozen(
     # live in, once, and always returns that canonical path afterward.
     bundle_dir = tmp_path / "bundle"
     bundle_dir.mkdir()
-    (bundle_dir / "docker-compose.yml").write_text("services:\n  slskd:\n")
+    (bundle_dir / "docker-compose.yml").write_text(
+        "services:\n  slskd:\n", encoding="utf-8",
+    )
 
     data_dir = tmp_path / "data"
     monkeypatch.setattr(
@@ -160,7 +162,7 @@ def test_compose_file_path_copies_bundled_file_into_slskd_data_dir_when_frozen(
     result = compose_file_path()
 
     assert result == data_dir / "slskd-data" / "docker-compose.yml"
-    assert result.read_text() == "services:\n  slskd:\n"
+    assert result.read_text(encoding="utf-8") == "services:\n  slskd:\n"
 
 
 def test_compose_file_path_does_not_overwrite_an_existing_canonical_copy(
@@ -172,12 +174,16 @@ def test_compose_file_path_does_not_overwrite_an_existing_canonical_copy(
     # survive a subsequent app rebuild/relaunch untouched.
     bundle_dir = tmp_path / "bundle"
     bundle_dir.mkdir()
-    (bundle_dir / "docker-compose.yml").write_text("services:\n  slskd:\n")
+    (bundle_dir / "docker-compose.yml").write_text(
+        "services:\n  slskd:\n", encoding="utf-8",
+    )
 
     data_dir = tmp_path / "data"
     canonical = data_dir / "slskd-data" / "docker-compose.yml"
     canonical.parent.mkdir(parents=True)
-    canonical.write_text("services:\n  slskd:\n  # a real edited line\n")
+    canonical.write_text(
+        "services:\n  slskd:\n  # a real edited line\n", encoding="utf-8",
+    )
 
     monkeypatch.setattr(
         "seeker.soulseek.docker_setup.platformdirs.user_data_dir",
@@ -189,7 +195,9 @@ def test_compose_file_path_does_not_overwrite_an_existing_canonical_copy(
     result = compose_file_path()
 
     assert result == canonical
-    assert result.read_text() == "services:\n  slskd:\n  # a real edited line\n"
+    assert result.read_text(encoding="utf-8") == (
+        "services:\n  slskd:\n  # a real edited line\n"
+    )
 
 
 # item 44's real bug: a GUI-launched .app gets launchd's minimal PATH
@@ -812,7 +820,7 @@ def test_the_inspect_opt_in_lets_through_docker_inspect_alone(
     # command reaching the real Popen proves the guard let it through
     # without this test ever spawning the real docker.
     docker = tmp_path / "docker"
-    docker.write_text('#!/bin/sh\necho "$@"\n')
+    docker.write_text('#!/bin/sh\necho "$@"\n', encoding="utf-8")
     docker.chmod(0o755)
 
     inspected = subprocess.run(  # noqa: S603 — the stand-in above

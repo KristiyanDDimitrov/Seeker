@@ -13,8 +13,8 @@ from seeker import cpu_architecture
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
-BUILD = (WORKFLOWS / "build.yml").read_text()
-CI = (WORKFLOWS / "ci.yml").read_text()
+BUILD = (WORKFLOWS / "build.yml").read_text(encoding="utf-8")
+CI = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
 
 
 def _packaging_module(name: str):

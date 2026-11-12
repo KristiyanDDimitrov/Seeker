@@ -25,9 +25,11 @@ from packaging.tags import Tag, compatible_tags, cpython_tags, mac_platforms
 from packaging.utils import parse_wheel_filename
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCK = tomllib.loads((ROOT / "uv.lock").read_text())
+LOCK = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
 PYTHON = tuple(
-    int(part) for part in (ROOT / ".python-version").read_text().strip().split(".")
+    int(part)
+    for part in (ROOT / ".python-version").read_text(encoding="utf-8")
+    .strip().split(".")
 )
 CPYTHON = f"cp{PYTHON[0]}{PYTHON[1]}"
 # The question is whether an architecture has a wheel at all, so any

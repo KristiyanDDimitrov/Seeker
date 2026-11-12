@@ -43,7 +43,7 @@ def _swept_files() -> list[Path]:
 def _ui_calls() -> list[tuple[Path, ast.Call]]:
     calls = []
     for path in _swept_files():
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         calls.extend(
             (path, node) for node in ast.walk(tree)
             if isinstance(node, ast.Call)
@@ -89,7 +89,7 @@ def test_every_hand_built_message_box_sets_its_text_format():
     # left it at AutoText.
     violations = []
     for path in _swept_files():
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for function in ast.walk(tree):
             if not isinstance(function, ast.FunctionDef):
                 continue
@@ -264,7 +264,7 @@ def fixed():
 def test_every_rich_label_escapes_the_data_in_its_markup():
     violations = []
     for path in _swept_files():
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         violations.extend(
             f"{_where(path, call)}: {ast.unparse(call.args[0])}"
             for call in _unescaped_rich_label_arguments(tree)

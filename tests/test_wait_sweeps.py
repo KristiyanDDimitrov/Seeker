@@ -17,7 +17,7 @@ def _wait_until_calls() -> list[tuple[str, ast.Call]]:
     calls = []
 
     for path in sorted(_TESTS_DIR.rglob("*.py")):
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         label = str(path.relative_to(_TESTS_DIR))
 
         for node in ast.walk(tree):
@@ -197,7 +197,7 @@ def _ceiling_waits() -> list[tuple[Path, ast.Module, ast.Call]]:
     found = []
 
     for path in sorted(_TESTS_DIR.rglob("*.py")):
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
         for node in ast.walk(tree):
             if (
@@ -296,7 +296,7 @@ def test_every_ceiling_wait_is_bounded_by_the_named_bound():
     offenders = []
 
     for path in sorted(_TESTS_DIR.rglob("*.py")):
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         label = path.relative_to(_TESTS_DIR)
         offenders += [
             f"{label}:{offender}"

@@ -94,7 +94,7 @@ def test_token_store_load_returns_none_for_corrupt_json(tmp_path):
     # fresh authorization, not a JSONDecodeError out of
     # get_valid_token().
     path = tmp_path / "token.json"
-    path.write_text("{not valid json at all")
+    path.write_text("{not valid json at all", encoding="utf-8")
     store = TokenStore(path)
 
     assert store.load() is None
@@ -102,7 +102,7 @@ def test_token_store_load_returns_none_for_corrupt_json(tmp_path):
 
 def test_token_store_load_returns_none_for_incomplete_json(tmp_path):
     path = tmp_path / "token.json"
-    path.write_text('{"access_token": "access-1"}')
+    path.write_text('{"access_token": "access-1"}', encoding="utf-8")
     store = TokenStore(path)
 
     assert store.load() is None

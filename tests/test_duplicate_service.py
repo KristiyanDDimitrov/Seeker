@@ -314,7 +314,7 @@ def test_compute_fingerprints_classifies_an_undecodable_file(
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     failing_ffmpeg = bin_dir / "ffmpeg"
-    failing_ffmpeg.write_text("#!/bin/sh\nexit 1\n")
+    failing_ffmpeg.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     failing_ffmpeg.chmod(0o755)
     monkeypatch.setenv("PATH", str(bin_dir))
 

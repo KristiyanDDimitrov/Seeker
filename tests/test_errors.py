@@ -18,7 +18,7 @@ def _public_error_classes() -> list[tuple[str, str]]:
     for path in sorted((SRC_ROOT / "seeker").rglob("*.py")):
         module = ".".join(path.relative_to(SRC_ROOT).with_suffix("").parts)
 
-        for node in ast.parse(path.read_text()).body:
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
             # A leading underscore marks an error that never leaves its
             # module (duplicate_service's per-file fingerprint failures,
             # caught one frame up), so no person ever reads it.

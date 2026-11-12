@@ -23,14 +23,14 @@ def test_tracked_build_info_fallback_is_dev():
     build — see packaging/build_dmg.py, which writes there instead and
     never touches this tracked file.
     """
-    source = BUILD_INFO_PATH.read_text()
+    source = BUILD_INFO_PATH.read_text(encoding="utf-8")
     assert 'GIT_SHA = "dev"' in source
     assert 'GIT_DESCRIBE = "dev"' in source
     assert 'BUILT_AT = "dev"' in source
 
 
 def test_build_info_generated_module_is_gitignored():
-    gitignore = (PROJECT_ROOT / ".gitignore").read_text()
+    gitignore = (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8")
     assert "src/seeker/_build_info_generated.py" in gitignore
 
 
@@ -95,7 +95,8 @@ def test_build_dmg_removes_the_generated_module_after_a_failed_build(
     monkeypatch.setattr(build_dmg, "BUILD_INFO_PATH", generated)
     monkeypatch.setattr(build_dmg.sys, "platform", "darwin")
     monkeypatch.setattr(
-        build_dmg, "_write_build_info", lambda: generated.write_text("x"),
+        build_dmg, "_write_build_info",
+        lambda: generated.write_text("x", encoding="utf-8"),
     )
 
     def failing_run(*args, **kwargs):
@@ -112,7 +113,7 @@ def test_build_dmg_removes_the_generated_module_after_a_failed_build(
 def test_wheel_excludes_the_generated_module():
     """`uv build --wheel` packs whatever sits in the source tree."""
     backend = tomllib.loads(
-        (PROJECT_ROOT / "pyproject.toml").read_text(),
+        (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"),
     )["tool"]["uv"]["build-backend"]
     assert "**/_build_info_generated.py" in backend["wheel-exclude"]
 

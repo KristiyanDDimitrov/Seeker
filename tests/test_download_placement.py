@@ -237,7 +237,7 @@ def test_same_name_upgrade_with_delete_old_keeps_the_new_file(tmp_path):
     )
 
     # Invariants 2 and 3: the track's file exists and is the upgrade.
-    assert old.read_text() == "NEW upgrade"
+    assert old.read_text(encoding="utf-8") == "NEW upgrade"
     assert scenario.matched_path() == old
     assert scenario.local_file_paths() == ["P/Artist - Song.mp3"]
     assert scenario.status() == "completed"
@@ -302,9 +302,9 @@ def test_same_name_upgrade_without_delete_old_keeps_both_files(tmp_path):
     )
 
     # Invariant 1: the old file is untouched.
-    assert old.read_text() == "OLD"
+    assert old.read_text(encoding="utf-8") == "OLD"
     new = scenario.destination / "Artist - Song (2).mp3"
-    assert new.read_text() == "NEW upgrade"
+    assert new.read_text(encoding="utf-8") == "NEW upgrade"
     assert scenario.matched_path() == new
     assert message is not None
     assert "Leaving" in message
@@ -323,7 +323,7 @@ def test_differently_named_upgrade_with_delete_old_removes_row_then_file(
 
     new = scenario.destination / "Artist - Song.flac"
     assert not old.exists()
-    assert new.read_text() == "NEW upgrade"
+    assert new.read_text(encoding="utf-8") == "NEW upgrade"
     assert scenario.matched_path() == new
     # No row left behind for a file that no longer exists.
     assert scenario.local_file_paths() == ["P/Artist - Song.flac"]
@@ -343,10 +343,10 @@ def test_upgrade_never_overwrites_an_unrelated_same_named_file(tmp_path):
         scenario.request_id(), replace=True, delete_old=True,
     )
 
-    assert unrelated.read_text() == "OTHER"
+    assert unrelated.read_text(encoding="utf-8") == "OTHER"
     assert not old.exists()
     new = scenario.destination / "Artist - Song (2).flac"
-    assert new.read_text() == "NEW upgrade"
+    assert new.read_text(encoding="utf-8") == "NEW upgrade"
     assert scenario.matched_path() == new
 
 
@@ -366,9 +366,11 @@ def test_settled_download_never_overwrites_a_different_same_named_file(
 
     scenario.service.poll_downloads()
 
-    assert existing.read_text() == "USER'S EXISTING FILE (different song)"
+    assert existing.read_text(encoding="utf-8") == (
+        "USER'S EXISTING FILE (different song)"
+    )
     new = scenario.destination / "01 - Intro (2).mp3"
-    assert new.read_text() == "download for A"
+    assert new.read_text(encoding="utf-8") == "download for A"
     assert scenario.matched_path() == new
     assert scenario.status() == "completed"
 
@@ -383,7 +385,7 @@ def test_same_named_downloads_resolve_by_remote_parent_folder(tmp_path):
 
     scenario.service.poll_downloads()
 
-    assert (scenario.destination / "01 - Intro.mp3").read_text() == (
+    assert (scenario.destination / "01 - Intro.mp3").read_text(encoding="utf-8") == (
         "download for A"
     )
     assert (scenario.slskd / "AlbumB" / "01 - Intro.mp3").exists()
@@ -401,7 +403,7 @@ def test_same_named_downloads_resolve_by_exact_size_in_the_fallback(
 
     scenario.service.poll_downloads()
 
-    assert (scenario.destination / "01 - Intro.mp3").read_text() == (
+    assert (scenario.destination / "01 - Intro.mp3").read_text(encoding="utf-8") == (
         "download for B, longer"
     )
 
@@ -418,7 +420,8 @@ def test_slskd_tick_suffixed_copy_is_found_by_size(tmp_path):
 
     scenario.service.poll_downloads()
 
-    assert (scenario.destination / "05 - Buried Alive.flac").read_text() == (
+    placed = scenario.destination / "05 - Buried Alive.flac"
+    assert placed.read_text(encoding="utf-8") == (
         "the requested download"
     )
     assert (scenario.slskd / "LOGIC" / "05 - Buried Alive.flac").exists()
@@ -435,7 +438,8 @@ def test_several_same_size_candidates_take_the_newest(tmp_path):
 
     scenario.service.poll_downloads()
 
-    assert (scenario.destination / "Song.mp3").read_text() == "same bytes 2"
+    placed = scenario.destination / "Song.mp3"
+    assert placed.read_text(encoding="utf-8") == "same bytes 2"
 
 
 def test_ambiguous_download_is_left_for_the_next_poll_and_logged_once(
@@ -510,4 +514,5 @@ def test_a_peers_basename_is_cleaned_before_it_is_placed(
     assert scenario.status() == "completed"
     assert not source.exists()
     assert scenario.matched_path() == scenario.destination / placed_name
-    assert (scenario.destination / placed_name).read_text() == "download"
+    placed = scenario.destination / placed_name
+    assert placed.read_text(encoding="utf-8") == "download"

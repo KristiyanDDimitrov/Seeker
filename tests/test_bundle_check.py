@@ -45,7 +45,7 @@ def _bundle(tmp_path: Path) -> Path:
     _macho(app / "Contents" / "MacOS" / "Seeker")
     _macho(app / "Contents" / "Frameworks" / "libfoo.dylib")
     (app / "Contents" / "Resources").mkdir(parents=True)
-    (app / "Contents" / "Resources" / "notes.txt").write_text("hello")
+    (app / "Contents" / "Resources" / "notes.txt").write_text("hello", encoding="utf-8")
     (app / "Contents" / "Frameworks" / "link.dylib").symlink_to(
         "libfoo.dylib",
     )

@@ -320,7 +320,7 @@ def test_is_self_managed_true_when_label_matches_compose_path(
         tmp_path, monkeypatch,
 ):
     compose_path = tmp_path / "docker-compose.yml"
-    compose_path.write_text("services:\n  slskd:\n")
+    compose_path.write_text("services:\n  slskd:\n", encoding="utf-8")
     service = make_service(tmp_path, compose_path=compose_path)
 
     monkeypatch.setattr(
@@ -333,7 +333,7 @@ def test_is_self_managed_true_when_label_matches_compose_path(
 
 def test_is_self_managed_false_when_label_differs(tmp_path, monkeypatch):
     compose_path = tmp_path / "docker-compose.yml"
-    compose_path.write_text("services:\n  slskd:\n")
+    compose_path.write_text("services:\n  slskd:\n", encoding="utf-8")
     service = make_service(tmp_path, compose_path=compose_path)
 
     monkeypatch.setattr(
@@ -441,7 +441,7 @@ def test_add_location_to_share_refuses_when_already_shared(
         tmp_path, monkeypatch,
 ):
     compose_path = tmp_path / "docker-compose.yml"
-    compose_path.write_text("services:\n  slskd:\n")
+    compose_path.write_text("services:\n  slskd:\n", encoding="utf-8")
     service = make_service(tmp_path, compose_path=compose_path)
     location = seed_location(service, "Music", "/Volumes/Drive/Music")
 
@@ -491,7 +491,7 @@ def test_add_location_to_share_refuses_with_missing_credentials(
     # to prove it -- an unpatched real call would fail loudly on its
     # own if this check didn't short-circuit first.
     compose_path = tmp_path / "docker-compose.yml"
-    compose_path.write_text("services:\n  slskd:\n")
+    compose_path.write_text("services:\n  slskd:\n", encoding="utf-8")
     service = make_service(tmp_path, compose_path=compose_path, config=config)
     location = seed_location(service, "Music", "/Volumes/Drive/Music")
 
@@ -519,13 +519,16 @@ def test_add_location_to_share_recreates_via_bring_up_slskd_with_real_credential
         "    volumes:\n"
         '      - "./slskd-data:/app"\n'
         '      - "/Volumes/Drive/Music:/shared/music:ro"\n'
-        "    restart: always\n"
+        "    restart: always\n",
+        encoding="utf-8",
     )
 
     data_dir = tmp_path / "slskd-data"
     data_dir.mkdir()
     slskd_yml_path = data_dir / "slskd.yml"
-    slskd_yml_path.write_text("shares:\n  directories:\n    - /shared/music\n")
+    slskd_yml_path.write_text(
+        "shares:\n  directories:\n    - /shared/music\n", encoding="utf-8",
+    )
 
     service = make_service(tmp_path, compose_path=compose_path)
     location = seed_location(service, "New Drive", "/Volumes/New/Drive")
@@ -592,12 +595,14 @@ def test_add_location_to_share_rolls_back_compose_when_recreate_fails(
         '      - "./slskd-data:/app"\n'
         "    restart: always\n"
     )
-    compose_path.write_text(original_compose_text)
+    compose_path.write_text(original_compose_text, encoding="utf-8")
 
     data_dir = tmp_path / "slskd-data"
     data_dir.mkdir()
     slskd_yml_path = data_dir / "slskd.yml"
-    slskd_yml_path.write_text("shares:\n  directories:\n    - /shared/music\n")
+    slskd_yml_path.write_text(
+        "shares:\n  directories:\n    - /shared/music\n", encoding="utf-8",
+    )
 
     service = make_service(tmp_path, compose_path=compose_path)
     location = seed_location(service, "New Drive", "/Volumes/New/Drive")
@@ -633,7 +638,7 @@ def test_add_location_to_share_rolls_back_compose_when_recreate_fails(
     with pytest.raises(RuntimeError, match="boom"):
         service.add_location_to_share(location, confirm=True)
 
-    assert compose_path.read_text() == original_compose_text
+    assert compose_path.read_text(encoding="utf-8") == original_compose_text
 
 
 def test_add_location_to_share_refuses_without_a_live_music_share(
@@ -650,13 +655,13 @@ def test_add_location_to_share_refuses_without_a_live_music_share(
         '      - "${SLSKD_DATA_DIR:?set by Seeker}:/app"\n'
         "    restart: unless-stopped\n"
     )
-    compose_path.write_text(original_compose_text)
+    compose_path.write_text(original_compose_text, encoding="utf-8")
 
     data_dir = tmp_path / "slskd-data"
     data_dir.mkdir()
     slskd_yml_path = data_dir / "slskd.yml"
     original_slskd_yml_text = "shares:\n  directories:\n    - /shared/x\n"
-    slskd_yml_path.write_text(original_slskd_yml_text)
+    slskd_yml_path.write_text(original_slskd_yml_text, encoding="utf-8")
 
     service = make_service(tmp_path, compose_path=compose_path)
     location = seed_location(service, "New Drive", "/Volumes/New/Drive")
@@ -684,8 +689,8 @@ def test_add_location_to_share_refuses_without_a_live_music_share(
     with pytest.raises(RuntimeError, match="/shared/music"):
         service.add_location_to_share(location, confirm=True)
 
-    assert compose_path.read_text() == original_compose_text
-    assert slskd_yml_path.read_text() == original_slskd_yml_text
+    assert compose_path.read_text(encoding="utf-8") == original_compose_text
+    assert slskd_yml_path.read_text(encoding="utf-8") == original_slskd_yml_text
     assert list(tmp_path.glob("*.bak-*")) == []
     assert list(data_dir.glob("*.bak-*")) == []
 
@@ -700,7 +705,8 @@ def test_add_location_to_share_backs_up_and_writes_both_files(
         "    volumes:\n"
         '      - "./slskd-data:/app"\n'
         '      - "/Volumes/Drive/Music:/shared/music:ro"\n'
-        "    restart: always\n"
+        "    restart: always\n",
+        encoding="utf-8",
     )
 
     data_dir = tmp_path / "slskd-data"
@@ -714,7 +720,8 @@ def test_add_location_to_share_backs_up_and_writes_both_files(
         "  directories:\n"
         "    - /shared/music\n"
         "  filters:\n"
-        "    - \\.ini$\n"
+        "    - \\.ini$\n",
+        encoding="utf-8",
     )
 
     service = make_service(tmp_path, compose_path=compose_path)
@@ -763,11 +770,11 @@ def test_add_location_to_share_backs_up_and_writes_both_files(
     assert result.compose_backup_path.exists()
     assert result.slskd_yml_backup_path.exists()
 
-    updated_compose = compose_path.read_text()
+    updated_compose = compose_path.read_text(encoding="utf-8")
     assert '/Volumes/New/Drive:/shared/New Drive:ro' in updated_compose
     assert '/Volumes/Drive/Music:/shared/music:ro' in updated_compose
 
-    updated_slskd_yml = slskd_yml_path.read_text()
+    updated_slskd_yml = slskd_yml_path.read_text(encoding="utf-8")
     assert "- /shared/New Drive" in updated_slskd_yml
     assert "- /shared/music" in updated_slskd_yml
     # The commented default-template block must stay untouched -- only
@@ -805,7 +812,8 @@ def test_add_location_to_share_creates_shares_block_when_none_exists(
         "  slskd:\n"
         "    volumes:\n"
         '      - "./slskd-data:/app"\n'
-        "    restart: always\n"
+        "    restart: always\n",
+        encoding="utf-8",
     )
 
     data_dir = tmp_path / "slskd-data"
@@ -814,7 +822,9 @@ def test_add_location_to_share_creates_shares_block_when_none_exists(
     fixture_path = (
         Path(__file__).parent / "fixtures" / "slskd_generated_default.yml"
     )
-    slskd_yml_path.write_text(fixture_path.read_text())
+    slskd_yml_path.write_text(
+        fixture_path.read_text(encoding="utf-8"), encoding="utf-8",
+    )
 
     service = make_service(tmp_path, compose_path=compose_path)
     location = seed_location(service, "New Drive", "/Volumes/New/Drive")
@@ -838,7 +848,7 @@ def test_add_location_to_share_creates_shares_block_when_none_exists(
 
     assert result.became_ready is True
 
-    updated_slskd_yml = slskd_yml_path.read_text()
+    updated_slskd_yml = slskd_yml_path.read_text(encoding="utf-8")
     assert "shares:\n  directories:\n    - /shared/New Drive\n" in (
         updated_slskd_yml
     )
@@ -855,12 +865,15 @@ def test_add_location_to_share_stops_waiting_for_the_scan_on_stop(
         "  slskd:\n"
         "    volumes:\n"
         '      - "./slskd-data:/app"\n'
-        "    restart: always\n"
+        "    restart: always\n",
+        encoding="utf-8",
     )
     data_dir = tmp_path / "slskd-data"
     data_dir.mkdir()
     slskd_yml_path = data_dir / "slskd.yml"
-    slskd_yml_path.write_text("shares:\n  directories:\n    - /shared/music\n")
+    slskd_yml_path.write_text(
+        "shares:\n  directories:\n    - /shared/music\n", encoding="utf-8",
+    )
     service = make_service(tmp_path, compose_path=compose_path)
     location = seed_location(service, "New Drive", "/Volumes/New/Drive")
     stop = threading.Event()
@@ -894,7 +907,7 @@ def test_add_location_to_share_stops_waiting_for_the_scan_on_stop(
     assert result.became_ready is False
     # The precondition check's, one wait poll, and the closing status.
     assert status_polls["n"] == 3
-    assert "/shared/New Drive" in slskd_yml_path.read_text()
+    assert "/shared/New Drive" in slskd_yml_path.read_text(encoding="utf-8")
 
 
 def _fail_temp_file_writes(monkeypatch, is_target):
@@ -939,7 +952,7 @@ def test_add_location_to_share_rolls_back_compose_on_slskd_yml_write_failure(
         '      - "./slskd-data:/app"\n'
         "    restart: always\n"
     )
-    compose_path.write_text(original_compose_text)
+    compose_path.write_text(original_compose_text, encoding="utf-8")
 
     data_dir = tmp_path / "slskd-data"
     data_dir.mkdir()
@@ -947,7 +960,8 @@ def test_add_location_to_share_rolls_back_compose_on_slskd_yml_write_failure(
     slskd_yml_path.write_text(
         "shares:\n"
         "  directories:\n"
-        "    - /shared/music\n"
+        "    - /shared/music\n",
+        encoding="utf-8",
     )
 
     service = make_service(tmp_path, compose_path=compose_path)
@@ -982,10 +996,10 @@ def test_add_location_to_share_rolls_back_compose_on_slskd_yml_write_failure(
     # The compose file must be back to its ORIGINAL content -- not left
     # holding the new volume line with nothing on the slskd.yml side to
     # match it.
-    assert compose_path.read_text() == original_compose_text
+    assert compose_path.read_text(encoding="utf-8") == original_compose_text
     # slskd.yml was never touched at all (the failure was on write, not
     # a partial write).
-    assert slskd_yml_path.read_text() == (
+    assert slskd_yml_path.read_text(encoding="utf-8") == (
         "shares:\n"
         "  directories:\n"
         "    - /shared/music\n"
@@ -1071,7 +1085,7 @@ def test_insert_slskd_share_directory_creates_block_against_real_generated_defau
     fixture_path = (
         Path(__file__).parent / "fixtures" / "slskd_generated_default.yml"
     )
-    text = fixture_path.read_text()
+    text = fixture_path.read_text(encoding="utf-8")
     assert "shares:\n  directories:" not in text, (
         "fixture assumption violated -- expected no active block"
     )
@@ -1104,11 +1118,11 @@ def _ready_share_scenario(
         tmp_path, monkeypatch, compose_up_returncode=0, record_bring_up=None,
 ):
     compose_path = tmp_path / "docker-compose.yml"
-    compose_path.write_text(_ROBUSTNESS_COMPOSE)
+    compose_path.write_text(_ROBUSTNESS_COMPOSE, encoding="utf-8")
     data_dir = tmp_path / "slskd-data"
     data_dir.mkdir()
     slskd_yml_path = data_dir / "slskd.yml"
-    slskd_yml_path.write_text(_ROBUSTNESS_SLSKD_YML)
+    slskd_yml_path.write_text(_ROBUSTNESS_SLSKD_YML, encoding="utf-8")
 
     service = make_service(
         tmp_path, compose_path=compose_path, record_bring_up=record_bring_up,
@@ -1149,8 +1163,8 @@ def test_add_location_to_share_restores_both_files_when_recreate_fails(
     with pytest.raises(RuntimeError, match="boom"):
         service.add_location_to_share(location, confirm=True)
 
-    assert compose_path.read_text() == _ROBUSTNESS_COMPOSE
-    assert slskd_yml_path.read_text() == _ROBUSTNESS_SLSKD_YML
+    assert compose_path.read_text(encoding="utf-8") == _ROBUSTNESS_COMPOSE
+    assert slskd_yml_path.read_text(encoding="utf-8") == _ROBUSTNESS_SLSKD_YML
 
 
 def test_add_location_to_share_records_what_it_recreated_with(
@@ -1203,8 +1217,8 @@ def test_add_location_to_share_never_leaves_a_half_written_file(
     with pytest.raises(OSError, match="disk full"):
         service.add_location_to_share(location, confirm=True)
 
-    assert slskd_yml_path.read_text() == _ROBUSTNESS_SLSKD_YML
-    assert compose_path.read_text() == _ROBUSTNESS_COMPOSE
+    assert slskd_yml_path.read_text(encoding="utf-8") == _ROBUSTNESS_SLSKD_YML
+    assert compose_path.read_text(encoding="utf-8") == _ROBUSTNESS_COMPOSE
     assert sorted(
         path.name for path in slskd_yml_path.parent.iterdir()
         if ".bak-" not in path.name
@@ -1221,7 +1235,9 @@ def test_add_location_to_share_keeps_only_the_newest_five_backups(
     for day in range(1, 7):
         stamp = f"202601{day:02d}T000000Z"
         for path in (compose_path, slskd_yml_path):
-            path.with_name(f"{path.name}.bak-{stamp}").write_text("old")
+            path.with_name(f"{path.name}.bak-{stamp}").write_text(
+                "old", encoding="utf-8",
+            )
 
     result = service.add_location_to_share(location, confirm=True)
 

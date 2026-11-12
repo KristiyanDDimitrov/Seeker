@@ -151,7 +151,7 @@ def test_load_config_missing_default_destination_fields_uses_documented_defaults
     # and the subfolder toggle defaults True (matches SeekerConfig's
     # own field default).
     path = tmp_path / "config.json"
-    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}', encoding="utf-8")
 
     loaded = load_config(path)
 
@@ -172,7 +172,9 @@ def test_load_config_missing_file_returns_defaults_no_crash(tmp_path):
 def test_load_config_partial_shape_missing_key_does_not_crash(tmp_path):
     # Old/partial JSON — a key added in a later version isn't present.
     path = tmp_path / "config.json"
-    path.write_text(json.dumps({"slskd_base_url": "http://localhost:5030"}))
+    path.write_text(
+        json.dumps({"slskd_base_url": "http://localhost:5030"}), encoding="utf-8",
+    )
 
     loaded = load_config(path)
 
@@ -192,7 +194,7 @@ def test_load_config_tolerates_a_removed_field_still_present_in_the_file(
     path.write_text(json.dumps({
         "slskd_base_url": "http://localhost:5030",
         "write_cover_jpg_sidecars": True,
-    }))
+    }), encoding="utf-8")
 
     loaded = load_config(path)
 
@@ -202,7 +204,7 @@ def test_load_config_tolerates_a_removed_field_still_present_in_the_file(
 
 def test_load_config_corrupt_json_does_not_crash(tmp_path):
     path = tmp_path / "config.json"
-    path.write_text("{not valid json at all")
+    path.write_text("{not valid json at all", encoding="utf-8")
 
     loaded = load_config(path)
 
@@ -213,7 +215,7 @@ def test_load_config_missing_theme_mode_defaults_to_system(tmp_path):
     # A config.json predating item C5 (round 5) has no theme_mode key
     # at all — same flat-additive-JSON tolerance as every other field.
     path = tmp_path / "config.json"
-    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}', encoding="utf-8")
 
     loaded = load_config(path)
 
@@ -225,7 +227,7 @@ def test_load_config_garbage_theme_mode_falls_back_to_system(tmp_path):
     # must not raise or propagate into theme.py; same guarded-default
     # discipline as every other field this store owns.
     path = tmp_path / "config.json"
-    path.write_text(json.dumps({"theme_mode": "not-a-real-mode"}))
+    path.write_text(json.dumps({"theme_mode": "not-a-real-mode"}), encoding="utf-8")
 
     loaded = load_config(path)
 
@@ -248,7 +250,7 @@ def test_load_config_missing_start_hidden_at_login_defaults_to_false(
     # Round 9 §3.2 — a config.json predating this field has no such
     # key at all, same flat-additive-JSON tolerance as theme_mode above.
     path = tmp_path / "config.json"
-    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}', encoding="utf-8")
 
     loaded = load_config(path)
 
@@ -271,7 +273,7 @@ def test_load_config_missing_window_reopen_filled_defaults_to_false(
     # key at all, same flat-additive-JSON tolerance as start_hidden_
     # at_login above.
     path = tmp_path / "config.json"
-    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}', encoding="utf-8")
 
     loaded = load_config(path)
 
@@ -291,7 +293,7 @@ def test_load_config_without_sweep_fields_leaves_the_sweep_off(tmp_path):
     # Opt-in: a config.json from before the daily sweep existed must
     # not start one, and must read as "never swept".
     path = tmp_path / "config.json"
-    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}', encoding="utf-8")
 
     loaded = load_config(path)
 
@@ -321,7 +323,7 @@ def test_load_config_without_update_check_fields_leaves_the_check_off(
     # Opt-in: a config.json from before the automatic update check must
     # not start asking GitHub, and must read as "never checked".
     path = tmp_path / "config.json"
-    path.write_text('{"slskd_base_url": "http://localhost:5030"}')
+    path.write_text('{"slskd_base_url": "http://localhost:5030"}', encoding="utf-8")
 
     loaded = load_config(path)
 
@@ -538,7 +540,7 @@ def test_load_config_falls_back_to_the_default_for_a_wrongly_typed_value(
     # A hand-edited config.json must not put a string where the app
     # expects a bool (a non-empty "false" string is truthy).
     path = tmp_path / "config.json"
-    path.write_text(json.dumps({key: raw, "slskd_api_key": "kept"}))
+    path.write_text(json.dumps({key: raw, "slskd_api_key": "kept"}), encoding="utf-8")
 
     config = load_config(path)
 

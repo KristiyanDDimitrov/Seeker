@@ -137,7 +137,9 @@ def _run_without_seeker_env(tmp_path: Path, script: str) -> str:
 def test_importing_config_reads_no_env_file(tmp_path):
     # load_dotenv() at import walked up from the installed module's own
     # directory: this checkout's .env, or a frozen bundle's parents.
-    (tmp_path / ".env").write_text("SPOTIFY_CLIENT_ID=from-working-dir\n")
+    (tmp_path / ".env").write_text(
+        "SPOTIFY_CLIENT_ID=from-working-dir\n", encoding="utf-8",
+    )
     script = textwrap.dedent(f"""
         import os, sys
         sys.path.insert(0, {SRC_PATH!r})
@@ -152,7 +154,9 @@ def test_importing_config_reads_no_env_file(tmp_path):
 
 
 def test_load_env_file_reads_the_working_directorys_env(tmp_path):
-    (tmp_path / ".env").write_text("SPOTIFY_CLIENT_ID=from-working-dir\n")
+    (tmp_path / ".env").write_text(
+        "SPOTIFY_CLIENT_ID=from-working-dir\n", encoding="utf-8",
+    )
     script = textwrap.dedent(f"""
         import sys
         sys.path.insert(0, {SRC_PATH!r})
@@ -167,7 +171,9 @@ def test_load_env_file_reads_the_working_directorys_env(tmp_path):
 
 
 def test_a_frozen_app_never_reads_an_env_file(tmp_path):
-    (tmp_path / ".env").write_text("SPOTIFY_CLIENT_ID=from-working-dir\n")
+    (tmp_path / ".env").write_text(
+        "SPOTIFY_CLIENT_ID=from-working-dir\n", encoding="utf-8",
+    )
     script = textwrap.dedent(f"""
         import sys
         sys.path.insert(0, {SRC_PATH!r})

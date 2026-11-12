@@ -130,7 +130,7 @@ def test_smoke_test_passes_unfrozen_and_writes_its_report(run, tmp_path):
     code, printed, err = run(report_path)
 
     assert (code, err) == (0, "")
-    assert json.loads(report_path.read_text()) == printed
+    assert json.loads(report_path.read_text(encoding="utf-8")) == printed
     assert printed["passed"] is True
     assert printed["failed"] == []
     assert [check["name"] for check in printed["checks"]] == CHECKS
@@ -383,7 +383,7 @@ def test_a_check_that_raises_fails_and_the_report_is_still_written(
     failed = ["imports", "theme", "fonts", "icons", "compose_template"]
     assert code == 1
     assert printed["failed"] == failed
-    assert json.loads(report_path.read_text()) == printed
+    assert json.loads(report_path.read_text(encoding="utf-8")) == printed
     for name in failed:
         (checked,) = (c for c in printed["checks"] if c["name"] == name)
         assert checked["detail"].startswith("AttributeError: ")
@@ -484,7 +484,7 @@ def test_the_entry_point_runs_the_check_offscreen_and_writes_nothing_else(
     )
 
     assert (result.returncode, result.stderr) == (0, "")
-    report = json.loads(report_path.read_text())
+    report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["passed"] is True
     assert report["platform"] == "offscreen"
     assert list(home.iterdir()) == []

@@ -3,7 +3,7 @@ from seeker.files.deletion import delete_file
 
 def test_delete_file_removes_a_real_file_and_returns_none(tmp_path):
     path = tmp_path / "a.txt"
-    path.write_text("data")
+    path.write_text("data", encoding="utf-8")
 
     assert delete_file(path) is None
     assert not path.exists()

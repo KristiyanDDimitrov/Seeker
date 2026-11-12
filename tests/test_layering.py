@@ -126,7 +126,7 @@ def test_src_keeps_every_layering_rule():
 def test_each_rule_catches_a_planted_import(tmp_path, relative, source):
     path = tmp_path / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
 
     assert len(_violations(tmp_path)) == 1
 
@@ -149,6 +149,6 @@ def test_each_rule_catches_a_planted_import(tmp_path, relative, source):
 def test_an_allowed_import_is_not_flagged(tmp_path, relative, source):
     path = tmp_path / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(source)
+    path.write_text(source, encoding="utf-8")
 
     assert _violations(tmp_path) == []

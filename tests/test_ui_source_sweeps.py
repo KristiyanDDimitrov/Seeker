@@ -38,7 +38,7 @@ def test_no_selector_less_setstylesheet_call_anywhere_in_ui():
     ui_dir = Path(ui_package.__file__).parent
     violations = []
     for path in sorted(ui_dir.glob("*.py")):
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if not (
                 isinstance(node, ast.Call)
@@ -79,7 +79,7 @@ def test_no_private_application_attribute_access_in_ui():
     ui_dir = Path(ui_package.__file__).parent
     violations = []
     for path in sorted(ui_dir.rglob("*.py")):
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if not (
                 isinstance(node, ast.Attribute)
@@ -162,7 +162,7 @@ def test_a_task_button_is_a_page_attribute_or_none():
     checked = 0
     violations = []
     for path in sorted(ui_dir.rglob("*.py")):
-        tree = ast.parse(path.read_text(), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue

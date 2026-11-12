@@ -43,6 +43,7 @@ PROJECT = Path(__file__).resolve().parent.parent
 # folder fails here instead of sweeping nothing.
 SWEPT = {
     "src": "seeker/files/atomic.py",
+    "tests": "conftest.py",
     "tools": "screenshots.py",
 }
 

@@ -60,7 +60,7 @@ def app_dir(tmp_path) -> Path:
     app = tmp_path / "slskd-data"
     (app / "downloads").mkdir(parents=True)
     (app / "incomplete").mkdir()
-    (app / "slskd.yml").write_text("")
+    (app / "slskd.yml").write_text("", encoding="utf-8")
     return app
 
 

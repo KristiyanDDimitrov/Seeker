@@ -21,16 +21,16 @@ def test_write_text_locked_creates_parent_directories(tmp_path):
 
     write_text_locked(path, "hello")
 
-    assert path.read_text() == "hello"
+    assert path.read_text(encoding="utf-8") == "hello"
 
 
 def test_write_text_locked_overwrites_existing_content(tmp_path):
     path = tmp_path / "file.json"
-    path.write_text("old")
+    path.write_text("old", encoding="utf-8")
 
     write_text_locked(path, "new")
 
-    assert path.read_text() == "new"
+    assert path.read_text(encoding="utf-8") == "new"
 
 
 def test_write_text_locked_leaves_no_temp_file_behind(tmp_path):
@@ -56,12 +56,12 @@ def test_write_text_atomic_keeps_the_existing_files_permissions(tmp_path):
     # slskd.yml is read by slskd inside its container; an edit must not
     # change who can read it.
     path = tmp_path / "slskd.yml"
-    path.write_text("old")
+    path.write_text("old", encoding="utf-8")
     path.chmod(0o644)
 
     write_text_atomic(path, "new")
 
-    assert path.read_text() == "new"
+    assert path.read_text(encoding="utf-8") == "new"
     assert stat.S_IMODE(path.stat().st_mode) == 0o644
 
 
@@ -69,7 +69,7 @@ def test_write_text_atomic_failure_leaves_the_original_and_no_temp_file(
         tmp_path, monkeypatch,
 ):
     path = tmp_path / "slskd.yml"
-    path.write_text("original")
+    path.write_text("original", encoding="utf-8")
 
     def fails(fd):
         raise OSError("disk full (simulated)")
@@ -79,7 +79,7 @@ def test_write_text_atomic_failure_leaves_the_original_and_no_temp_file(
     with pytest.raises(OSError, match="disk full"):
         write_text_atomic(path, "replacement")
 
-    assert path.read_text() == "original"
+    assert path.read_text(encoding="utf-8") == "original"
     assert [child.name for child in tmp_path.iterdir()] == ["slskd.yml"]
 
 
@@ -134,7 +134,7 @@ def test_write_text_locked_failure_leaves_the_original_and_no_temp_file(
         tmp_path, monkeypatch,
 ):
     path = tmp_path / "token.json"
-    path.write_text("original")
+    path.write_text("original", encoding="utf-8")
 
     def fails(fd):
         raise OSError("disk full (simulated)")
@@ -144,7 +144,7 @@ def test_write_text_locked_failure_leaves_the_original_and_no_temp_file(
     with pytest.raises(OSError, match="disk full"):
         write_text_locked(path, "replacement")
 
-    assert path.read_text() == "original"
+    assert path.read_text(encoding="utf-8") == "original"
     assert [child.name for child in tmp_path.iterdir()] == ["token.json"]
 
 

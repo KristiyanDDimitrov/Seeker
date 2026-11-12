@@ -34,7 +34,7 @@ def _service_functions() -> dict[str, bool]:
     for path in SRC_DIR.rglob("*.py"):
         if path.is_relative_to(UI_DIR):
             continue
-        for node in ast.walk(ast.parse(path.read_text())):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 arguments = node.args.args + node.args.kwonlyargs
                 takes_stop[node.name] = takes_stop.get(node.name, False) or any(
@@ -64,7 +64,7 @@ STOPPABLE = {name for name, stop in SERVICE_FUNCTIONS.items() if stop}
 
 def _ui_modules() -> Iterator[tuple[Path, ast.Module]]:
     for path in sorted(UI_DIR.rglob("*.py")):
-        yield path, ast.parse(path.read_text(), filename=str(path))
+        yield path, ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
 
 def test_every_stoppable_service_call_in_ui_passes_quitting():

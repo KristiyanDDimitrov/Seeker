@@ -861,7 +861,7 @@ def test_selected_text_reads_on_a_selection_that_stands_off_the_field(
 def test_the_checkbox_tick_is_drawn_in_on_accent(palette):
     path = theme.check_tick_path(palette)
     assert path.is_file()
-    assert f'stroke="{palette.ON_ACCENT}"' in path.read_text()
+    assert f'stroke="{palette.ON_ACCENT}"' in path.read_text(encoding="utf-8")
     assert path.as_posix() in theme.build_stylesheet(palette)
 
 
@@ -875,7 +875,7 @@ def test_a_selected_radio_button_has_an_on_accent_dot(palette):
     # rested on colour alone, unlike the checkbox's tick.
     path = theme.radio_dot_path(palette)
     assert path.is_file()
-    assert f'fill="{palette.ON_ACCENT}"' in path.read_text()
+    assert f'fill="{palette.ON_ACCENT}"' in path.read_text(encoding="utf-8")
     assert path.as_posix() in theme.build_stylesheet(palette)
 
 
@@ -887,7 +887,7 @@ def test_a_selected_radio_button_has_an_on_accent_dot(palette):
 def test_the_combo_chevron_is_drawn_in_the_palettes_muted_text(palette):
     path = theme.combo_chevron_path(palette)
     assert path.is_file()
-    assert f'stroke="{palette.TEXT_MUTED}"' in path.read_text()
+    assert f'stroke="{palette.TEXT_MUTED}"' in path.read_text(encoding="utf-8")
     assert path.as_posix() in theme.build_stylesheet(palette)
 
 
@@ -906,7 +906,7 @@ def test_the_spin_arrows_are_drawn_in_the_palettes_muted_text(
 ):
     path = arrow_path(palette)
     assert path.is_file()
-    assert f'stroke="{palette.TEXT_MUTED}"' in path.read_text()
+    assert f'stroke="{palette.TEXT_MUTED}"' in path.read_text(encoding="utf-8")
     assert path.as_posix() in theme.build_stylesheet(palette)
 
 
@@ -1059,11 +1059,11 @@ def test_the_display_face_ships_with_its_licence():
     fonts = _PROJECT_ROOT / "packaging" / "fonts"
     assert (fonts / "BarlowSemiCondensed-Medium.ttf").is_file()
     assert (fonts / "BarlowSemiCondensed-SemiBold.ttf").is_file()
-    assert "SIL Open Font License" in (fonts / "OFL.txt").read_text()
+    assert "SIL Open Font License" in (fonts / "OFL.txt").read_text(encoding="utf-8")
 
 
 def test_the_spec_bundles_the_fonts_directory():
-    spec = (_PROJECT_ROOT / "packaging" / "seeker.spec").read_text()
+    spec = (_PROJECT_ROOT / "packaging" / "seeker.spec").read_text(encoding="utf-8")
     assert '(str(SPEC_DIR / "fonts"), "fonts")' in spec
 
 

@@ -73,12 +73,15 @@ linked to the HISTORY entry holding its investigation;
   `Popen` before the guard, or never reach it. Its link test runs
   offscreen only: elsewhere a broken handler would open its links.
   [§267](../docs/history/241-270.md#267), [§273](../docs/history/271-300.md#273)
-- **Until R14-S3, five sweeps read source in the locale's encoding**
-  (a bare `read_text()`: cp1252 on `check-windows`). Keep `src/` and
-  `tests/` free of a byte cp1252 leaves undefined (0x81, 0x8D, 0x8F,
-  0x90, 0x9D; U+201D and U+6771 each hold one); write such text in
-  escapes. Scan with Python: this Mac's `grep` (ugrep) misses these
-  bytes in a bracket expression. [§273](../docs/history/271-300.md#273)
+- **Every file a test reads or writes names its encoding**
+  (`encoding="utf-8"`) or opens in a binary mode, as `src/` does: a
+  bare `read_text()` reads in the locale's encoding, cp1252 on
+  `check-windows`, where a sweep reading source then failed on a byte
+  cp1252 leaves undefined (0x9D, which U+201D holds).
+  `tests/test_encoding_sweep.py` fails the build over `src/`, `tests/`
+  and `tools/`. A test's subprocess output is not swept:
+  its child writes in its own stream's encoding.
+  [§273](../docs/history/271-300.md#273)
 - **On Windows a test's `HOME` moves nothing of Seeker's.**
   `Path.expanduser()` reads `USERPROFILE` (observed on
   `check-windows`), and platformdirs 4.14.0's source resolves Seeker's

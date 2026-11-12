@@ -13,7 +13,7 @@ from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parents[1]
-PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text())
+PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
 
 
@@ -28,7 +28,7 @@ def test_every_setup_uv_step_pins_the_required_version():
     for path in WORKFLOWS:
         steps = re.findall(
             r"uses: astral-sh/setup-uv@.*\n(?:\s+with:\n(?:\s+\S.*\n)+)?",
-            path.read_text(),
+            path.read_text(encoding="utf-8"),
         )
 
         assert steps, path.name

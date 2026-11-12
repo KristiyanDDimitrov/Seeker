@@ -83,7 +83,8 @@ def _seed_fake_spotify_token() -> None:
                 "refresh_token": "fake-hang-repro-refresh",
                 "expires_at": time.time() + 3600,
             }
-        )
+        ),
+        encoding="utf-8",
     )
 
 

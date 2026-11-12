@@ -69,7 +69,8 @@ def test_configure_logging_writes_the_seeker_tree_to_the_log_file(
     for handler in logging.getLogger("seeker").handlers:
         handler.flush()
 
-    lines = (isolated_entry_point / "seeker.log").read_text().splitlines()
+    log = isolated_entry_point / "seeker.log"
+    lines = log.read_text(encoding="utf-8").splitlines()
 
     assert len(lines) == 1
     assert lines[0].endswith(" INFO seeker.library.service: Scanned 3 files.")

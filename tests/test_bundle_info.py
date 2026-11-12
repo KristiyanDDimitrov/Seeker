@@ -22,7 +22,7 @@ def _load_bundle_info():
 
 def test_bundle_version_is_the_project_version():
     version = tomllib.loads(
-        (PROJECT_ROOT / "pyproject.toml").read_text(),
+        (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"),
     )["project"]["version"]
 
     plist = _load_bundle_info().info_plist(PROJECT_ROOT)
@@ -91,16 +91,18 @@ def test_the_runtime_closure_is_seekers_requirements_and_theirs():
 def test_the_copyleft_components_ship_their_licence_texts():
     files = _bundled_files(_license_datas())
 
-    assert "Version 2, June 1991" in files["licenses/mutagen/COPYING"].read_text()
+    assert "Version 2, June 1991" in files["licenses/mutagen/COPYING"].read_text(
+        encoding="utf-8",
+    )
     assert "Version 2.1, February 1999" in (
-        files["licenses/soxr/COPYING.LGPL"].read_text()
+        files["licenses/soxr/COPYING.LGPL"].read_text(encoding="utf-8")
     )
     for name in ("pyside6", "pyside6-addons", "pyside6-essentials", "shiboken6"):
         assert files[f"licenses/{name}/LGPL-3.0.txt"].is_file()
         assert files[f"licenses/{name}/GPL-3.0.txt"].is_file()
     # libgfortran, inside scipy's wheel: GPL-3.0 with the GCC exception.
     assert "GCC RUNTIME LIBRARY EXCEPTION" in (
-        files["licenses/scipy/LICENSE.txt"].read_text()
+        files["licenses/scipy/LICENSE.txt"].read_text(encoding="utf-8")
     )
 
 
@@ -109,7 +111,7 @@ def test_seeker_and_python_ship_their_own_licences():
 
     assert files["licenses/seeker/LICENSE"] == PROJECT_ROOT / "LICENSE"
     assert "PYTHON SOFTWARE FOUNDATION LICENSE" in (
-        files["licenses/python/LICENSE.txt"].read_text()
+        files["licenses/python/LICENSE.txt"].read_text(encoding="utf-8")
     )
 
 
@@ -167,7 +169,7 @@ def test_target_architecture_refuses_anything_else():
 
 
 def test_spec_builds_for_the_architecture_explicitly():
-    spec = (PROJECT_ROOT / "packaging" / "seeker.spec").read_text()
+    spec = (PROJECT_ROOT / "packaging" / "seeker.spec").read_text(encoding="utf-8")
 
     assert "target_arch=bundle_info.target_architecture()" in spec
     assert "target_arch=None" not in spec
@@ -219,7 +221,7 @@ def test_the_intel_bundle_ships_chromaprints_licence_texts():
 
 
 def test_spec_bundles_libchromaprint_through_bundle_info():
-    spec = (PROJECT_ROOT / "packaging" / "seeker.spec").read_text()
+    spec = (PROJECT_ROOT / "packaging" / "seeker.spec").read_text(encoding="utf-8")
 
     assert "bundle_info.chromaprint_binaries(" in spec
     assert "bundle_info.chromaprint_license_datas(" in spec

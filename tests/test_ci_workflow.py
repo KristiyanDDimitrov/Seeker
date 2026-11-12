@@ -11,7 +11,7 @@ from pathlib import Path
 
 WORKFLOW = (
     Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ci.yml"
-).read_text()
+).read_text(encoding="utf-8")
 
 
 def _jobs() -> dict[str, str]:
