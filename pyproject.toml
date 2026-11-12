@@ -110,6 +110,7 @@ select = [
     "PIE790", # no `pass` after a docstring
     "RSE102", # `raise Error`, not `raise Error()`
     "FURB161", # int.bit_count(), not bin(i).count("1")
+    "PLW1514", # text I/O names its encoding, never the locale's
     "SLF001", # no reaching into another object's private members:
               # the shell calls a page's public methods (HISTORY §162)
 ]

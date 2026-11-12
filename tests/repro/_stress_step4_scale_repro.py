@@ -135,7 +135,7 @@ def _seed_filler_backlog(application: Application, count: int) -> None:
 
 
 def _seed_split_playlists(application: Application, tracks_path: Path) -> None:
-    tracks_data = json.loads(tracks_path.read_text())
+    tracks_data = json.loads(tracks_path.read_text(encoding="utf-8"))
     thirds = [tracks_data[0::3], tracks_data[1::3], tracks_data[2::3]]
 
     with application.database.transaction() as connection:

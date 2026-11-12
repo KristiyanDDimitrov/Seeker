@@ -28,7 +28,8 @@ def _imported_modules(path: Path, root: Path) -> Iterator[tuple[str, int]]:
     """
     package = ["seeker", *path.parent.relative_to(root).parts]
 
-    for node in ast.walk(ast.parse(path.read_text(), filename=str(path))):
+    source = path.read_text(encoding="utf-8")
+    for node in ast.walk(ast.parse(source, filename=str(path))):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 yield alias.name, node.lineno

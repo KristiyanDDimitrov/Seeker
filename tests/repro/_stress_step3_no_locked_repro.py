@@ -57,7 +57,7 @@ PLAYLIST_NAME = "Under Pressure (Deluxe)"
 
 
 def _seed(application: Application, tracks_path: Path) -> None:
-    tracks_data = json.loads(tracks_path.read_text())
+    tracks_data = json.loads(tracks_path.read_text(encoding="utf-8"))
 
     location_dir = _THROWAWAY_DIR / "destination"
     location_dir.mkdir(parents=True, exist_ok=True)

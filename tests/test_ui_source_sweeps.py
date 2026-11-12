@@ -113,7 +113,7 @@ def test_no_stray_ampersand_mnemonic_in_button_or_label_text():
 
     import seeker.ui.main_window as main_window_module
 
-    source = Path(main_window_module.__file__).read_text()
+    source = Path(main_window_module.__file__).read_text(encoding="utf-8")
     literals = re.findall(
         r'(?:QPushButton|PlainLabel|RichLabel)\(\s*"([^"]*)"', source,
     )

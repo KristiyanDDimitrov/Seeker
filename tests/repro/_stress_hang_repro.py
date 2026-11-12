@@ -132,7 +132,8 @@ def _seed_scale_location(application: Application) -> int:
     scale_dir.mkdir(parents=True, exist_ok=True)
 
     relative_paths = [
-        line.strip() for line in SAMPLE_PATHS_FILE.read_text().splitlines()
+        line.strip()
+        for line in SAMPLE_PATHS_FILE.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
 
