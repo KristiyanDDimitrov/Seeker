@@ -102,9 +102,9 @@ linked to the HISTORY entry holding its investigation;
   28 real-file tests take `requires_x9_pro` from `tests/x9_pro_gate.py`
   and run only with `SEEKER_RUN_X9_PRO_TESTS=1` and the drive mounted:
   macOS guards a removable volume, and without the opt-in nothing looks
-  at it. A bare run on macOS, like CI's, skips 35: those 28, the stress
-  test and six Windows-only tests (`test_processes.py`,
-  `test_platformdirs_isolation.py`).
+  at it. A bare run on macOS, like CI's, skips 36: those 28, the stress
+  test and seven Windows-only tests (`test_processes.py`,
+  `test_platformdirs_isolation.py`, `test_main.py`).
   [§32](../docs/history/032-046.md#32), [§267](../docs/history/241-270.md#267),
   [§273](../docs/history/271-300.md#273)
 - **CI checks audio analysis only as one generated click track's BPM
