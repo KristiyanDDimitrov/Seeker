@@ -8,6 +8,7 @@ an `EncodingWarning` wherever text is opened without an encoding (PEP
 the ones src/ has, the way the app does."""
 import codecs
 import json
+import locale
 import os
 import subprocess
 import sys
@@ -173,6 +174,16 @@ SharingService(None, None, None, compose_path=compose)._edit_both_files(
 """
 
 
+# On Windows with its code page set to UTF-8 (65001, "Use Unicode UTF-8
+# for worldwide language support"), no locale the test can set gives the
+# child another encoding, so its control could only fail. There the
+# code page cannot garble Seeker's files, and the EncodingWarning cases
+# above still fail on a read or write that names no encoding.
+@pytest.mark.skipif(
+    sys.platform == "win32"
+    and codecs.lookup(locale.getencoding()).name == "utf-8",
+    reason="the Windows code page here is UTF-8, so no other encoding to test",
+)
 def test_text_files_are_utf8_whatever_the_locale(tmp_path):
     """Naming an encoding is not enough: the one named must be UTF-8.
     The child runs under ISO 8859-1 (`LC_ALL`, on macOS), or under
@@ -184,7 +195,14 @@ def test_text_files_are_utf8_whatever_the_locale(tmp_path):
     convention, not the encoding this test is for."""
     result = subprocess.run(  # noqa: S603 — this interpreter, a fixed script
         [sys.executable, "-c", _WRITE_AND_READ_BACK, str(tmp_path)],
-        env={**os.environ, "LC_ALL": "en_US.ISO8859-1"},
+        # Without PYTHONUTF8, which would make every default UTF-8.
+        env={
+            **{
+                name: value for name, value in os.environ.items()
+                if name != "PYTHONUTF8"
+            },
+            "LC_ALL": "en_US.ISO8859-1",
+        },
         capture_output=True, text=True, timeout=60, check=False,
     )
 
