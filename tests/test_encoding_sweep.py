@@ -27,10 +27,13 @@ another name), except where a type is named (an annotation,
 What it cannot see: a name built from a string (`getattr(path,
 "read_text")`), and a library's own text I/O.
 
-A spawn's text mode is not read here: src/ starts every program
+A spawn's text mode is not read here. src/ starts every program
 through `seeker/processes.py`, which decodes UTF-8
 (`tests/test_subprocess_sweep.py`); a test's child writes in its own
-stream's encoding, which the test reads it in.
+stream's encoding, which the test reads it in. The build and
+acceptance scripts' own spawns (`packaging/build_dmg.py`'s git,
+`packaging/bundle_check.py`, `tools/window_checks.py`) decode in the
+locale's, which reads their output right only while it is ASCII.
 """
 import ast
 from pathlib import Path
@@ -155,6 +158,15 @@ def _locale_text_in(tree: ast.AST) -> list[tuple[int, str]]:
         elif isinstance(node, ast.Attribute):
             name, receiver = node.attr, node.value
         else:
+            continue
+        # A refused module reached as an attribute of its package
+        # (`logging.config` after `import logging`), not imported.
+        if isinstance(receiver, ast.Name) and (
+                (dotted := f"{modules.get(receiver.id)}.{name}") in _REFUSED_MODULES
+        ):
+            found.append(
+                (node.lineno, f"{dotted}, which opens text the sweep does not read"),
+            )
             continue
         if name not in _OPENS and name != "basicConfig":
             continue
@@ -332,6 +344,10 @@ _PLANTED = {
     "logging-config": (
         "from logging import config\n",
         "1: logging.config, which opens text the sweep does not read",
+    ),
+    "logging-config-as-an-attribute": (
+        "import logging\nlogging.config.fileConfig(path)\n",
+        "2: logging.config, which opens text the sweep does not read",
     ),
 }
 
