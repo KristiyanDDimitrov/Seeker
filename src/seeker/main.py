@@ -16,13 +16,13 @@ def _write_utf8() -> None:
     # hardware), and print() of a track or peer name outside it raises
     # UnicodeEncodeError, ending the command. macOS writes UTF-8
     # already (tests/test_main.py's pipe test passed there without
-    # this), so only "replace" is new there: `?` for what UTF-8 cannot
-    # encode, a lone surrogate from an undecodable filename byte. A
-    # stream that is not a TextIOWrapper (None, with no console) is
-    # left alone.
-    for stream in (sys.stdout, sys.stderr):
+    # this). What UTF-8 cannot encode, a lone surrogate from an
+    # undecodable filename byte, prints as `?` on stdout; stderr keeps
+    # Python's own escape, so a traceback keeps its detail. A stream
+    # that is not a TextIOWrapper (None, with no console) is left alone.
+    for stream, errors in ((sys.stdout, "replace"), (sys.stderr, "backslashreplace")):
         if isinstance(stream, io.TextIOWrapper):
-            stream.reconfigure(encoding="utf-8", errors="replace")
+            stream.reconfigure(encoding="utf-8", errors=errors)
 
 
 def _configure_logging() -> None:

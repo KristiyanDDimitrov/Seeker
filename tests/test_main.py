@@ -116,7 +116,8 @@ def test_the_cli_prints_a_name_outside_the_code_page_as_utf8(
     UnicodeEncodeError and ended the command. `main()` writes stdout and
     stderr as UTF-8 before anything prints, and a character UTF-8
     cannot encode (a lone surrogate, as `os.fsdecode` makes of a
-    filename's undecodable byte) prints as `?`."""
+    filename's undecodable byte) prints as `?` on stdout and as its
+    escape on stderr, which keeps a traceback's detail."""
     stdout, stderr = _code_page_stream(), _code_page_stream()
     monkeypatch.setattr(sys, "stdout", stdout)
     monkeypatch.setattr(sys, "stderr", stderr)
@@ -134,7 +135,7 @@ def test_the_cli_prints_a_name_outside_the_code_page_as_utf8(
     stdout.flush()
     stderr.flush()
     assert stdout.buffer.getvalue() == f"{_NAME}\n".encode()
-    assert stderr.buffer.getvalue() == f"{_NAME} ?\n".encode()
+    assert stderr.buffer.getvalue() == f"{_NAME} \\udce9\n".encode()
 
 
 # The CLI in a child of its own, its output piped as a redirect is:
