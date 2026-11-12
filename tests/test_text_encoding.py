@@ -6,7 +6,9 @@ an `EncodingWarning` wherever text is opened without an encoding (PEP
 597), and fails on one raised from a module under src/seeker.
 `tests/test_encoding_sweep.py` reads every site in source; this runs
 the ones src/ has, the way the app does."""
+import codecs
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -127,3 +129,70 @@ def test_the_harness_reports_text_opened_in_the_locales_encoding(tmp_path):
     )
 
     assert found == ["reader.py:2"]
+
+
+# A name neither ISO 8859-1 nor cp1252 can encode, built from code
+# points so that no source, command line or locale stands between it
+# and the bytes.
+_NAME = "Caf" + chr(0xE9) + " " + chr(0x6771) + chr(0x4EAC)
+
+# Under the locale `_utf8_under_another_locale` sets, writes `_NAME`
+# the way Seeker writes every text file (the Compose file, slskd.yml,
+# the settings, the token), reads it from config.json, and adds a share
+# whose path holds it to a Compose file whose path holds it already.
+# Prints the encoding text opened with none would take, then the name
+# the settings read.
+_WRITE_AND_READ_BACK = """\
+import locale, sys
+from pathlib import Path
+from seeker.config_store import load_config
+from seeker.files.atomic import write_text_atomic
+from seeker.soulseek.sharing_service import SharingPlan, SharingService
+tmp = Path(sys.argv[1])
+name = "Caf" + chr(0xE9) + " " + chr(0x6771) + chr(0x4EAC)
+print(locale.getpreferredencoding(False))
+write_text_atomic(tmp / "written.txt", name + "\\n")
+config = tmp / "config.json"
+config.write_bytes(('{"slskd_username": "%s"}' % name).encode("utf-8"))
+print(ascii(load_config(config).slskd_username))
+compose = tmp / "docker-compose.yml"
+compose.write_bytes((
+    "services:\\n  slskd:\\n    volumes:\\n"
+    '      - "/%s/a:/shared/a:ro"\\n' % name
+).encode("utf-8"))
+slskd_yml = tmp / "slskd.yml"
+slskd_yml.write_bytes(b"shares:\\n  directories:\\n    - /shared/a\\n")
+plan = SharingPlan(
+    location=None, container_path="/shared/b",
+    compose_volume_line='      - "/%s/b:/shared/b:ro"' % name,
+    slskd_share_directory_line="    - /shared/b",
+)
+SharingService(None, None, None, compose_path=compose)._edit_both_files(
+    plan, slskd_yml,
+)
+"""
+
+
+def test_text_files_are_utf8_whatever_the_locale(tmp_path):
+    """Naming an encoding is not enough: the one named must be UTF-8.
+    The child runs under ISO 8859-1 (`LC_ALL`, on macOS), or under
+    Windows' ANSI code page, which `LC_ALL` does not change; in either,
+    `_NAME` cannot be written in the locale's encoding, and UTF-8 read
+    as it comes back garbled."""
+    result = subprocess.run(  # noqa: S603 — this interpreter, a fixed script
+        [sys.executable, "-c", _WRITE_AND_READ_BACK, str(tmp_path)],
+        env={**os.environ, "LC_ALL": "en_US.ISO8859-1"},
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    locale_encoding, settings_name = result.stdout.splitlines()
+    # The control: text opened with no encoding would not be UTF-8 here.
+    assert codecs.lookup(locale_encoding).name != "utf-8"
+    assert settings_name == ascii(_NAME)
+    assert (tmp_path / "written.txt").read_bytes() == f"{_NAME}\n".encode()
+    assert (tmp_path / "docker-compose.yml").read_bytes() == (
+        "services:\n  slskd:\n    volumes:\n"
+        f'      - "/{_NAME}/a:/shared/a:ro"\n'
+        f'      - "/{_NAME}/b:/shared/b:ro"\n'
+    ).encode()
