@@ -4,7 +4,9 @@ import sys
 
 from seeker import config
 from seeker.application import Application
-from seeker.cli import dispatch, parse_args
+from seeker.cli import dispatch, parse_args, printable
+from seeker.error_text import describe_error
+from seeker.errors import SeekerError
 from seeker.soulseek import poller
 
 
@@ -51,4 +53,13 @@ def main() -> None:
     # to .env) — see Application.auth_manager. A command that doesn't
     # need Spotify auth at all (e.g. `library scan`) must still work
     # without it configured, matching how SLSKD_* has always worked.
-    dispatch(Application(), parsed)
+    try:
+        application = Application()
+    except SeekerError as error:
+        # Building it reads config.json, which can refuse to load (one
+        # that is not UTF-8): its sentence, as dispatch prints a
+        # command's error.
+        print(printable(describe_error(error, details_hint="")))
+        sys.exit(1)
+
+    dispatch(application, parsed)

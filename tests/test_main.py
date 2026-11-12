@@ -4,12 +4,14 @@ import locale
 import logging
 import subprocess
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import platformdirs
 import pytest
 
 from seeker import main
+from seeker.errors import TextFileNotUtf8Error
 from seeker.soulseek import poller
 
 
@@ -177,3 +179,25 @@ def test_on_windows_a_pipe_takes_the_ansi_code_page():
     piped = codecs.lookup(result.stdout.strip()).name
     assert piped == codecs.lookup(locale.getencoding()).name
     assert piped != "utf-8"
+
+
+def test_settings_seeker_cannot_read_stop_the_cli_with_their_sentence(
+        unwritable_data_dir, monkeypatch, capsys,
+):
+    """Building the Application reads config.json, and one that is not
+    UTF-8 raises TextFileNotUtf8Error. The CLI prints its sentence, as
+    it prints a command's error, and exits 1: no traceback."""
+    def refuse():
+        raise TextFileNotUtf8Error(Path("config.json"))
+
+    monkeypatch.setattr(main, "Application", refuse)
+    monkeypatch.setattr(sys, "argv", ["seeker", "sync"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        main.main()
+
+    assert exit_info.value.code == 1
+    assert capsys.readouterr().out == (
+        "config.json is not UTF-8 text, so Seeker has left it as it is. "
+        "Save it as UTF-8 in a text editor, then try again.\n"
+    )
