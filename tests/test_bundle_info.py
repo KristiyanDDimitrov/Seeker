@@ -2,6 +2,7 @@
 
 import hashlib
 import importlib.util
+import shutil
 import subprocess
 import tomllib
 from pathlib import Path
@@ -9,6 +10,12 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+# git, found while the suite collects. On Windows a test that builds an
+# Application leaves PATH without its drive letters for the rest of the
+# session (HISTORY §268, entries 5-8), so a bare "git" was not found by
+# the time this file ran (check-windows, run 43288487992).
+GIT = shutil.which("git")
 
 
 def _load_bundle_info():
@@ -150,7 +157,8 @@ def test_vendored_licence_texts_are_checked_out_as_committed():
         for path in (PROJECT_ROOT / "packaging" / "licenses").iterdir()
     )
 
-    command = ["git", "check-attr", "text", "--", *vendored]
+    assert GIT is not None, "git is not on PATH"
+    command = [GIT, "check-attr", "text", "--", *vendored]
     result = subprocess.run(  # noqa: S603 — fixed arguments
         command, cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=60,
         check=True,
