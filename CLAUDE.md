@@ -131,7 +131,8 @@ short, under `src/seeker/`:
   `tests/test_subprocess_sweep.py` fails the build on a spawn named
   anywhere else. [§273](docs/history/271-300.md#273)
 - **Text is UTF-8, never the locale's.** Every text read or write in
-  the project's Python names `encoding="utf-8"` or opens in a binary
+  the project's Python names `encoding="utf-8"` (`"utf-8-sig"` to read
+  `config.json`, past a byte-order mark) or opens in a binary
   mode; ruff's PLW1514 and `tests/test_encoding_sweep.py` (over `src/`,
   `tests/`, `tools/`, `packaging/`) fail the build. When the settings
   (`config.json`), the Compose file or `slskd.yml` hold a byte that is
@@ -142,6 +143,16 @@ short, under `src/seeker/`:
   CLI's stdout and stderr are UTF-8 from `main()`. `PYTHONUTF8` and
   `PYTHONIOENCODING` stay unset in CI, tests and the app.
   [§274](docs/history/271-300.md#274)
+- **Settings Seeker cannot read are left as they are, never replaced
+  by defaults.** Only a missing `config.json` reads as defaults (a
+  first run). One that cannot be read, is not UTF-8 or is not a JSON
+  object raises `SettingsUnreadableError`, `TextFileNotUtf8Error` or
+  `SettingsNotJsonError`, a sentence through `describe_error`, and
+  nothing is written: every settings write loads the file first. A
+  UTF-8 byte-order mark is read past, and the next save drops it. A
+  wrongly typed value still takes its field's default, which the next
+  save writes ([§146](docs/history/121-150.md#146)).
+  [§N](docs/history/271-300.md#N)
 - **`.env` is read only by an entry point.** `config.py`'s values are
   functions over `os.environ`, read at call time; `main()` in
   `main.py`/`main_ui.py` calls `config.load_env_file()` (cwd upward;
