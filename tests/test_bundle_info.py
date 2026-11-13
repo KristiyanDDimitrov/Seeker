@@ -11,10 +11,11 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# git, found while the suite collects. On Windows a test that builds an
-# Application leaves PATH without its drive letters for the rest of the
-# session (HISTORY §268, entries 5-8), so a bare "git" was not found by
-# the time this file ran (check-windows, run 43288487992).
+# git, found while the suite collects, before a test can change PATH for
+# the rest of the session. One did on Windows: an Application took the
+# drive letters off PATH (HISTORY §268, entries 5-8), and a bare "git"
+# was not found by the time this file ran (check-windows, run
+# 43288487992).
 GIT = shutil.which("git")
 
 

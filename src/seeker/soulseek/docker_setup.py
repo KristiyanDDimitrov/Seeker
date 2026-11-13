@@ -39,7 +39,14 @@ def ensure_full_path_environment() -> None:
     Application startup, before anything Docker-related runs — every
     soulseek/docker_setup.py subprocess call inherits os.environ already, so
     mutating it here fixes every call site at once.
+
+    macOS only: path_helper and the Homebrew folders are macOS's, so
+    anywhere else PATH is left as it is. A Windows PATH split on ":"
+    loses every drive letter (HISTORY §268).
     """
+    if sys.platform != "darwin":
+        return
+
     try:
         result = processes.run(
             ["/usr/libexec/path_helper", "-s"],
@@ -51,17 +58,17 @@ def ensure_full_path_environment() -> None:
         match = re.search(r'PATH="([^"]*)"', result.stdout)
         resolved_path = match.group(1) if match else ""
     except Exception:
-        # Best-effort only — this runs unconditionally at Application
-        # startup (see the call site), so it must never be able to
-        # crash startup itself, on any platform, for any reason
-        # (path_helper doesn't exist at all outside macOS, and its
-        # output shape isn't a contract this code controls). The
-        # explicit _FALLBACK_BIN_DIRS below still get applied even
-        # when this fails entirely.
+        # Best-effort only — this runs at every Application startup on
+        # macOS, so it must never be able to crash startup itself, for
+        # any reason (path_helper's output shape isn't a contract this
+        # code controls). The explicit _FALLBACK_BIN_DIRS below still
+        # get applied even when this fails entirely.
         resolved_path = ""
 
+    # path_helper prints PATH in its own ":"-joined form; os.environ's
+    # is the platform's.
     entries = resolved_path.split(":") if resolved_path else []
-    entries += os.environ.get("PATH", "").split(":")
+    entries += os.environ.get("PATH", "").split(os.pathsep)
     entries += list(_FALLBACK_BIN_DIRS)
 
     merged = [entry for entry in dict.fromkeys(entries) if entry]

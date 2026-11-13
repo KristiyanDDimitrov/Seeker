@@ -209,11 +209,24 @@ def test_compose_file_path_does_not_overwrite_an_existing_canonical_copy(
 _MINIMAL_LAUNCHD_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 
 
-def test_ensure_full_path_environment_merges_path_helper_output(
-        monkeypatch,
-):
-    monkeypatch.setenv("PATH", _MINIMAL_LAUNCHD_PATH)
+@pytest.fixture
+def macos_path(monkeypatch):
+    """macOS, where the merge runs, with launchd's PATH. The merge
+    joins with `os.pathsep`, `;` on a Windows runner, so these tests
+    read PATH by it."""
+    monkeypatch.setattr("sys.platform", "darwin")
+    monkeypatch.setenv(
+        "PATH", os.pathsep.join(_MINIMAL_LAUNCHD_PATH.split(":")),
+    )
 
+
+def _path_entries() -> list[str]:
+    return os.environ["PATH"].split(os.pathsep)
+
+
+def test_ensure_full_path_environment_merges_path_helper_output(
+        monkeypatch, macos_path,
+):
     def fake_run(args, **kwargs):
         assert args == ["/usr/libexec/path_helper", "-s"]
         return FakeCompletedProcess(
@@ -228,20 +241,17 @@ def test_ensure_full_path_environment_merges_path_helper_output(
 
     ensure_full_path_environment()
 
-    entries = os.environ["PATH"].split(":")
+    entries = _path_entries()
     assert "/usr/local/bin" in entries
     assert "/opt/homebrew/bin" in entries
     assert "/usr/bin" in entries
 
 
 def test_ensure_full_path_environment_falls_back_when_path_helper_unavailable(
-        monkeypatch,
+        monkeypatch, macos_path,
 ):
-    # path_helper genuinely doesn't exist on every platform this code
-    # might run on (only real on macOS) — must not raise, and must
-    # still get the explicit fallback dirs onto PATH.
-    monkeypatch.setenv("PATH", _MINIMAL_LAUNCHD_PATH)
-
+    # path_helper failing to start must not raise, and must still get
+    # the explicit fallback dirs onto PATH.
     def fake_run(args, **kwargs):
         raise FileNotFoundError("/usr/libexec/path_helper: not found")
 
@@ -249,7 +259,7 @@ def test_ensure_full_path_environment_falls_back_when_path_helper_unavailable(
 
     ensure_full_path_environment()
 
-    entries = os.environ["PATH"].split(":")
+    entries = _path_entries()
     assert "/opt/homebrew/bin" in entries
     assert "/usr/local/bin" in entries
     # Original minimal PATH must survive, not be replaced.
@@ -268,23 +278,22 @@ def test_ensure_full_path_environment_falls_back_when_path_helper_unavailable(
 # also a stand-in for any real, unanticipated subprocess.run() failure
 # mode on a target platform this code doesn't control.
 def test_ensure_full_path_environment_never_raises_on_malformed_result(
-        monkeypatch,
+        monkeypatch, macos_path,
 ):
-    monkeypatch.setenv("PATH", _MINIMAL_LAUNCHD_PATH)
     monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: None)
 
     ensure_full_path_environment()
 
-    entries = os.environ["PATH"].split(":")
+    entries = _path_entries()
     assert "/opt/homebrew/bin" in entries
     assert "/usr/local/bin" in entries
 
 
 def test_ensure_full_path_environment_does_not_duplicate_existing_entries(
-        monkeypatch,
+        monkeypatch, macos_path,
 ):
     monkeypatch.setenv(
-        "PATH", f"/opt/homebrew/bin:{_MINIMAL_LAUNCHD_PATH}",
+        "PATH", os.pathsep.join(["/opt/homebrew/bin", *_path_entries()]),
     )
 
     def fake_run(args, **kwargs):
@@ -300,8 +309,40 @@ def test_ensure_full_path_environment_does_not_duplicate_existing_entries(
 
     ensure_full_path_environment()
 
-    entries = os.environ["PATH"].split(":")
+    entries = _path_entries()
     assert entries.count("/opt/homebrew/bin") == 1
+
+
+@pytest.mark.parametrize(
+    ("platform", "pathsep", "path"),
+    [
+        (
+            "win32", ";",
+            r"C:\Windows\system32;C:\Program Files\Docker\Docker\resources\bin",
+        ),
+        ("linux", ":", "/usr/local/bin:/usr/bin:/bin"),
+    ],
+    ids=["windows", "linux"],
+)
+def test_ensure_full_path_environment_leaves_path_whole_outside_macos(
+        monkeypatch, platform, pathsep, path,
+):
+    """path_helper and the Homebrew folders are macOS's. A Windows PATH
+    split on ":" lost every drive letter, and every program after it
+    went missing (HISTORY §268, entries 5-8). `os.pathsep` is the
+    platform's, as on the machine itself."""
+    monkeypatch.setattr("sys.platform", platform)
+    monkeypatch.setattr(os, "pathsep", pathsep)
+    monkeypatch.setenv("PATH", path)
+    spawned = []
+    monkeypatch.setattr(
+        subprocess, "run", lambda args, **kwargs: spawned.append(args),
+    )
+
+    ensure_full_path_environment()
+
+    assert os.environ["PATH"] == path
+    assert spawned == []
 
 
 class FakeCompletedProcess:
