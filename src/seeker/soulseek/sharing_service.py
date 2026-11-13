@@ -688,7 +688,7 @@ def _get_live_container_mounts(container_name: str) -> dict[str, str]:
 
     # A `Source` is the host folder, compared through path_key and
     # passed back to Compose by a recreate. Its form under Docker
-    # Desktop on Windows is UNVERIFIED (PF-14): as given (`C:\...`) or
+    # Desktop on Windows is UNVERIFIED: as given (`C:\...`) or
     # with '/', which path_key folds together, or the VM's
     # `/run/desktop/mnt/host/c/...`, which would be mapped back here
     # once measured.
@@ -777,9 +777,9 @@ def _prune_backups(path: Path) -> None:
 
 # Both edits below are line-level text surgery, not a YAML round-trip:
 # each file has a known, machine-written shape (Seeker's own Compose
-# template, and the slskd.yml slskd generates), the project carries no
-# YAML dependency, and a shape these helpers don't recognise is refused
-# rather than guessed at.
+# template, and the slskd.yml slskd generates), the app carries no YAML
+# dependency (the tests' PyYAML is a dev one), and a shape these helpers
+# don't recognise is refused rather than guessed at.
 
 def _compose_host_path(path: str) -> str:
     """`path` as the Compose entry names it: on Windows with '/'
@@ -790,11 +790,12 @@ def _compose_host_path(path: str) -> str:
 
     So a ':' in a macOS folder name still splits the entry, and the
     recreate fails and rolls back. The long syntax is no cure: Compose
-    hands the engine a bind with no `bind:` options as the same
-    `source:target:ro` string (docker/compose's
-    `bindRequiresMountAPI`, read in its source), and the one route to
-    the engine's Mounts API, `create_host_path: false`, changes what
-    happens when a shared folder is missing at a container start.
+    gives the engine a bind with no `bind:` options as the same
+    `source:target:ro` string (docker/compose's `bindRequiresMountAPI`,
+    read in its source). Only a `bind:` option such as
+    `create_host_path: false` takes the engine's Mounts API, which
+    cannot create a missing folder (its comment there), so a share on
+    a drive that is not connected would change what a start does.
     """
     if sys.platform == "win32":
         return PureWindowsPath(path).as_posix()

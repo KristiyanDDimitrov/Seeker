@@ -6,8 +6,7 @@ wrong folder) on anyone else's Mac, and an image pinned by tag alone
 can change under a pinned client.
 
 The file is parsed line by line rather than with a YAML library: it is
-Seeker's own template, its shape is fixed, and the project carries no
-YAML dependency.
+Seeker's own template, and its shape is fixed.
 """
 
 import re
