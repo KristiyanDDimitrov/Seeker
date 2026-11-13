@@ -1,3 +1,4 @@
+import sys
 import threading
 import time
 from dataclasses import replace
@@ -1146,6 +1147,23 @@ def _select_share(window, name: str) -> None:
     window.slskd_share_combo.setCurrentIndex(
         window.slskd_share_combo.findText(name),
     )
+
+
+def test_start_form_matches_the_live_share_to_its_location_however_spelled(
+        qtbot, tmp_path, monkeypatch,
+):
+    """On Windows a mount's `Source` may spell a location's folder in
+    another case, with a trailing separator; the form must still offer
+    that location, not the raw path as a share that is no location."""
+    _, window, _ = _start_form_page(qtbot, tmp_path, monkeypatch, {})
+    count = window.slskd_share_combo.count()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(sys, "platform", "win32")
+        window._render_share_choices(str(tmp_path / "Music").upper() + "/")
+
+    assert window.slskd_share_combo.currentText() == "Music"
+    assert window.slskd_share_combo.count() == count
 
 
 def test_start_form_opens_with_the_saved_login_and_the_live_folders(

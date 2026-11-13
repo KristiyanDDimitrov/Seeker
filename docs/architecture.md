@@ -151,6 +151,7 @@ src/seeker/
 ├── files/
 │   ├── atomic.py            # atomic writes; 0600 writes; 0700 dirs; rewrite_via_copy()
 │   ├── deletion.py          # delete a file the library knows about
+│   ├── path_key.py          # path_key(): one comparison key per host folder
 │   ├── placement.py         # resolve_collision(): never land on a file
 │   ├── sanitize.py          # clean_path_component()
 │   └── naming.py            # build_track_filename()

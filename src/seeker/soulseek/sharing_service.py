@@ -63,6 +63,7 @@ from seeker.database.repositories.library_location_repository import (
 )
 from seeker.errors import SeekerError, TextFileNotUtf8Error
 from seeker.files.atomic import write_text_atomic
+from seeker.files.path_key import path_key
 from seeker.files.sanitize import sanitize_path_component
 from seeker.models.library_location import LibraryLocation
 from seeker.soulseek.client import SoulseekClient
@@ -276,25 +277,28 @@ class SharingService:
         once."""
         mounts = _get_live_container_mounts(self._container_name)
 
-        share_by_host_path: dict[str, ShareEntry] = {}
+        share_by_path_key: dict[str, ShareEntry] = {}
 
         for share in status.shares:
             host_path = mounts.get(share.local_path)
 
             if host_path is not None:
-                share_by_host_path[host_path] = share
+                share_by_path_key[path_key(host_path)] = share
 
         with self.database.transaction() as connection:
             locations = self.library_locations.get_all(connection)
 
-        return [
-            LocationShareState(
+        states: list[LocationShareState] = []
+
+        for location in locations:
+            location_share = share_by_path_key.get(path_key(location.path))
+            states.append(LocationShareState(
                 location=location,
-                shared=location.path in share_by_host_path,
-                share=share_by_host_path.get(location.path),
-            )
-            for location in locations
-        ]
+                shared=location_share is not None,
+                share=location_share,
+            ))
+
+        return states
 
     def current_share_path(self) -> str | None:
         """The host folder the running container shares as
@@ -673,6 +677,12 @@ def _get_live_container_mounts(container_name: str) -> dict[str, str]:
     if not isinstance(mounts, list):
         return {}
 
+    # A `Source` is the host folder, compared through path_key and
+    # passed back to Compose by a recreate. Its form under Docker
+    # Desktop on Windows is UNVERIFIED (PF-14): as given (`C:\...`) or
+    # with '/', which path_key folds together, or the VM's
+    # `/run/desktop/mnt/host/c/...`, which would be mapped back here
+    # once measured.
     return {
         mount["Destination"]: mount["Source"]
         for mount in mounts

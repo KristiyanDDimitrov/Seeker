@@ -355,6 +355,41 @@ def test_get_reconciliation_matches_location_to_share_via_live_mounts(
     assert by_name["Other"].share is None
 
 
+@pytest.mark.parametrize(
+    "source", ["C:\\Users\\Alex\\Music", "c:/users/alex/music/"],
+)
+def test_get_reconciliation_matches_a_windows_location_however_spelled(
+        tmp_path, monkeypatch, source,
+):
+    """Windows paths compare case-insensitively, either separator, a
+    trailing one or none; a plain string comparison showed a shared
+    location as unshared (PF-14)."""
+    service = make_service(tmp_path)
+    seed_location(service, "Music", "C:/Users/Alex/Music")
+    seed_location(service, "Other", "C:/Users/Alex/Music Other")
+    monkeypatch.setattr(
+        httpx, "get",
+        lambda url, **k: FakeResponse(
+            {"shares": {}} if url.endswith("/application") else {
+                "local": [{"id": "1", "localPath": "/shared/music"}],
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda *a, **k: FakeCompletedProcess(stdout=json.dumps([
+            {"Destination": "/shared/music", "Source": source},
+        ])),
+    )
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    reconciliation = service.get_reconciliation(service.get_status())
+
+    assert {
+        state.location.name: state.shared for state in reconciliation
+    } == {"Music": True, "Other": False}
+
+
 def test_get_reconciliation_all_unshared_when_docker_unreachable(
         tmp_path, monkeypatch,
 ):

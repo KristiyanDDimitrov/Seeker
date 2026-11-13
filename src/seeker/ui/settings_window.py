@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from seeker.application import Application
+from seeker.files.path_key import path_key
 from seeker.login_item import LoginItemStatus
 from seeker.matching import resolve_thresholds
 from seeker.models.library_location import LibraryLocation
@@ -107,6 +108,21 @@ def _location_combo() -> QComboBox:
 _LOCATIONS_COLUMNS = theme.ColumnLayout(
     stretch=(1,), fit_content=(0, 2), actions=3, paths=(1,),
 )
+
+
+def _share_choice_index(combo: QComboBox, share_path: str) -> int:
+    """The index of the share choice naming `share_path`'s folder,
+    however a mount's `Source` spelled it, or -1."""
+    key = path_key(share_path)
+
+    return next(
+        (
+            index for index in range(combo.count())
+            if isinstance(data := combo.itemData(index), str)
+            and path_key(data) == key
+        ),
+        -1,
+    )
 
 
 def _folder_state_item(reachable: bool) -> QTableWidgetItem:
@@ -1211,11 +1227,11 @@ class SettingsPage(QWidget):
                 combo.addItem(f"{location.name} (not connected)", location.path)
                 model.item(combo.count() - 1).setEnabled(False)
 
-        if selected is not None and combo.findData(selected) < 0:
+        if selected is not None and _share_choice_index(combo, selected) < 0:
             combo.insertItem(1, selected, selected)
 
         combo.setCurrentIndex(
-            combo.findData(selected) if selected is not None else 0,
+            _share_choice_index(combo, selected) if selected is not None else 0,
         )
 
     def _render_slskd_data_dir(
