@@ -1,3 +1,4 @@
+import codecs
 import dataclasses
 import json
 import stat
@@ -571,3 +572,24 @@ def test_load_config_refuses_a_file_that_is_not_utf8_and_leaves_it(tmp_path):
         "Save it as UTF-8 in a text editor, then try again."
     )
     assert path.read_bytes() == original
+
+
+def test_load_config_reads_past_a_utf8_byte_order_mark(tmp_path):
+    """An editor can start a UTF-8 file with a byte-order mark (Notepad
+    can; which versions do by default is UNVERIFIED), and json.loads
+    refuses one ("Unexpected UTF-8 BOM"). RFC 8259 lets a parser ignore
+    it, and it holds nothing a save could lose: the settings load, and
+    the next save writes them without it."""
+    path = tmp_path / "config.json"
+    path.write_bytes(codecs.BOM_UTF8 + json.dumps(
+        {"slskd_username": "kris", "slskd_password": "kept"},
+    ).encode("utf-8"))
+
+    loaded = load_config(path)
+
+    assert (loaded.slskd_username, loaded.slskd_password) == ("kris", "kept")
+
+    save_config(loaded, path)
+
+    assert not path.read_bytes().startswith(codecs.BOM_UTF8)
+    assert load_config(path) == loaded

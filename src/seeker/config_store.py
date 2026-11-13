@@ -140,7 +140,10 @@ def load_config(path: Path) -> SeekerConfig:
         return SeekerConfig()
 
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        # utf-8-sig reads past a byte-order mark, which an editor can put
+        # before UTF-8 and json.loads refuses. It holds nothing a save
+        # could lose, so the next save writes the file without it.
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except UnicodeDecodeError as error:
         # Defaults here would let the next save write them over the
         # user's Spotify and Soulseek credentials, so the file is left
