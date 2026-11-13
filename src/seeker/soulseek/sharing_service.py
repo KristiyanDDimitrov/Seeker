@@ -393,6 +393,9 @@ class SharingService:
         alias = sanitize_path_component(location.name)
         container_path = f"{SHARE_MOUNT_ROOT}/{alias}"
         volume = f"{_compose_host_path(location.path)}:{container_path}:ro"
+        # Compose interpolates every value it reads, where `$$` is a
+        # literal '$' and a lone one starts a variable's name.
+        volume = volume.replace("$", "$$")
 
         return SharingPlan(
             location=location,

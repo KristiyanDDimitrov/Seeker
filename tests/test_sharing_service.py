@@ -183,6 +183,20 @@ def test_a_windows_location_reads_back_whole_from_sharings_compose_entry(
     )
 
 
+def test_a_dollar_in_a_location_reaches_compose_as_itself(
+        tmp_path, monkeypatch,
+):
+    # Compose interpolates every value it reads, the volumes too: a
+    # lone '$' starts a variable's name.
+    service = make_service(tmp_path)
+    location = seed_location(service, "$ets", "/Volumes/Drive/$ets")
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+    assert _volume_sharing_adds(service, location) == (
+        "/Volumes/Drive/$ets", "/shared/$ets", True,
+    )
+
+
 @pytest.mark.parametrize("folder", ['12" Singles', "AC\\DC"])
 def test_a_macos_folder_with_a_quote_or_backslash_reads_back_whole(
         tmp_path, monkeypatch, folder,
