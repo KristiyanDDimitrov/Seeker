@@ -67,6 +67,19 @@ Planning seeded the list; each round-14 row appends to it.
   for a Windows bind mount; whether `is_self_managed`'s label
   comparison holds. *Settle:* bring-up, add a location to the share,
   `docker inspect`.
+- PF-13, as round 14 S5 left it: Sharing writes the short syntax
+  single-quoted, a Windows path with `/` (`'C:/Users/…:/shared/…:ro'`,
+  `sharing_service.preview_add_location`), and the tests read it back
+  through PyYAML and a model of compose-go's split, not Compose itself.
+  *Settle:* share `C:\SeekerTest\DJ's Music` (an apostrophe), then
+  `docker compose -f <the per-user copy> config` shows the source
+  whole and Sharing lists the location as shared.
+- PF-14, as round 14 S5 left it: `files/path_key.py`'s `path_key`
+  folds case and separators on Windows (`str.lower()`, as pathlib's
+  equality); a VM form of `Source` (`/run/desktop/mnt/host/c/…`) would
+  map back where `_get_live_container_mounts` reads it, the one marked
+  place. *Settle:* the `docker inspect` above; if the form is the VM's,
+  round 15 S3 maps it there, and a recreate passes the mapped path.
 - PF-15: `docker desktop start` exists and starts Docker Desktop;
   what `docker info` prints while it starts. *Settle:* the wizard's
   button with Docker Desktop quit.
@@ -120,12 +133,13 @@ Planning seeded the list; each round-14 row appends to it.
   playlist named `Café 東京`, then `seeker playlists` in a console,
   and `seeker playlists > out.txt` opened as UTF-8.
 - PF-11, the file half: Sharing writes the Compose file and
-  `slskd.yml` as UTF-8 (`files/atomic.py`), and on Windows with CRLF
-  line endings (text mode's, observed on `check-windows`, run
-  43324253654); that Compose and slskd read both is UNVERIFIED.
+  `slskd.yml` as UTF-8 (`files/atomic.py`). Since round 14 S5 each
+  keeps the line endings it had (slskd.yml slskd's LF), so Sharing
+  hands neither program a new one; what is open is whether Compose
+  reads the per-user copy as Git for Windows' default checkout gives
+  the template, CRLF (seeded byte for byte), UNVERIFIED.
   *Settle:* share `C:\SeekerTest\Café 東京`, then `docker compose
-  config` shows the path whole and slskd lists the share, from the
-  CRLF files that edit wrote.
+  config` shows the path whole and slskd lists the share.
 - PF-10: no console window flashes from the windowed app.
   `processes.py` adds `CREATE_NO_WINDOW` to every program Seeker
   starts; `tests/test_processes.py` shows on `check-windows` only that
