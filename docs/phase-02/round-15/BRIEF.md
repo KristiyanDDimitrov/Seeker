@@ -67,9 +67,24 @@ Planning seeded the list; each round-14 row appends to it.
   for a Windows bind mount; whether `is_self_managed`'s label
   comparison holds. *Settle:* bring-up, add a location to the share,
   `docker inspect`.
-- PF-15: `docker desktop start` exists and starts Docker Desktop;
-  what `docker info` prints while it starts. *Settle:* the wizard's
-  button with Docker Desktop quit.
+- PF-15: the wizard's Launch Docker Desktop
+  (`docker_setup.launch_docker_desktop()`) runs `docker desktop start
+  --detach` (Docker Desktop 4.37 on, Docker's docs), else opens
+  `%ProgramFiles%\Docker\Docker\Docker Desktop.exe` with
+  `os.startfile`. Unverified: the command starts Docker Desktop and
+  returns at once; one older than 4.37 answers it with an error, not a
+  hang; the executable's name; a per-user install
+  (`%LOCALAPPDATA%\Programs\DockerDesktop`) without the command gets
+  only the "open it yourself" text; what `docker info` prints while it
+  starts. *Settle:* the wizard's button with Docker Desktop quit;
+  `dir "%ProgramFiles%\Docker\Docker"`; Seeker's log for `docker
+  desktop start exited`.
+- PF-09: on Windows `ensure_full_path_environment()` leaves PATH as it
+  is (`soulseek/docker_setup.py`), shown by unit tests on
+  `check-windows`; that the installed app then finds `docker` and
+  `ffmpeg` is UNVERIFIED. *Settle:* the wizard's Docker step with
+  Docker Desktop running reads "Docker is running"; a duplicate check
+  fingerprints.
 - PF-16: what lands on NTFS when slskd writes a name with
   `: * ? " < > |` or a trailing dot or space. *Settle:* `docker exec
   slskd sh -c 'touch "/app/downloads/a:b?.flac"'` and friends, then
@@ -137,11 +152,12 @@ Planning seeded the list; each round-14 row appends to it.
   installed app in the tray with Sharing open (its `docker ps` and
   `docker inspect` polls), then a duplicate-detection run (one
   `ffmpeg` per file): no window appears.
-- PF-10: the flag on a GUI program and through `cmd`. Microsoft
-  documents it as ignored for a program that is not a console one, so
-  `explorer` still opens a folder, and the wizard's `cmd /c start ""
-  "Docker Desktop"` still starts Docker Desktop. *Settle:* Help → Open
-  data folder; the wizard's Launch Docker with Docker Desktop quit.
+- PF-10: the flag on a GUI program. Microsoft documents it as ignored
+  for a program that is not a console one, so `explorer` still opens a
+  folder, and Docker Desktop, which the wizard's `docker desktop start
+  --detach` (a console program, started with the flag) starts in turn,
+  still shows its window. *Settle:* Help → Open data folder; the
+  wizard's Launch Docker with Docker Desktop quit.
 - PF-11, the subprocess half: `docker` writes UTF-8 on Windows, which
   `processes.run(..., text=True)` reads, so a non-ASCII share path
   matches; read in the code page, its bytes never would. *Settle:*
