@@ -57,8 +57,8 @@ def main() -> None:
         application = Application()
     except SeekerError as error:
         # Building it reads config.json, which can refuse to load (one
-        # that is not UTF-8, or not JSON): its sentence, as dispatch
-        # prints a command's error.
+        # it cannot read, or that is not UTF-8 or not JSON): its
+        # sentence, as dispatch prints a command's error.
         print(printable(describe_error(error, details_hint="")))
         sys.exit(1)
 

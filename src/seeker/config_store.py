@@ -35,6 +35,19 @@ class SettingsNotJsonError(SeekerError):
         self.path = path
 
 
+class SettingsUnreadableError(SeekerError):
+    """config.json exists, but reading it failed (its permissions, say).
+    Seeker leaves it as it is."""
+
+    def __init__(self, path: Path, error: OSError) -> None:
+        super().__init__(
+            f"{path} could not be read ({error.strerror or error}), so "
+            "Seeker has left it as it is. Check that you can open it, "
+            "then try again."
+        )
+        self.path = path
+
+
 @dataclass
 class SeekerConfig:
     slskd_base_url: str | None = None
@@ -159,10 +172,11 @@ def _resolve_theme_mode(raw: object) -> str:
 
 def load_config(path: Path) -> SeekerConfig:
     """The settings `path` holds, or the defaults while it does not
-    exist (a first run). A file that is not UTF-8, or not a JSON
-    object, raises and is left for the user to fix (a hand edit saved
-    in a code page, or with a typo): defaults would let the next save
-    write them over the user's Spotify and Soulseek credentials."""
+    exist (a first run). A file that cannot be read, is not UTF-8 or is
+    not a JSON object raises and is left for the user to fix (a hand
+    edit saved in a code page, or with a typo): defaults would let the
+    next save write them over the user's Spotify and Soulseek
+    credentials."""
     if not path.exists():
         return SeekerConfig()
 
@@ -175,8 +189,11 @@ def load_config(path: Path) -> SeekerConfig:
         raise TextFileNotUtf8Error(path) from error
     except json.JSONDecodeError as error:
         raise SettingsNotJsonError(path, error) from error
-    except OSError:
+    except FileNotFoundError:
+        # Gone since the check above: missing, as on a first run.
         return SeekerConfig()
+    except OSError as error:
+        raise SettingsUnreadableError(path, error) from error
 
     if not isinstance(data, dict):
         raise SettingsNotJsonError(path)

@@ -4,12 +4,14 @@ import json
 import stat
 import sys
 import typing
+from pathlib import Path
 
 import pytest
 
 from seeker.config_store import (
     SeekerConfig,
     SettingsNotJsonError,
+    SettingsUnreadableError,
     load_config,
     migrate_legacy_env_config,
     resolve_config_path,
@@ -224,6 +226,48 @@ def test_load_config_refuses_a_file_that_is_not_json_and_leaves_it(tmp_path):
         "Correct it in a text editor, then try again."
     )
     assert path.read_bytes() == original
+
+
+@skip_on_windows
+def test_load_config_refuses_a_file_it_cannot_read_and_leaves_it(tmp_path):
+    """A config.json this user cannot read stops the load. Defaults
+    would not spare it: the save they lead to renames a new file over
+    it, which needs only the folder's permission (on 8c957e8 one save
+    replaced a mode-000 file)."""
+    path = tmp_path / "config.json"
+    original = b'{"slskd_password": "kept"}'
+    path.write_bytes(original)
+    path.chmod(0)
+
+    try:
+        with pytest.raises(SettingsUnreadableError) as raised:
+            load_config(path)
+    finally:
+        path.chmod(0o600)
+
+    assert describe_error(raised.value, details_hint="") == (
+        f"{path} could not be read (Permission denied), so Seeker has left "
+        "it as it is. Check that you can open it, then try again."
+    )
+    assert path.read_bytes() == original
+
+
+def test_load_config_reads_a_file_gone_since_its_check_as_missing(
+        tmp_path, monkeypatch,
+):
+    """Removed between the existence check and the read, the file is
+    missing: the defaults, as on a first run."""
+    path = tmp_path / "config.json"
+    path.write_text("{}", encoding="utf-8")
+
+    def gone(self, *args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", str(self))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "read_text", gone)
+        loaded = load_config(path)
+
+    assert loaded == SeekerConfig()
 
 
 @pytest.mark.parametrize(
