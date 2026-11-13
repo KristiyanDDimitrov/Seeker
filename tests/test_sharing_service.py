@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from datetime import UTC, datetime
@@ -161,6 +162,39 @@ def test_sharings_compose_entry_reads_back_as_the_location(tmp_path):
 
     assert _volume_sharing_adds(service, location) == (
         "/Volumes/New/Drive", "/shared/New Drive", True,
+    )
+
+
+def test_a_windows_location_reads_back_whole_from_sharings_compose_entry(
+        tmp_path, monkeypatch,
+):
+    """In a double-quoted YAML scalar '\\' starts an escape, and `\\U`
+    one of eight hex digits, so a Windows path broke the Compose file
+    (PF-13). The apostrophe is the one character single quotes make
+    special."""
+    service = make_service(tmp_path)
+    location = seed_location(
+        service, "DJ's Music", "C:\\Users\\Alex\\DJ's Music",
+    )
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    assert _volume_sharing_adds(service, location) == (
+        "C:/Users/Alex/DJ's Music", "/shared/DJ's Music", True,
+    )
+
+
+@pytest.mark.parametrize("folder", ['12" Singles', "AC\\DC"])
+def test_a_macos_folder_with_a_quote_or_backslash_reads_back_whole(
+        tmp_path, monkeypatch, folder,
+):
+    # Both are legal in a macOS folder name; either broke the
+    # double-quoted entry.
+    service = make_service(tmp_path)
+    location = seed_location(service, "Vinyl", f"/Volumes/Drive/{folder}")
+    monkeypatch.setattr(sys, "platform", "darwin")
+
+    assert _volume_sharing_adds(service, location) == (
+        f"/Volumes/Drive/{folder}", "/shared/Vinyl", True,
     )
 
 
@@ -471,7 +505,7 @@ def test_preview_add_location_derives_alias_and_readonly_mount(tmp_path):
     plan = service.preview_add_location(location)
 
     assert plan.container_path == "/shared/My Drive"
-    assert plan.compose_volume_line.endswith(':ro"')
+    assert plan.compose_volume_line.endswith(":ro'")
     assert "/Volumes/My Drive/Music" in plan.compose_volume_line
     assert plan.slskd_share_directory_line.strip() == "- /shared/My Drive"
 

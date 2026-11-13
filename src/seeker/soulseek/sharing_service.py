@@ -44,13 +44,14 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import httpx
 
@@ -387,13 +388,12 @@ class SharingService:
     def preview_add_location(self, location: LibraryLocation) -> SharingPlan:
         alias = sanitize_path_component(location.name)
         container_path = f"{SHARE_MOUNT_ROOT}/{alias}"
+        volume = f"{_compose_host_path(location.path)}:{container_path}:ro"
 
         return SharingPlan(
             location=location,
             container_path=container_path,
-            compose_volume_line=(
-                f'      - "{location.path}:{container_path}:ro"'
-            ),
+            compose_volume_line=f"      - {_yaml_single_quoted(volume)}",
             slskd_share_directory_line=f"    - {container_path}",
         )
 
@@ -742,6 +742,36 @@ def _prune_backups(path: Path) -> None:
 # template, and the slskd.yml slskd generates), the project carries no
 # YAML dependency, and a shape these helpers don't recognise is refused
 # rather than guessed at.
+
+def _compose_host_path(path: str) -> str:
+    """`path` as the Compose entry names it: on Windows with '/'
+    separators (`C:/Users/...`), elsewhere as it is. compose-go's
+    `format.ParseVolume` (read in its source) splits the short syntax
+    on every ':' but one after a field's lone leading letter, a
+    drive's.
+
+    So a ':' in a macOS folder name still splits the entry, and the
+    recreate fails and rolls back. The long syntax is no cure: Compose
+    hands the engine a bind with no `bind:` options as the same
+    `source:target:ro` string (docker/compose's
+    `bindRequiresMountAPI`, read in its source), and the one route to
+    the engine's Mounts API, `create_host_path: false`, changes what
+    happens when a shared folder is missing at a container start.
+    """
+    if sys.platform == "win32":
+        return PureWindowsPath(path).as_posix()
+
+    return path
+
+
+def _yaml_single_quoted(text: str) -> str:
+    """`text` as a single-quoted YAML scalar, in which '\\' and '"' are
+    plain characters and a `'` is written twice. A line break or a
+    control character (legal in a macOS name, never in a Windows one)
+    has no such form: PyYAML reads a line break as a space and refuses
+    a control character (observed)."""
+    return "'" + text.replace("'", "''") + "'"
+
 
 def _indent_of(line: str) -> int:
     return len(line) - len(line.lstrip(" "))
