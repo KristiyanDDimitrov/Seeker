@@ -2,6 +2,7 @@ import codecs
 import io
 import locale
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -211,6 +212,43 @@ def test_settings_seeker_cannot_read_stop_the_cli_with_their_sentence(
         "config.json is not UTF-8 text, so Seeker has left it as it is. "
         "Save it as UTF-8 in a text editor, then try again.\n"
     )
+
+
+def test_settings_that_are_not_json_stop_the_cli_and_are_left_as_they_are(
+        tmp_path, monkeypatch, capsys,
+):
+    """End to end, through a real Application: a config.json with a
+    typo stops the CLI with its sentence before any command runs, and
+    the file stays as it was."""
+    data_dir = tmp_path / "Seeker"
+    data_dir.mkdir()
+    config_path = data_dir / "config.json"
+    original = b'{"slskd_password": "kept",}'
+    config_path.write_bytes(original)
+    monkeypatch.setattr(
+        platformdirs, "user_data_dir", lambda *args, **kwargs: str(data_dir),
+    )
+    monkeypatch.chdir(tmp_path)
+    # Building the Application widens PATH for the rest of the process;
+    # monkeypatch puts it back after the test.
+    monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
+    # main() would add the CLI's log handler for the rest of the
+    # session; this test reads only what main() prints.
+    monkeypatch.setattr(main, "_configure_logging", lambda: None)
+    monkeypatch.delenv("SEEKER_DEBUG_POLL", raising=False)
+    # A command that reads only the database, should it ever run.
+    monkeypatch.setattr(sys, "argv", ["seeker", "library", "list"])
+
+    with pytest.raises(SystemExit) as exit_info:
+        main.main()
+
+    assert exit_info.value.code == 1
+    assert capsys.readouterr().out == (
+        f"{config_path} is not valid JSON (Illegal trailing comma before "
+        "end of object: line 1, column 26), so Seeker has left it as it "
+        "is. Correct it in a text editor, then try again.\n"
+    )
+    assert config_path.read_bytes() == original
 
 
 def test_the_cli_leaves_a_stream_that_is_not_a_text_wrapper_alone(

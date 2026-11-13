@@ -14,6 +14,7 @@ from seeker.application import (
 )
 from seeker.config_store import (
     SeekerConfig,
+    SettingsNotJsonError,
     load_config,
     resolve_config_path,
     save_config,
@@ -540,6 +541,30 @@ def test_persist_soulseek_config_updates_store_disk_and_resets_client(
     reloaded = load_config(resolve_config_path())
     assert reloaded.slskd_username == "real-username"
     assert reloaded.slskd_password == "real-password"
+
+
+def test_update_settings_leaves_a_store_edited_into_invalid_json(
+        tmp_path, monkeypatch,
+):
+    """A hand edit made while Seeker runs (single quotes, here) meets
+    the next save, which reads the file first. It raises, and writes
+    nothing over the stored credentials, in the file or in memory."""
+    app = _application_with_tmp_config(tmp_path, monkeypatch)
+    app.persist_soulseek_config(
+        "http://localhost:5030", "key", "/data/downloads", "kris", "kept",
+    )
+    config_path = resolve_config_path()
+    saved = config_path.read_bytes()
+    edited = saved.replace(b'"theme_mode": "system"', b"\"theme_mode\": 'dark'")
+    assert edited != saved
+    config_path.write_bytes(edited)
+
+    with pytest.raises(SettingsNotJsonError):
+        app.update_settings(downloads_paused=True)
+
+    assert config_path.read_bytes() == edited
+    assert app.settings.slskd_password == "kept"
+    assert app.settings.downloads_paused is False
 
 
 def test_ensure_slskd_web_credentials_generates_and_persists_once(

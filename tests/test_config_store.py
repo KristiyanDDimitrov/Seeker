@@ -9,6 +9,7 @@ import pytest
 
 from seeker.config_store import (
     SeekerConfig,
+    SettingsNotJsonError,
     load_config,
     migrate_legacy_env_config,
     resolve_config_path,
@@ -205,13 +206,43 @@ def test_load_config_tolerates_a_removed_field_still_present_in_the_file(
     assert not hasattr(loaded, "write_cover_jpg_sidecars")
 
 
-def test_load_config_corrupt_json_does_not_crash(tmp_path):
+def test_load_config_refuses_a_file_that_is_not_json_and_leaves_it(tmp_path):
+    """A hand edit's typo (here a trailing comma) stops the load with a
+    sentence naming the file and where the parser stopped. Defaults
+    instead would let the next save write them over the user's
+    credentials, so the file stays as it is."""
     path = tmp_path / "config.json"
-    path.write_text("{not valid json at all", encoding="utf-8")
+    original = b'{\n  "slskd_username": "kris",\n  "slskd_password": "kept",\n}\n'
+    path.write_bytes(original)
 
-    loaded = load_config(path)
+    with pytest.raises(SettingsNotJsonError) as raised:
+        load_config(path)
 
-    assert loaded == SeekerConfig()
+    assert describe_error(raised.value, details_hint="") == (
+        f"{path} is not valid JSON (Illegal trailing comma before end of "
+        "object: line 3, column 27), so Seeker has left it as it is. "
+        "Correct it in a text editor, then try again."
+    )
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "text", ['[{"slskd_password": "kept"}]', '"kept"', "null"],
+)
+def test_load_config_refuses_json_that_is_not_an_object_and_leaves_it(
+        tmp_path, text,
+):
+    path = tmp_path / "config.json"
+    path.write_text(text, encoding="utf-8")
+
+    with pytest.raises(SettingsNotJsonError) as raised:
+        load_config(path)
+
+    assert describe_error(raised.value, details_hint="") == (
+        f"{path} is not a JSON object, so Seeker has left it as it is. "
+        "Correct it in a text editor, then try again."
+    )
+    assert path.read_text(encoding="utf-8") == text
 
 
 def test_load_config_missing_theme_mode_defaults_to_system(tmp_path):
@@ -448,6 +479,24 @@ def test_migrate_noop_when_neither_store_nor_env_has_a_value(
 
     output = capsys.readouterr().out
     assert output == ""
+
+
+def test_migrate_leaves_a_store_that_is_not_json_with_env_values_to_copy(
+        tmp_path, monkeypatch,
+):
+    """Every Application start migrates. With a .env value to copy in,
+    defaults read from a store with a typo would be saved over it at
+    once, before any screen shows."""
+    _clear_migration_env(monkeypatch)
+    monkeypatch.setenv("SLSKD_API_KEY", "env-api-key")
+    path = tmp_path / "config.json"
+    original = b'{"slskd_password": "kept",}'
+    path.write_bytes(original)
+
+    with pytest.raises(SettingsNotJsonError):
+        migrate_legacy_env_config(path)
+
+    assert path.read_bytes() == original
 
 
 def test_migrate_is_idempotent_on_second_call(tmp_path, monkeypatch, capsys):

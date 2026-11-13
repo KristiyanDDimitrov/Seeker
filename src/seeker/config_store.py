@@ -7,10 +7,32 @@ from typing import get_args
 
 import platformdirs
 
-from seeker.errors import TextFileNotUtf8Error
+from seeker.errors import SeekerError, TextFileNotUtf8Error
 from seeker.files.atomic import make_private_dir, write_text_locked
 
 logger = logging.getLogger(__name__)
+
+
+class SettingsNotJsonError(SeekerError):
+    """config.json is not valid JSON, or holds JSON other than the
+    object Seeker keeps its settings in: a hand edit's typo, say.
+    Seeker reads nothing from it and leaves it as it is."""
+
+    def __init__(
+            self,
+            path: Path,
+            decode_error: json.JSONDecodeError | None = None,
+    ) -> None:
+        # The parser's own words and position, so the typo can be found.
+        problem = "a JSON object" if decode_error is None else (
+            f"valid JSON ({decode_error.msg}: line {decode_error.lineno}, "
+            f"column {decode_error.colno})"
+        )
+        super().__init__(
+            f"{path} is not {problem}, so Seeker has left it as it is. "
+            "Correct it in a text editor, then try again."
+        )
+        self.path = path
 
 
 @dataclass
@@ -136,6 +158,11 @@ def _resolve_theme_mode(raw: object) -> str:
 
 
 def load_config(path: Path) -> SeekerConfig:
+    """The settings `path` holds, or the defaults while it does not
+    exist (a first run). A file that is not UTF-8, or not a JSON
+    object, raises and is left for the user to fix (a hand edit saved
+    in a code page, or with a typo): defaults would let the next save
+    write them over the user's Spotify and Soulseek credentials."""
     if not path.exists():
         return SeekerConfig()
 
@@ -145,15 +172,14 @@ def load_config(path: Path) -> SeekerConfig:
         # could lose, so the next save writes the file without it.
         data = json.loads(path.read_text(encoding="utf-8-sig"))
     except UnicodeDecodeError as error:
-        # Defaults here would let the next save write them over the
-        # user's Spotify and Soulseek credentials, so the file is left
-        # for them to fix (a hand edit saved in a code page, say).
         raise TextFileNotUtf8Error(path) from error
-    except (OSError, json.JSONDecodeError):
+    except json.JSONDecodeError as error:
+        raise SettingsNotJsonError(path, error) from error
+    except OSError:
         return SeekerConfig()
 
     if not isinstance(data, dict):
-        return SeekerConfig()
+        raise SettingsNotJsonError(path)
 
     # Unknown keys (e.g. a field a later version removed) are ignored,
     # not an error — no migration/tolerance code is needed when a field
