@@ -1117,7 +1117,7 @@ def test_launch_docker_clicked_success_updates_status_and_button(
     )
     subprocess_calls = []
     monkeypatch.setattr(
-        "seeker.ui.wizard.subprocess.run",
+        "subprocess.run",
         lambda *a, **k: subprocess_calls.append(a),
     )
 
@@ -1153,7 +1153,7 @@ def test_launch_docker_clicked_failure_shows_manual_instructions(
     def raise_oserror(*a, **k):
         raise OSError("no such app")
 
-    monkeypatch.setattr("seeker.ui.wizard.subprocess.run", raise_oserror)
+    monkeypatch.setattr("subprocess.run", raise_oserror)
 
     application = make_application(tmp_path, monkeypatch)
     application.library_service.add_location("Library", str(tmp_path))

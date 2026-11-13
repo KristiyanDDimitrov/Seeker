@@ -1,4 +1,3 @@
-import subprocess
 import sys
 import webbrowser
 from collections.abc import Callable
@@ -24,7 +23,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from seeker import processes
 from seeker.application import Application
 from seeker.models.library_location import LibraryLocation
 from seeker.models.slskd_start import SlskdStartResult
@@ -35,6 +33,7 @@ from seeker.soulseek.docker_setup import (
     SlskdHealthStatus,
     check_slskd_health,
     detect_docker_state,
+    launch_docker_desktop,
 )
 from seeker.spotify.callback_server import DEFAULT_REDIRECT_URI
 from seeker.ui import help_text, theme
@@ -658,20 +657,11 @@ class OnboardingWizard(QMainWindow):
             self._docker_action_connected = False
 
     def _on_launch_docker_clicked(self) -> None:
-        try:
-            if sys.platform == "darwin":
-                processes.run(
-                    ["open", "-a", "Docker"], check=True, timeout=10,
-                )
-            elif sys.platform == "win32":
-                processes.run(
-                    ["cmd", "/c", "start", "", "Docker Desktop"],
-                    check=True, timeout=10,
-                )
+        if launch_docker_desktop():
             self.soulseek_status_label.setText(
                 "Launching Docker Desktop... this can take a minute."
             )
-        except (OSError, subprocess.SubprocessError):
+        else:
             self._show_soulseek_outcome(
                 "Couldn't launch Docker Desktop automatically — open "
                 "it manually, then click 'Check again'."

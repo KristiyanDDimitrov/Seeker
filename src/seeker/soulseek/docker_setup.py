@@ -166,6 +166,25 @@ def detect_docker_state() -> DockerState:
     return DockerState.INSTALLED_NOT_RUNNING
 
 
+def launch_docker_desktop() -> bool:
+    """Asks the platform to start Docker Desktop, and returns whether
+    it could ask. Whether Docker came up is `detect_docker_state()`'s
+    to judge (the wizard's "Check again"), never this function's."""
+    try:
+        if sys.platform == "darwin":
+            processes.run(["open", "-a", "Docker"], check=True, timeout=10)
+        elif sys.platform == "win32":
+            processes.run(
+                ["cmd", "/c", "start", "", "Docker Desktop"],
+                check=True, timeout=10,
+            )
+        else:
+            return False
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return True
+
+
 _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
