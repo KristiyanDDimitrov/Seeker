@@ -188,14 +188,18 @@ def _refuse_real_spawns(
     that reaches `open`, `osascript` and the like would show a folder,
     a browser or Docker Desktop on the desktop it runs on.
 
+    `os.startfile`, which opens a file with the program Windows
+    associates with it (and which `webbrowser.open` calls on Windows),
+    never reaches `Popen`, so where it exists it is replaced too, and
+    refuses every call.
+
     A module that binds `Popen` itself (`from subprocess import
     Popen`) when the tests import it keeps the real class, and
-    `os.system`, `os.startfile` (what `webbrowser.open` calls on
-    Windows), `os.posix_spawn` and the `os.exec*` and `os.spawn*`
+    `os.system`, `os.posix_spawn` and the `os.exec*` and `os.spawn*`
     families, `pty.spawn`, `QProcess` and multiprocessing's children
-    (fresh interpreters, without this file) never reach `Popen`; the
-    sweep in tests/test_headless.py fails if src/ spawns in any of
-    those ways.
+    (fresh interpreters, without this file) never reach `Popen`, nor
+    does a `startfile` bound before this runs; the sweep in
+    tests/test_headless.py fails if src/ spawns in any of those ways.
     """
     real_popen = subprocess.Popen
 
@@ -225,9 +229,21 @@ def _refuse_real_spawns(
                 )
             super().__init__(args, *pargs, **kwargs)
 
+    def refusing_startfile(path, *args, **kwargs):
+        command = f"startfile {os.fsdecode(path)}"
+        _desktop_attempts.append(command)
+        raise _DesktopSpawnRefused(
+            f"tests never open anything on the desktop: {command!r}"
+        )
+
+    real_startfile = getattr(os, "startfile", None)
     subprocess.Popen = RefusingPopen
+    if real_startfile is not None:
+        os.startfile = refusing_startfile
     yield
     subprocess.Popen = real_popen
+    if real_startfile is not None:
+        os.startfile = real_startfile
 
 
 class _UrlRecorder(QObject):

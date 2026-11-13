@@ -65,6 +65,13 @@ _MODULE_SPAWNS = {
 # `Popen`, running src/ code without conftest (CPython 3.13.15's
 # multiprocessing/context.py and util.py, read 2026-11-03).
 _UNGUARDED_MODULES = {"multiprocessing", "_posixsubprocess", "_winapi"}
+# `os` functions conftest replaces for the whole session and refuses
+# whatever they are handed, so a call of one needs no literal program:
+# `os.startfile` opens a file with the program Windows associates with
+# it, never through `Popen`. Read only as `os.<name>(...)`, which looks
+# the function up as it runs; `from os import startfile`, `nt.startfile`
+# or the function handed on as a value keeps the real one, unread.
+_REFUSED_OS_CALLS = {"startfile"}
 # Names that start a program, or open something on the desktop,
 # whatever they are reached through: Qt's, asyncio's and Cocoa's.
 _ANY_SPAWNS = {
@@ -98,6 +105,18 @@ def _literal_program(call: ast.Call) -> tuple[str, ...]:
             break
         words.append(element.value)
     return tuple(words)
+
+
+def _calls_a_refused_os_function(call: ast.Call) -> bool:
+    """Whether `call` is `os.<name>(...)` for a name of
+    `_REFUSED_OS_CALLS`."""
+    function = call.func
+    return (
+        isinstance(function, ast.Attribute)
+        and isinstance(function.value, ast.Name)
+        and function.value.id == "os"
+        and function.attr in _REFUSED_OS_CALLS
+    )
 
 
 def _binds_a_spawn(node: ast.Import | ast.ImportFrom) -> bool:
@@ -308,6 +327,8 @@ def _commands_src_spawns(
             if isinstance(node, ast.Call) and (words := _literal_program(node)):
                 commands.add(words)
                 read.add(id(node.func))
+            if isinstance(node, ast.Call) and _calls_a_refused_os_function(node):
+                read.add(id(node.func))
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
                 qualifying.add(id(node.value))
             if id(node) not in typed and _reaches_a_spawn(node, read, qualifying):
@@ -446,9 +467,24 @@ def test_the_sweep_reads_a_subprocess_call_by_its_module(tmp_path):
     assert _commands_src_spawns(tmp_path) == ([("open", "-R")], [])
 
 
+def test_the_sweep_reads_os_startfile_as_the_suite_refuses_it(tmp_path):
+    """`os.startfile` names no program: Windows opens the file with the
+    one it associates with it. conftest refuses every call, so the sweep
+    needs none, when the call looks the function up on `os` as it runs.
+    Bound any other way, it is the real function, and flagged below."""
+    (tmp_path / "opener.py").write_text(
+        "import os\nos.startfile(path)\n", encoding="utf-8",
+    )
+
+    assert _commands_src_spawns(tmp_path) == ([], [])
+
+
 # Spawns the sweep would otherwise neither read nor flag, by what each
 # goes through.
 _HIDDEN_SPAWNS = {
+    "startfile-from-import": "from os import startfile\nstartfile(path)\n",
+    "startfile-through-nt": "import nt\nnt.startfile(path)\n",
+    "startfile-as-a-value": "import os\nopen_file = os.startfile\n",
     "from-import": "from subprocess import Popen\nPopen(['open', '/'])\n",
     "module-alias": "import subprocess as sp\nsp.run(['open', '/'])\n",
     "function-alias": (
@@ -753,6 +789,28 @@ def test_the_suite_refuses_a_program_by_its_stem_in_any_case(
     assert record == [" ".join(command)]
     # Recorded and refused; cleared so this test alone passes.
     record.clear()
+
+
+@pytest.mark.skipif(
+    not hasattr(os, "startfile"),
+    reason=(
+        "os.startfile exists on Windows alone; elsewhere no call of it "
+        "can open anything, so there is nothing to refuse"
+    ),
+)
+def test_the_suite_refuses_os_startfile(tmp_path, _desktop_attempts):
+    """`os.startfile` opens a file with the program Windows associates
+    with it, never through `Popen`; `webbrowser.open` calls it on
+    Windows (CPython 3.13.15's webbrowser.py)."""
+    document = tmp_path / "opened.txt"
+    document.write_text("", encoding="utf-8")
+
+    with pytest.raises(FileNotFoundError):
+        os.startfile(document)  # noqa: S606 — refused by conftest
+
+    assert _desktop_attempts == [f"startfile {document}"]
+    # Recorded and refused; cleared so this test alone passes.
+    _desktop_attempts.clear()
 
 
 @pytest.mark.skipif(
