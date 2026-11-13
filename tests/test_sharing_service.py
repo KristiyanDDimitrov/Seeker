@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+import yaml
 
 from seeker.cli import handle_sharing_status
 from seeker.config_store import SeekerConfig
@@ -102,6 +103,65 @@ def seed_location(
 
     assert saved is not None
     return saved
+
+
+TEMPLATE_PATH = Path(__file__).resolve().parents[1] / "docker-compose.yml"
+
+
+def _volume_sharing_adds(
+        service: SharingService,
+        location: LibraryLocation,
+) -> tuple[str, str, bool]:
+    """(source, target, read_only) of the volume Sharing's entry for
+    `location` mounts, read back from the tracked template with that
+    entry inserted, as Compose reads it: YAML first, then
+    interpolation, then the short syntax's split."""
+    plan = service.preview_add_location(location)
+    compose_text = _insert_compose_volume_line(
+        TEMPLATE_PATH.read_text(encoding="utf-8"), plan.compose_volume_line,
+    )
+    volumes = yaml.safe_load(compose_text)["services"]["slskd"]["volumes"]
+
+    return _read_short_syntax_volume(volumes[-1])
+
+
+def _read_short_syntax_volume(entry: str) -> tuple[str, str, bool]:
+    """compose-go's `format.ParseVolume` for a host path, read in its
+    source (2026-11-13): split on ':', except the ':' after a field's
+    lone leading letter (a drive, `C:/...`); a third field holds
+    comma-separated options, `ro` among them. Compose interpolates
+    first, so `$$` is a literal '$' and a lone '$' names a variable."""
+    assert "$" not in entry.replace("$$", ""), (
+        f"{entry!r}: Compose would read a '$' here as a variable"
+    )
+    fields: list[str] = []
+    field = ""
+
+    for char in entry.replace("$$", "$") + "\0":
+        if char == ":" and len(field) == 1 and field.isalpha():
+            field += char
+        elif char in ":\0":
+            assert field, f"{entry!r}: an empty section between colons"
+            assert not (len(fields) == 2 and char == ":"), (
+                f"{entry!r}: too many colons"
+            )
+            fields.append(field)
+            field = ""
+        else:
+            field += char
+
+    source, target, *options = fields
+
+    return source, target, "ro" in "".join(options).split(",")
+
+
+def test_sharings_compose_entry_reads_back_as_the_location(tmp_path):
+    service = make_service(tmp_path)
+    location = seed_location(service, "New Drive", "/Volumes/New/Drive")
+
+    assert _volume_sharing_adds(service, location) == (
+        "/Volumes/New/Drive", "/shared/New Drive", True,
+    )
 
 
 def test_get_status_parses_real_confirmed_shapes(tmp_path, monkeypatch):
