@@ -547,20 +547,26 @@ class SharingService:
             compose=_read_utf8(self._compose_path),
             slskd_yml=_read_utf8(slskd_yml_path),
         )
-        updated_compose_text = _insert_compose_volume_line(
-            originals.compose, plan.compose_volume_line
+        updated_compose_text = _in_own_line_endings(
+            originals.compose,
+            lambda text: _insert_compose_volume_line(
+                text, plan.compose_volume_line,
+            ),
         )
-        updated_slskd_yml_text = _insert_slskd_share_directory(
-            originals.slskd_yml, plan.slskd_share_directory_line
+        updated_slskd_yml_text = _in_own_line_endings(
+            originals.slskd_yml,
+            lambda text: _insert_slskd_share_directory(
+                text, plan.slskd_share_directory_line,
+            ),
         )
 
         # Each write is atomic, so a failure leaves that file whole.
-        write_text_atomic(self._compose_path, updated_compose_text)
+        _write_yaml(self._compose_path, updated_compose_text)
 
         try:
-            write_text_atomic(slskd_yml_path, updated_slskd_yml_text)
+            _write_yaml(slskd_yml_path, updated_slskd_yml_text)
         except Exception:
-            write_text_atomic(self._compose_path, originals.compose)
+            _write_yaml(self._compose_path, originals.compose)
             raise
 
         return originals
@@ -595,8 +601,8 @@ class SharingService:
         # Restoring both keeps the pair consistent: a retry must not find
         # a volume line with no matching share, or add the same line
         # twice.
-        write_text_atomic(self._compose_path, originals.compose)
-        write_text_atomic(slskd_yml_path, originals.slskd_yml)
+        _write_yaml(self._compose_path, originals.compose)
+        _write_yaml(slskd_yml_path, originals.slskd_yml)
 
     def _wait_until_share_ready(
             self, stop: threading.Event | None = None,
@@ -733,13 +739,32 @@ def _as_optional_int(value: object) -> int | None:
 
 
 def _read_utf8(path: Path) -> str:
-    """`path`'s text. A byte that is not UTF-8 (a Compose file a
-    code-page editor saved) stops the edit with a sentence naming the
-    file, before anything is written."""
+    """`path`'s text, its line endings as they are. A byte that is not
+    UTF-8 (a Compose file a code-page editor saved) stops the edit with
+    a sentence naming the file, before anything is written."""
     try:
-        return path.read_text(encoding="utf-8")
+        return path.read_text(encoding="utf-8", newline="")
     except UnicodeDecodeError as error:
         raise TextFileNotUtf8Error(path) from error
+
+
+# Each YAML file keeps the line endings it has: slskd.yml slskd's LF,
+# the Compose copy whatever the template's checkout gave it (CRLF from
+# Git for Windows' default). So an edit never hands Compose or slskd a
+# line ending they have not already read, and a roll-back restores
+# both files byte for byte.
+
+def _write_yaml(path: Path, text: str) -> None:
+    write_text_atomic(path, text, newline="")
+
+
+def _in_own_line_endings(original: str, edit: Callable[[str], str]) -> str:
+    """`edit(original)` with `original`'s line ending, CRLF when its
+    first line ends in one, else '\\n'. The edits work in '\\n'."""
+    if not original.split("\n", 1)[0].endswith("\r"):
+        return edit(original)
+
+    return edit(original.replace("\r\n", "\n")).replace("\n", "\r\n")
 
 
 def _prune_backups(path: Path) -> None:

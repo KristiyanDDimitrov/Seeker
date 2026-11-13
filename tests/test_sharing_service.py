@@ -1544,6 +1544,47 @@ def test_insert_slskd_share_directory_goes_after_an_entrys_continuation():
     ]
 
 
+def test_both_files_keep_their_own_line_endings_and_roll_back_to_bytes(
+        tmp_path,
+):
+    """A Compose copy checked out CRLF (Git for Windows' default) stays
+    CRLF and slskd's own LF slskd.yml stays LF, whatever line ending the
+    platform's text mode writes; a roll-back restores both bytes."""
+    compose_path = tmp_path / "docker-compose.yml"
+    compose = (
+        b"services:\r\n  slskd:\r\n    volumes:\r\n"
+        b"      - '/Volumes/a:/shared/a:ro'\r\n"
+    )
+    compose_path.write_bytes(compose)
+    slskd_yml_path = tmp_path / "slskd.yml"
+    slskd_yml = b"web:\n  port: 5030"
+    slskd_yml_path.write_bytes(slskd_yml)
+    plan = SharingPlan(
+        location=LibraryLocation(
+            name="b", path="/Volumes/b",
+            added_at="2026-11-13T00:00:00+00:00", id=1,
+        ),
+        container_path="/shared/b",
+        compose_volume_line="      - '/Volumes/b:/shared/b:ro'",
+        slskd_share_directory_line="    - /shared/b",
+    )
+    service = make_service(tmp_path, compose_path=compose_path)
+
+    originals = service._edit_both_files(plan, slskd_yml_path)
+
+    assert compose_path.read_bytes() == (
+        compose + b"      - '/Volumes/b:/shared/b:ro'\r\n"
+    )
+    assert slskd_yml_path.read_bytes() == (
+        slskd_yml + b"\nshares:\n  directories:\n    - /shared/b\n"
+    )
+
+    service._roll_back(originals, slskd_yml_path)
+
+    assert compose_path.read_bytes() == compose
+    assert slskd_yml_path.read_bytes() == slskd_yml
+
+
 def test_a_compose_file_that_is_not_utf8_stops_the_edit_and_is_left(tmp_path):
     """A Compose file a code-page editor saved (0xE9 for an e-acute in a
     share path) stops the edit with a sentence naming it, before either

@@ -9,7 +9,9 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def write_text_atomic(path: Path, text: str) -> None:
+def write_text_atomic(
+        path: Path, text: str, newline: str | None = None,
+) -> None:
     """Replace `path`'s contents with `text` in one step.
 
     Writes and fsyncs a sibling temp file (same directory, so
@@ -17,9 +19,11 @@ def write_text_atomic(path: Path, text: str) -> None:
     over `path`, so a crash, full disk or power cut mid-write leaves the
     old file intact rather than a truncated one. An existing file's
     permission bits carry over; the temp file is removed if anything
-    fails. `text` is written as UTF-8, whatever the locale.
+    fails. `text` is written as UTF-8, whatever the locale. `newline`
+    is `open()`'s: by default each '\\n' is written as the platform's
+    line ending (CRLF on Windows), and "" writes `text`'s own.
     """
-    _write_atomic(path, text, mode=None)
+    _write_atomic(path, text, mode=None, newline=newline)
 
 
 def write_text_locked(path: Path, text: str) -> None:
@@ -57,7 +61,9 @@ def make_private_dir(path: Path) -> None:
         logger.warning("Could not make %s private to this user: %s", path, error)
 
 
-def _write_atomic(path: Path, text: str, mode: int | None) -> None:
+def _write_atomic(
+        path: Path, text: str, mode: int | None, newline: str | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
 
@@ -70,7 +76,7 @@ def _write_atomic(path: Path, text: str, mode: int | None) -> None:
         0o666 if mode is None else mode,
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as handle:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())

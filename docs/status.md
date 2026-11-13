@@ -76,12 +76,7 @@ Genuinely open only, checked against every CI run on record (187, to
   which Notepad can save (which versions do so by default is
   UNVERIFIED); `json.loads` refuses it ("Unexpected UTF-8 BOM",
   observed). This is a candidate row: refuse the file as
-  `TextFileNotUtf8Error` does. Also true on main: on Windows, where
-  the seeded Compose copy is LF (a checkout without autocrlf; Git for
-  Windows' default checks it out CRLF, as §268's entry 29 saw),
-  Sharing's first edit rewrites it as CRLF (text mode's line
-  endings), so `_roll_back` restores its text but not its bytes.
-  [§274](history/271-300.md#274)
+  `TextFileNotUtf8Error` does. [§274](history/271-300.md#274)
 
 ## Roadmap
 
