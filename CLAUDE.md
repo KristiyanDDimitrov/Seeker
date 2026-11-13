@@ -130,6 +130,18 @@ short, under `src/seeker/`:
   up at call time, so a fake of `subprocess.run` still sees each call.
   `tests/test_subprocess_sweep.py` fails the build on a spawn named
   anywhere else. [§273](docs/history/271-300.md#273)
+- **Text is UTF-8, never the locale's.** Every text read or write in
+  the project's Python names `encoding="utf-8"` or opens in a binary
+  mode; ruff's PLW1514 and `tests/test_encoding_sweep.py` (over `src/`,
+  `tests/`, `tools/`, `packaging/`) fail the build. When the settings
+  (`config.json`), the Compose file or `slskd.yml` hold a byte that is
+  not UTF-8, reading them raises `TextFileNotUtf8Error` and the file is
+  left as it is: the settings never fall back to defaults, which a
+  later save would write over the user's credentials. The Spotify
+  token and the album-art cache, being caches, read as missing. The
+  CLI's stdout and stderr are UTF-8 from `main()`. `PYTHONUTF8` and
+  `PYTHONIOENCODING` stay unset in CI, tests and the app.
+  [§274](docs/history/271-300.md#274)
 - **`.env` is read only by an entry point.** `config.py`'s values are
   functions over `os.environ`, read at call time; `main()` in
   `main.py`/`main_ui.py` calls `config.load_env_file()` (cwd upward;

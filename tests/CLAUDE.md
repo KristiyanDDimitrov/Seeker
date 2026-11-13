@@ -81,7 +81,7 @@ linked to the HISTORY entry holding its investigation;
   `tests/test_encoding_sweep.py` fails the build over `src/`, `tests/`,
   `tools/` and `packaging/`. A test's subprocess output is not swept:
   its child writes in its own stream's encoding.
-  [§273](../docs/history/271-300.md#273)
+  [§273](../docs/history/271-300.md#273), [§274](../docs/history/271-300.md#274)
 - **On Windows a test's `HOME` moves nothing of Seeker's.**
   `Path.expanduser()` reads `USERPROFILE` (observed on
   `check-windows`), and platformdirs 4.14.0's source resolves Seeker's
@@ -106,7 +106,7 @@ linked to the HISTORY entry holding its investigation;
   test and seven Windows-only tests (`test_processes.py`,
   `test_platformdirs_isolation.py`, `test_main.py`).
   [§32](../docs/history/032-046.md#32), [§267](../docs/history/241-270.md#267),
-  [§273](../docs/history/271-300.md#273)
+  [§273](../docs/history/271-300.md#273), [§274](../docs/history/271-300.md#274)
 - **CI checks audio analysis only as one generated click track's BPM
   within 2 of 123.05**, on both architectures (`test_smoke_test.py`, and
   build.yml's frozen-app smoke test). Every real-file `analyze_audio`

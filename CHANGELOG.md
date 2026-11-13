@@ -19,6 +19,17 @@ uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and their output reads as UTF-8 (a byte that is not UTF-8 reads as
   U+FFFD instead of failing the call, on macOS too).
 
+### Fixed
+
+- **On Windows, Seeker reads and writes its own files as UTF-8**
+  (settings, the Spotify token, the album-art cache, and the Compose
+  file and `slskd.yml` that Sharing edits), and the `seeker` command's
+  redirected output is UTF-8, so a name outside the system code page no
+  longer causes a failure. A settings or Compose file that Seeker cannot
+  read as UTF-8 is left as it is, with a sentence saying how to fix it;
+  the settings are never replaced with defaults, which the next save
+  would write over your Spotify and Soulseek credentials.
+
 ## [0.2.0] - 2026-11-04
 
 ### Added
