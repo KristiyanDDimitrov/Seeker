@@ -169,20 +169,78 @@ def detect_docker_state() -> DockerState:
 def launch_docker_desktop() -> bool:
     """Asks the platform to start Docker Desktop, and returns whether
     it could ask. Whether Docker came up is `detect_docker_state()`'s
-    to judge (the wizard's "Check again"), never this function's."""
-    try:
-        if sys.platform == "darwin":
+    to judge (the wizard's "Check again"), never this function's.
+
+    On Windows, Docker Desktop's own CLI first, else the executable its
+    installer puts under `%ProgramFiles%`.
+    """
+    if sys.platform == "darwin":
+        try:
             processes.run(["open", "-a", "Docker"], check=True, timeout=10)
-        elif sys.platform == "win32":
-            processes.run(
-                ["cmd", "/c", "start", "", "Docker Desktop"],
-                check=True, timeout=10,
-            )
-        else:
+        except (OSError, subprocess.SubprocessError):
             return False
+        return True
+    if sys.platform == "win32":
+        if _start_through_docker_desktop_cli():
+            return True
+        executable = _installed_docker_desktop()
+        if executable is None:
+            return False
+        try:
+            os.startfile(executable)  # noqa: S606 — the installed app, found above
+        except OSError:
+            logger.warning("Couldn't open %s", executable, exc_info=True)
+            return False
+        return True
+    return False
+
+
+def _start_through_docker_desktop_cli() -> bool:
+    """Whether `docker desktop start` asked Docker Desktop to start.
+
+    The command is Docker Desktop's from 4.37, generally available from
+    4.39 (Docker's release notes); `--detach` returns without waiting
+    for the engine (Docker's CLI reference; both read 2026-11-13). That
+    an older Docker Desktop answers it with an error, not a hang, is
+    UNVERIFIED.
+    """
+    try:
+        processes.run(
+            ["docker", "desktop", "start", "--detach"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+    except subprocess.CalledProcessError as error:
+        logger.info(
+            "docker desktop start exited %s: %s",
+            error.returncode, (error.stderr or "").strip(),
+        )
+        return False
     except (OSError, subprocess.SubprocessError):
+        logger.info("docker desktop start did not run", exc_info=True)
         return False
     return True
+
+
+# Docker Desktop's executable in an all-users install, whose folder is
+# %ProgramFiles%\Docker\Docker unless `--installation-dir` names another
+# (Docker's Windows install docs, read 2026-11-13; the executable's name
+# is UNVERIFIED on hardware). A per-user install goes to
+# %LOCALAPPDATA%\Programs\DockerDesktop, where the name is unknown too,
+# so it is left to the CLI.
+_DOCKER_DESKTOP_EXECUTABLE = ("Docker", "Docker", "Docker Desktop.exe")
+
+
+def _installed_docker_desktop() -> Path | None:
+    # Windows names it `ProgramFiles`; there os.environ upper-cases
+    # every key (CPython 3.13.15's os.py, read 2026-11-13).
+    program_files = os.environ.get("PROGRAMFILES")
+    if not program_files:
+        return None
+    executable = Path(program_files, *_DOCKER_DESKTOP_EXECUTABLE)
+    return executable if executable.is_file() else None
 
 
 _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}

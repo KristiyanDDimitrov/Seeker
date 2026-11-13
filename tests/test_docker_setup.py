@@ -4,6 +4,7 @@ import subprocess
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -26,6 +27,7 @@ from seeker.soulseek.docker_setup import (
     ensure_full_path_environment,
     generate_api_key,
     is_non_loopback_http_url,
+    launch_docker_desktop,
     slskd_data_dir,
 )
 
@@ -406,6 +408,133 @@ def test_detect_docker_state_running_when_both_succeed(monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
 
     assert detect_docker_state() == DockerState.RUNNING
+
+
+_DOCKER_DESKTOP_START = ["docker", "desktop", "start", "--detach"]
+
+
+@pytest.fixture
+def windows_launch(monkeypatch, tmp_path):
+    """Windows, with `%ProgramFiles%` in `tmp_path` and Docker Desktop
+    not installed there; records every program run and every file
+    `os.startfile` opens (a name Windows alone has, so `raising=False`
+    here)."""
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setenv("PROGRAMFILES", str(tmp_path))
+    launch = SimpleNamespace(
+        ran=[], opened=[], run_raises=None,
+        executable=tmp_path / "Docker" / "Docker" / "Docker Desktop.exe",
+    )
+
+    def fake_run(args, **kwargs):
+        launch.ran.append(args)
+        if launch.run_raises is not None:
+            raise launch.run_raises
+        return FakeCompletedProcess(returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(os, "startfile", launch.opened.append, raising=False)
+    return launch
+
+
+def _install_docker_desktop(executable: Path) -> None:
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"")
+
+
+def test_launch_docker_desktop_on_windows_asks_its_own_cli(windows_launch):
+    """Docker Desktop's CLI, from 4.37: `--detach` returns without
+    waiting for the engine, which "Check again" judges."""
+    _install_docker_desktop(windows_launch.executable)
+
+    assert launch_docker_desktop() is True
+
+    assert windows_launch.ran == [_DOCKER_DESKTOP_START]
+    assert windows_launch.opened == []
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        subprocess.CalledProcessError(1, _DOCKER_DESKTOP_START),
+        FileNotFoundError("docker"),
+        subprocess.TimeoutExpired(_DOCKER_DESKTOP_START, 10),
+    ],
+    ids=["no-desktop-command", "no-docker", "timed-out"],
+)
+def test_launch_docker_desktop_on_windows_opens_the_installed_app_else(
+        windows_launch, failure,
+):
+    """A Docker Desktop older than 4.37 has no `docker desktop`; its
+    installer's executable is opened instead."""
+    _install_docker_desktop(windows_launch.executable)
+    windows_launch.run_raises = failure
+
+    assert launch_docker_desktop() is True
+
+    assert windows_launch.ran == [_DOCKER_DESKTOP_START]
+    assert windows_launch.opened == [windows_launch.executable]
+
+
+def test_launch_docker_desktop_on_windows_without_either_cannot_launch(
+        windows_launch,
+):
+    windows_launch.run_raises = subprocess.CalledProcessError(
+        1, _DOCKER_DESKTOP_START,
+    )
+
+    assert launch_docker_desktop() is False
+
+    assert windows_launch.opened == []
+
+
+def test_launch_docker_desktop_on_windows_without_program_files(
+        windows_launch, monkeypatch,
+):
+    windows_launch.run_raises = FileNotFoundError("docker")
+    monkeypatch.delenv("PROGRAMFILES")
+
+    assert launch_docker_desktop() is False
+
+    assert windows_launch.opened == []
+
+
+def test_launch_docker_desktop_on_windows_when_the_app_will_not_open(
+        windows_launch, monkeypatch,
+):
+    _install_docker_desktop(windows_launch.executable)
+    windows_launch.run_raises = FileNotFoundError("docker")
+
+    def refuse(path):
+        raise OSError(f"cannot open {path}")
+
+    monkeypatch.setattr(os, "startfile", refuse, raising=False)
+
+    assert launch_docker_desktop() is False
+
+
+@pytest.mark.parametrize(
+    ("failure", "launched"),
+    [(None, True), (FileNotFoundError("open"), False)],
+    ids=["opened", "failed"],
+)
+def test_launch_docker_desktop_on_macos_opens_the_app(
+        monkeypatch, failure, launched,
+):
+    monkeypatch.setattr("sys.platform", "darwin")
+    ran = []
+
+    def fake_run(args, **kwargs):
+        ran.append(args)
+        if failure is not None:
+            raise failure
+        return FakeCompletedProcess(returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert launch_docker_desktop() is launched
+
+    assert ran == [["open", "-a", "Docker"]]
 
 
 class FakeResponse:
